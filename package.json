@@ -1,0 +1,16 @@
+{
+  "name": "minor-project-portal",
+  "version": "1.0.0",
+  "description": "IIITNR Minor Project Management Portal",
+  "scripts": {
+    "client": "npm run dev --prefix client",
+    "server": "npm run dev --prefix server",
+    "dev": "concurrently \"npm run server\" \"npm run client\""
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
