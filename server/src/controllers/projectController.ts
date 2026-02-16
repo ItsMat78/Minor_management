@@ -8,20 +8,30 @@ import User, { UserRole } from '../models/User';
 export const createProject = async (req: Request, res: Response) => {
     try {
         const userId = (req as any).user.id;
-        const { title, description, tags, facultyId, attachments, status = 'Pending' } = req.body;
+        console.log(`[createProject] User ${userId} submitting project`);
+        const { title, description, tags, facultyId, attachments, status = 'Pending', semester } = req.body;
+        console.log(`[createProject] Payload:`, { title, facultyId, status, semester });
 
         // Check if user is in a group
         const group = await Group.findOne({ members: userId });
-        if (!group) return res.status(400).json({ message: 'You must be in a group to propose a project' });
+        if (!group) {
+            console.log(`[createProject] User ${userId} not in a group`);
+            return res.status(400).json({ message: 'You must be in a group to propose a project' });
+        }
+        console.log(`[createProject] Group found: ${group._id}, status: ${group.status}`);
 
         // Check if group already has a project pending or approved
         // Allow multiple drafts, but only one Pending/Approved
         if (status !== 'Draft') {
-            const existingProject = await Project.findOne({
+            const existingApproved = await Project.findOne({
                 group: group._id,
-                status: { $in: ['Pending', 'Approved'] }
+                status: 'Approved'
             });
-            if (existingProject) return res.status(400).json({ message: 'Group already has a pending or approved project' });
+            if (existingApproved) {
+                console.log(`[createProject] Group already has an approved project: ${existingApproved._id}`);
+                return res.status(400).json({ message: 'Group already has an approved project' });
+            }
+            // Allow multiple Pending projects
         }
 
         // Validate faculty if provided
@@ -29,12 +39,9 @@ export const createProject = async (req: Request, res: Response) => {
         if (facultyId) {
             faculty = await User.findById(facultyId);
             if (!faculty || faculty.role !== UserRole.FACULTY) {
+                console.log(`[createProject] Invalid faculty: ${facultyId}`);
                 return res.status(400).json({ message: 'Invalid faculty selected' });
             }
-        } else if (status === 'Pending') {
-            // Submitted but no faculty selected? Maybe allowed if Admin assigns? 
-            // For now, let's allow it but warn or require it for approval?
-            // The frontend "Decide Later" sets facultyId to ""
         }
 
         const newProject = new Project({
@@ -44,10 +51,12 @@ export const createProject = async (req: Request, res: Response) => {
             faculty: facultyId || null,
             group: group._id,
             attachments,
-            status: status
+            status: status,
+            semester
         });
 
         await newProject.save();
+        console.log(`[createProject] Project saved: ${newProject._id}`);
 
         // Update group status if submitting
         if (status === 'Pending') {
@@ -58,6 +67,7 @@ export const createProject = async (req: Request, res: Response) => {
 
         res.status(201).json(newProject);
     } catch (error) {
+        console.error('[createProject] Error:', error);
         res.status(500).json({ message: 'Server error', error });
     }
 };
@@ -68,7 +78,7 @@ export const getFacultyProjects = async (req: Request, res: Response) => {
         const projects = await Project.find({ faculty: userId })
             .populate({
                 path: 'group',
-                populate: { path: 'members', select: 'name email rollNumber' }
+                populate: { path: 'members', select: 'name email rollNumber branch' }
             })
             .sort({ hasNewUpdate: -1, createdAt: -1 });
         res.json(projects);
@@ -100,6 +110,17 @@ export const updateProjectStatus = async (req: Request, res: Response) => {
         if (group) {
             if (status === 'Approved') {
                 group.status = 'Approved';
+
+                // Archive all other proposals for this group
+                await Project.updateMany(
+                    {
+                        group: project.group,
+                        _id: { $ne: project._id },
+                        status: { $in: ['Pending', 'Draft', 'Rejected'] }
+                    },
+                    { status: 'Archived' }
+                );
+
             } else if (status === 'Rejected') {
                 group.status = 'Forming'; // Reset to Forming? Or allow re-proposal?
                 // If rejected, maybe back to 'Forming' or keep 'ProposalPending' but allow new?
@@ -133,9 +154,12 @@ export const addUpdate = async (req: Request, res: Response) => {
         const project = await Project.findById(id);
         if (!project) return res.status(404).json({ message: 'Project not found' });
 
-        // Verify user is member of the project's group
+        // Verify user is member of the project's group OR is the assigned faculty
         const group = await Group.findById(project.group);
-        if (!group || !group.members.map(m => m.toString()).includes(userId)) {
+        const isMember = group && group.members.map(m => m.toString()).includes(userId);
+        const isFaculty = project.faculty?.toString() === userId;
+
+        if (!isMember && !isFaculty) {
             return res.status(403).json({ message: 'Not authorized to update this project' });
         }
 
@@ -189,6 +213,140 @@ export const markUpdatesRead = async (req: Request, res: Response) => {
         await project.save();
 
         res.json({ message: 'Updates marked as read' });
+    } catch (error) {
+        res.status(500).json({ message: 'Server error', error });
+    }
+};
+
+export const updateProject = async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const userId = (req as any).user.id;
+        const { title, description, tags, facultyId, status, links, semester } = req.body;
+        const files = (req as any).files;
+
+        const project = await Project.findById(id);
+        if (!project) return res.status(404).json({ message: 'Project not found' });
+
+        // Verify membership
+        const group = await Group.findById(project.group);
+        if (!group || !group.members.map(m => m.toString()).includes(userId)) {
+            return res.status(403).json({ message: 'Not authorized to update this project' });
+        }
+
+        // Only allow edits if Draft, Pending, or Rejected
+        if (!['Draft', 'Pending', 'Rejected'].includes(project.status)) {
+            return res.status(400).json({ message: `Cannot edit project in ${project.status} status` });
+        }
+
+        // Process files
+        let fileUrls: string[] = [];
+        if (req.body.existingAttachments) {
+            try {
+                fileUrls = JSON.parse(req.body.existingAttachments);
+                if (!Array.isArray(fileUrls)) fileUrls = project.attachments || [];
+            } catch (e) {
+                fileUrls = project.attachments || [];
+            }
+        } else {
+            fileUrls = project.attachments || [];
+        }
+
+        if (files && files.length > 0) {
+            const newUrls = files.map((f: any) => `${req.protocol}://${req.get('host')}/uploads/${f.filename}`);
+            fileUrls = [...fileUrls, ...newUrls];
+        }
+
+        // Update fields
+        if (title) project.title = title;
+        if (description) project.description = description;
+        if (tags) {
+            project.tags = Array.isArray(tags) ? tags : tags.split(',').map((t: string) => t.trim());
+        }
+        if (facultyId) project.faculty = facultyId;
+        if (semester) project.semester = semester;
+
+        // Handle links (from text input, comma separated)
+        if (links) {
+            const linkUrls = links.split(',').map((l: string) => l.trim()).filter(Boolean);
+            // Merge with fileUrls or keep separate? Model says attachments is string[]. 
+            // Let's assume attachments includes both files and links for now or just append links.
+            // If the user replaces all links, we might need a way to clear them.
+            // For simplify: Append links to fileUrls if that's how it's used, OR keeps links separate?
+            // Project model has "attachments: string[]".
+            fileUrls = [...fileUrls, ...linkUrls];
+        } else if (links === '') {
+            // If explicitly sent empty, maybe clear links? 
+            // Current logic appends. Let's stick to appending or replacing?
+            // Usually edit replaces strings.
+        }
+
+        project.attachments = fileUrls;
+
+        // If status changes (e.g. back to Pending from Draft)
+        if (status && status !== project.status) {
+            if (status === 'Pending') {
+                project.status = 'Pending';
+                group.status = 'ProposalPending';
+                await group.save();
+            } else if (status === 'Draft') {
+                project.status = 'Draft';
+            }
+        }
+
+        // If it was Rejected, and now being updated, set to Pending?
+        if (project.status === 'Rejected') {
+            project.status = 'Pending';
+            project.feedback = undefined; // Clear feedback
+            group.status = 'ProposalPending';
+            await group.save();
+        }
+
+        await project.save();
+        res.json(project);
+    } catch (error) {
+        console.error("Update project error:", error);
+        res.status(500).json({ message: 'Server error', error });
+    }
+};
+
+export const deleteProject = async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const userId = (req as any).user.id;
+
+        const project = await Project.findById(id);
+        if (!project) return res.status(404).json({ message: 'Project not found' });
+
+        // Verify membership in the group that owns the project
+        const group = await Group.findById(project.group);
+        if (!group || !group.members.map(m => m.toString()).includes(userId)) {
+            return res.status(403).json({ message: 'Not authorized to delete this project' });
+        }
+
+        if (project.status !== 'Pending' && project.status !== 'Draft') {
+            return res.status(400).json({ message: 'Cannot delete a project that is not Pending or Draft' });
+        }
+
+        await Project.findByIdAndDelete(id);
+
+        if (group.project && group.project.toString() === id) {
+            group.status = 'Forming';
+            group.project = undefined;
+
+            // Check if there are other pending projects to promote or just leave as forming?
+            // For now, if active project is deleted, reset to forming.
+            // But if we have multiple, maybe we should pick another one?
+            // Let's just reset to Forming. The user can see other proposals in the list.
+            const otherProject = await Project.findOne({ group: group._id, status: { $in: ['Pending', 'Draft'] } }).sort({ createdAt: -1 });
+            if (otherProject) {
+                group.project = otherProject._id;
+                group.status = otherProject.status === 'Pending' ? 'ProposalPending' : 'Forming';
+            }
+        }
+        await group.save();
+
+        res.json({ message: 'Project proposal deleted' });
     } catch (error) {
         res.status(500).json({ message: 'Server error', error });
     }

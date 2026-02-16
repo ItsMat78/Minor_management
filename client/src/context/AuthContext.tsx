@@ -10,6 +10,10 @@ interface User {
     rollNumber?: string;
     department?: string;
     expertise?: string[];
+    maxStudents?: number;
+    maxGroups?: number;
+    currentStudents?: number;
+    currentGroups?: number;
 }
 
 interface AuthContextType {

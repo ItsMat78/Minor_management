@@ -2,7 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import api from '../utils/api';
-import { Users, Plus, FileText, Search, CheckSquare, Square, Menu, X, MessageSquare, Paperclip, Calendar, Clock, ChevronRight, Archive, Layout } from 'lucide-react';
+import { Layout, Users, CheckSquare, MessageSquare, Menu, Clock, Calendar, X, ChevronRight, Plus, Archive, FileText, Search, Square } from 'lucide-react';
+import FilePreview from '../components/FilePreview';
 import AdminDashboard from './AdminDashboard';
 import FacultyDashboard from './FacultyDashboard';
 import Chat from '../components/Chat';
@@ -15,6 +16,7 @@ interface Group {
     members: any[];
     status: string;
     project?: any;
+    projects?: any[];
 }
 
 interface Student {
@@ -42,6 +44,7 @@ const Dashboard: React.FC = () => {
 
     // Dialog State
     const [isDialogOpen, setIsDialogOpen] = useState(false);
+    const [isProposalWarningOpen, setIsProposalWarningOpen] = useState(false);
     const [groupName, setGroupName] = useState('');
     const [creatingGroup, setCreatingGroup] = useState(false);
 
@@ -211,12 +214,14 @@ const Dashboard: React.FC = () => {
                     </button>
                 </div>
                 <nav className="flex-1 p-4 space-y-2">
-                    <SidebarItem
-                        icon={<Layout className="w-5 h-5" />}
-                        label="Student Directory"
-                        active={activeTab === 'directory'}
-                        onClick={() => setActiveTab('directory')}
-                    />
+                    {!group && (
+                        <SidebarItem
+                            icon={<Layout className="w-5 h-5" />}
+                            label="Student Directory"
+                            active={activeTab === 'directory'}
+                            onClick={() => setActiveTab('directory')}
+                        />
+                    )}
                     {group && (
                         <>
                             <SidebarItem
@@ -316,7 +321,7 @@ const Dashboard: React.FC = () => {
                                         onChange={(e) => setSearchTerm(e.target.value)}
                                     />
                                 </div>
-                                {!group && selectedStudents.size > 0 && (
+                                {!group && (
                                     <Dialog.Root open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                                         <Dialog.Trigger asChild>
                                             <button className="px-4 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition-colors shadow-sm flex items-center gap-2">
@@ -481,134 +486,189 @@ const Dashboard: React.FC = () => {
                             ) : (
                                 <div className="grid grid-cols-1 xl:grid-cols-4 gap-8">
                                     {/* Main Content: 3 Cols */}
+                                    {/* Main Content: 3 Cols */}
                                     <div className="xl:col-span-3 space-y-6">
-                                        {/* Project Status Stats */}
-                                        <div className="bg-white p-8 rounded-2xl border border-neutral-100 shadow-xl shadow-neutral-100/50">
-                                            <div className="flex justify-between items-start mb-6">
-                                                <div>
-                                                    <div className="flex items-center gap-3">
-                                                        <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold tracking-wide uppercase ${group.project.status === 'Approved' ? 'bg-emerald-100 text-emerald-700' :
-                                                            group.project.status === 'Rejected' ? 'bg-red-100 text-red-700' :
-                                                                'bg-indigo-100 text-indigo-700'
-                                                            }`}>
-                                                            <span className={`w-1.5 h-1.5 rounded-full ${group.project.status === 'Approved' ? 'bg-emerald-500' :
-                                                                group.project.status === 'Rejected' ? 'bg-red-500' :
-                                                                    'bg-indigo-500'
-                                                                }`} />
-                                                            {group.project.status}
-                                                        </span>
-                                                        {group.project.semester && (
-                                                            <span className="text-xs font-medium text-neutral-500 bg-neutral-100 px-2 py-0.5 rounded">
-                                                                Semester {group.project.semester}
-                                                            </span>
+
+
+
+                                        {/* Project List */}
+                                        {(group.projects || (group.project ? [group.project] : [])).map((project: any) => (
+                                            <div key={project._id} className="space-y-6">
+                                                {/* Project Status Stats */}
+                                                <div className="bg-white p-8 rounded-2xl border border-neutral-100 shadow-xl shadow-neutral-100/50">
+                                                    <div className="flex justify-between items-start mb-6">
+                                                        <div>
+                                                            <div className="flex items-center gap-3">
+                                                                <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold tracking-wide uppercase ${project.status === 'Approved' ? 'bg-emerald-100 text-emerald-700' :
+                                                                    project.status === 'Rejected' ? 'bg-red-100 text-red-700' :
+                                                                        project.status === 'Archived' ? 'bg-gray-100 text-gray-700' :
+                                                                            'bg-indigo-100 text-indigo-700'
+                                                                    }`}>
+                                                                    <span className={`w-1.5 h-1.5 rounded-full ${project.status === 'Approved' ? 'bg-emerald-500' :
+                                                                        project.status === 'Rejected' ? 'bg-red-500' :
+                                                                            project.status === 'Archived' ? 'bg-gray-500' :
+                                                                                'bg-indigo-500'
+                                                                        }`} />
+                                                                    {project.status}
+                                                                </span>
+                                                                {project.semester && (
+                                                                    <span className="text-xs font-medium text-neutral-500 bg-neutral-100 px-2 py-0.5 rounded">
+                                                                        Semester {project.semester}
+                                                                    </span>
+                                                                )}
+                                                                {/* Show Faculty Name if available */}
+                                                                {project.faculty && (
+                                                                    <span className="text-xs font-medium text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100 flex items-center gap-1">
+                                                                        <Users className="w-3 h-3" /> {project.faculty.name || 'Faculty'}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                            <h3 className="text-2xl font-bold text-neutral-900 mt-3 capitalize">{project.title}</h3>
+                                                            <p className="text-neutral-500 mt-2 leading-relaxed max-w-2xl text-sm">{project.description}</p>
+                                                        </div>
+
+                                                        {(project.status === 'Rejected' || project.status === 'Draft' || project.status === 'Pending') && (
+                                                            <div className="flex gap-2">
+                                                                {(project.status === 'Rejected' || project.status === 'Draft' || project.status === 'Pending') && (
+                                                                    <button
+                                                                        onClick={() => navigate(`/project/propose?edit=${project._id}`)}
+                                                                        className="text-sm border border-neutral-200 text-neutral-600 px-4 py-2 rounded-lg hover:bg-neutral-50 font-medium transition-colors"
+                                                                    >
+                                                                        Edit
+                                                                    </button>
+                                                                )}
+                                                                {(project.status === 'Pending' || project.status === 'Draft') && (
+                                                                    <button
+                                                                        onClick={async () => {
+                                                                            if (confirm('Are you sure you want to delete this proposal?')) {
+                                                                                try {
+                                                                                    await api.delete(`/projects/${project._id}`);
+                                                                                    window.location.reload();
+                                                                                } catch (error) {
+                                                                                    alert('Failed to delete proposal');
+                                                                                }
+                                                                            }
+                                                                        }}
+                                                                        className="text-sm border border-red-200 text-red-600 px-4 py-2 rounded-lg hover:bg-red-50 font-medium transition-colors"
+                                                                    >
+                                                                        Delete
+                                                                    </button>
+                                                                )}
+                                                            </div>
                                                         )}
                                                     </div>
-                                                    <h3 className="text-2xl font-bold text-neutral-900 mt-3 capitalize">{group.project.title}</h3>
-                                                    <p className="text-neutral-500 mt-2 leading-relaxed max-w-2xl text-sm">{group.project.description}</p>
-                                                </div>
 
-                                                {(group.project.status === 'Rejected' || group.project.status === 'Draft') && (
-                                                    <button
-                                                        onClick={() => navigate('/project/propose')}
-                                                        className="text-sm border border-neutral-200 text-neutral-600 px-4 py-2 rounded-lg hover:bg-neutral-50 font-medium transition-colors"
-                                                    >
-                                                        Edit Proposal
-                                                    </button>
-                                                )}
-                                            </div>
+                                                    {project.tags && project.tags.length > 0 && (
+                                                        <div className="flex flex-wrap gap-2 mb-6">
+                                                            {project.tags.map((tag: string, i: number) => (
+                                                                <span key={i} className="px-3 py-1 bg-neutral-50 text-neutral-600 rounded-md text-xs font-medium border border-neutral-100">
+                                                                    {tag}
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    )}
 
-                                            {group.project.tags && group.project.tags.length > 0 && (
-                                                <div className="flex flex-wrap gap-2 mb-6">
-                                                    {group.project.tags.map((tag: string, i: number) => (
-                                                        <span key={i} className="px-3 py-1 bg-neutral-50 text-neutral-600 rounded-md text-xs font-medium border border-neutral-100">
-                                                            {tag}
-                                                        </span>
-                                                    ))}
-                                                </div>
-                                            )}
-
-                                            {group.project.feedback && (
-                                                <div className="p-4 bg-orange-50 border border-orange-100 rounded-xl">
-                                                    <h5 className="text-sm font-semibold text-orange-800 mb-1 flex items-center gap-2">
-                                                        <MessageSquare className="w-4 h-4" /> Faculty Feedback
-                                                    </h5>
-                                                    <p className="text-sm text-orange-700">{group.project.feedback}</p>
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        {/* Timeline Updates */}
-                                        <div className="space-y-6">
-                                            <div className="flex items-center justify-between">
-                                                <h3 className="text-lg font-bold text-neutral-900 flex items-center gap-2">
-                                                    <Clock className="w-5 h-5 text-indigo-600" /> Project Timeline
-                                                </h3>
-                                                <button
-                                                    onClick={() => setIsUpdateDialogOpen(true)}
-                                                    className="text-sm font-medium text-indigo-600 hover:text-indigo-700 flex items-center gap-1 bg-indigo-50 px-3 py-1.5 rounded-lg hover:bg-indigo-100 transition-colors"
-                                                >
-                                                    <Plus className="w-4 h-4" /> New Update
-                                                </button>
-                                            </div>
-
-                                            <div className="relative pl-4">
-                                                {/* Vertical Line */}
-                                                <div className="absolute left-6 top-6 bottom-6 w-0.5 bg-neutral-200/60" />
-
-                                                {group.project.updates && group.project.updates.slice().reverse().map((update: any, i: number) => (
-                                                    <div key={i} className="relative pl-12 pb-8 group">
-                                                        {/* Dot */}
-                                                        <div className="absolute left-[20px] top-6 w-3 h-3 rounded-full bg-white border-2 border-indigo-600 ring-4 ring-neutral-50 z-10" />
-
-                                                        <div className="bg-white p-5 rounded-xl border border-neutral-200 shadow-sm hover:shadow-md transition-shadow">
-                                                            <div className="flex justify-between items-start mb-2">
-                                                                <div>
-                                                                    {update.title && <h4 className="font-bold text-neutral-900">{update.title}</h4>}
-                                                                    <span className="text-xs text-neutral-400 flex items-center gap-1 mt-1">
-                                                                        <Calendar className="w-3 h-3" />
-                                                                        {new Date(update.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
-                                                                        <span className="mx-1">•</span>
-                                                                        {new Date(update.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                                                    </span>
-                                                                </div>
+                                                    {/* Attachments Section */}
+                                                    {project.attachments && project.attachments.length > 0 && (
+                                                        <div className="mb-6">
+                                                            <h5 className="text-sm font-semibold text-neutral-700 mb-2 flex items-center gap-2">
+                                                                <FileText className="w-4 h-4" /> Attachments
+                                                            </h5>
+                                                            <div className="flex flex-wrap gap-2">
+                                                                {project.attachments.map((url: string, index: number) => (
+                                                                    <FilePreview key={index} url={url} description={`Attachment ${index + 1}`} />
+                                                                ))}
                                                             </div>
+                                                        </div>
+                                                    )}
 
-                                                            <p className="text-sm text-neutral-600 mb-4 whitespace-pre-wrap leading-relaxed">
-                                                                {update.content}
-                                                            </p>
+                                                    {project.feedback && (
+                                                        <div className="p-4 bg-orange-50 border border-orange-100 rounded-xl">
+                                                            <h5 className="text-sm font-semibold text-orange-800 mb-1 flex items-center gap-2">
+                                                                <MessageSquare className="w-4 h-4" /> Faculty Feedback
+                                                            </h5>
+                                                            <p className="text-sm text-orange-700">{project.feedback}</p>
+                                                        </div>
+                                                    )}
+                                                </div>
 
-                                                            {/* Attachments & Links */}
-                                                            {(update.links?.length > 0 || update.attachments?.length > 0) && (
-                                                                <div className="flex flex-wrap gap-2 pt-3 border-t border-neutral-100 mt-2">
-                                                                    {update.links?.map((link: string, lIdx: number) => (
-                                                                        <a key={`l-${lIdx}`} href={link} target="_blank" rel="noopener noreferrer"
-                                                                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-neutral-50 text-indigo-600 text-xs font-medium rounded-lg hover:bg-indigo-50 border border-neutral-200 hover:border-indigo-200 transition-colors">
-                                                                            <FileText className="w-3 h-3" /> Link {lIdx + 1}
-                                                                        </a>
-                                                                    ))}
-                                                                    {update.attachments?.map((url: string, aIdx: number) => (
-                                                                        <a key={`a-${aIdx}`} href={url} target="_blank" rel="noopener noreferrer"
-                                                                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-neutral-50 text-neutral-700 text-xs font-medium rounded-lg hover:bg-neutral-100 border border-neutral-200 transition-colors">
-                                                                            <Paperclip className="w-3 h-3" /> Attachment {aIdx + 1}
-                                                                        </a>
-                                                                    ))}
+                                                {/* Timeline Updates (Only show if this is the ACTIVE project or has specific updates?) 
+                                           Usually timeline is for the APPROVED project. 
+                                           But maybe we want to see updates for any? 
+                                           Lets show updates for this specific project card.
+                                        */}
+                                                {project.status === 'Approved' && (
+                                                    <div className="space-y-6">
+                                                        <div className="flex items-center justify-between">
+                                                            <h3 className="text-lg font-bold text-neutral-900 flex items-center gap-2">
+                                                                <Clock className="w-5 h-5 text-indigo-600" /> Project Timeline
+                                                            </h3>
+                                                            <button
+                                                                onClick={() => setIsUpdateDialogOpen(true)}
+                                                                className="text-sm font-medium text-indigo-600 hover:text-indigo-700 flex items-center gap-1 bg-indigo-50 px-3 py-1.5 rounded-lg hover:bg-indigo-100 transition-colors"
+                                                            >
+                                                                <Plus className="w-4 h-4" /> New Update
+                                                            </button>
+                                                        </div>
+
+                                                        <div className="relative pl-4">
+                                                            {/* Vertical Line */}
+                                                            <div className="absolute left-6 top-6 bottom-6 w-0.5 bg-neutral-200/60" />
+
+                                                            {project.updates && project.updates.slice().reverse().map((update: any, i: number) => (
+                                                                <div key={i} className="relative pl-12 pb-8 group">
+                                                                    {/* Dot */}
+                                                                    <div className="absolute left-[20px] top-6 w-3 h-3 rounded-full bg-white border-2 border-indigo-600 ring-4 ring-neutral-50 z-10" />
+
+                                                                    <div className="bg-white p-5 rounded-xl border border-neutral-200 shadow-sm hover:shadow-md transition-shadow">
+                                                                        <div className="flex justify-between items-start mb-2">
+                                                                            <div>
+                                                                                {update.title && <h4 className="font-bold text-neutral-900">{update.title}</h4>}
+                                                                                <span className="text-xs text-neutral-400 flex items-center gap-1 mt-1">
+                                                                                    <Calendar className="w-3 h-3" />
+                                                                                    {new Date(update.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                                                                                    <span className="mx-1">•</span>
+                                                                                    {new Date(update.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                                                </span>
+                                                                            </div>
+                                                                        </div>
+
+                                                                        <p className="text-sm text-neutral-600 mb-4 whitespace-pre-wrap leading-relaxed">
+                                                                            {update.content}
+                                                                        </p>
+
+                                                                        {/* Attachments & Links */}
+                                                                        {(update.links?.length > 0 || update.attachments?.length > 0) && (
+                                                                            <div className="flex flex-wrap gap-2 pt-3 border-t border-neutral-100 mt-2">
+                                                                                {update.links?.map((link: string, lIdx: number) => (
+                                                                                    <a key={`l-${lIdx}`} href={link} target="_blank" rel="noopener noreferrer"
+                                                                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-neutral-50 text-indigo-600 text-xs font-medium rounded-lg hover:bg-indigo-50 border border-neutral-200 hover:border-indigo-200 transition-colors">
+                                                                                        <FileText className="w-3 h-3" /> Link {lIdx + 1}
+                                                                                    </a>
+                                                                                ))}
+                                                                                {update.attachments?.map((url: string, aIdx: number) => (
+                                                                                    <FilePreview key={`a-${aIdx}`} url={url} description={`Attachment ${aIdx + 1}`} />
+                                                                                ))}
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            ))}
+
+                                                            {(!project.updates || project.updates.length === 0) && (
+                                                                <div className="text-center py-12 ml-6 bg-white border border-dashed border-neutral-200 rounded-xl">
+                                                                    <div className="w-12 h-12 bg-neutral-50 rounded-full flex items-center justify-center mx-auto mb-3 text-neutral-400">
+                                                                        <Clock className="w-6 h-6" />
+                                                                    </div>
+                                                                    <p className="text-neutral-500 font-medium">No updates posted yet.</p>
+                                                                    <p className="text-xs text-neutral-400 mt-1">Share your first progress update using the button above.</p>
                                                                 </div>
                                                             )}
                                                         </div>
                                                     </div>
-                                                ))}
-
-                                                {(!group.project.updates || group.project.updates.length === 0) && (
-                                                    <div className="text-center py-12 ml-6 bg-white border border-dashed border-neutral-200 rounded-xl">
-                                                        <div className="w-12 h-12 bg-neutral-50 rounded-full flex items-center justify-center mx-auto mb-3 text-neutral-400">
-                                                            <Clock className="w-6 h-6" />
-                                                        </div>
-                                                        <p className="text-neutral-500 font-medium">No updates posted yet.</p>
-                                                        <p className="text-xs text-neutral-400 mt-1">Share your first progress update using the button above.</p>
-                                                    </div>
                                                 )}
                                             </div>
-                                        </div>
+                                        ))}
                                     </div>
 
                                     {/* Sticky Sidebar: Team & Mentor & Help */}
@@ -625,9 +685,9 @@ const Dashboard: React.FC = () => {
                                                             <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center text-xs font-bold shadow-sm shrink-0">
                                                                 {m.name.charAt(0)}
                                                             </div>
-                                                            <div>
-                                                                <p className="text-sm font-medium text-neutral-900">{m.name}</p>
-                                                                <p className="text-xs text-neutral-500">{m.email}</p>
+                                                            <div className="overflow-hidden flex-1">
+                                                                <p className="text-sm font-medium text-neutral-900 truncate">{m.name}</p>
+                                                                <p className="text-xs text-neutral-500 truncate">{m.email}</p>
                                                             </div>
                                                         </div>
                                                     ))}
@@ -639,31 +699,39 @@ const Dashboard: React.FC = () => {
                                                 <h4 className="font-bold text-neutral-900 mb-4 text-sm flex items-center gap-2">
                                                     <Users className="w-4 h-4 text-orange-600" /> Faculty Mentor
                                                 </h4>
-                                                {group.project.faculty ? (
-                                                    <div className="flex items-center gap-3 p-2 bg-orange-50/50 rounded-lg border border-orange-100">
+                                                {group.projects?.some((p: any) => p.faculty) ? (
+                                                    <div className="flex items-center gap-3 p-2 bg-orange-50/50 rounded-lg border border-orange-100 mb-4">
                                                         <div className="w-8 h-8 rounded-full bg-orange-100 text-orange-700 flex items-center justify-center font-bold text-xs">
-                                                            {group.project.faculty.name ? group.project.faculty.name.charAt(0) : 'F'}
+                                                            {group.projects.find((p: any) => p.faculty)?.faculty?.name?.charAt(0) || 'F'}
                                                         </div>
                                                         <div>
-                                                            <p className="text-sm font-medium text-neutral-900">{group.project.faculty.name || 'Assigned Faculty'}</p>
-                                                            <p className="text-xs text-neutral-500">{group.project.faculty.department || 'Department'}</p>
+                                                            <p className="text-sm font-medium text-neutral-900">{group.projects.find((p: any) => p.faculty)?.faculty?.name || 'Assigned Faculty'}</p>
+                                                            <p className="text-xs text-neutral-500">{group.projects.find((p: any) => p.faculty)?.faculty?.department || 'Department'}</p>
                                                         </div>
                                                     </div>
                                                 ) : (
-                                                    <div className="p-3 bg-neutral-50 rounded-lg border border-dashed border-neutral-200 text-center">
+                                                    <div className="p-3 bg-neutral-50 rounded-lg border border-dashed border-neutral-200 text-center mb-4">
                                                         <p className="text-xs text-neutral-500">No mentor assigned yet.</p>
                                                     </div>
                                                 )}
-                                            </div>
 
-                                            {/* Help Card */}
-                                            <div className="bg-indigo-900 p-6 rounded-2xl shadow-lg relative overflow-hidden group hover:scale-[1.02] transition-transform duration-300">
-                                                <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-3xl -mr-10 -mt-10 group-hover:bg-white/10 transition-colors" />
-                                                <h4 className="text-white font-bold mb-2 relative z-10">Need Help?</h4>
-                                                <p className="text-indigo-200 text-xs mb-4 relative z-10">Check the project guidelines or contact your faculty mentor.</p>
-                                                <button className="w-full bg-white text-indigo-900 text-sm font-medium py-2 rounded-lg hover:bg-indigo-50 transition-colors relative z-10 shadow-sm">
-                                                    View Guidelines
-                                                </button>
+                                                {/* Create New Proposal Button */}
+                                                {!group.projects?.some((p: any) => p.status === 'Approved') && (
+                                                    <button
+                                                        onClick={() => setIsProposalWarningOpen(true)}
+                                                        className="w-full flex items-center justify-start gap-3 px-4 py-3 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200 text-left"
+                                                    >
+                                                        <div className="p-1.5 bg-indigo-500/30 rounded-lg shrink-0">
+                                                            <Plus className="w-5 h-5" />
+                                                        </div>
+                                                        <span className="text-sm leading-snug">
+                                                            {group.projects?.some((p: any) => p.faculty)
+                                                                ? <>Create another proposal<br />under <span className="font-bold">{group.projects.find((p: any) => p.faculty)?.faculty?.name?.split(' ')[0]}</span>?</>
+                                                                : "Create New Proposal"
+                                                            }
+                                                        </span>
+                                                    </button>
+                                                )}
                                             </div>
                                         </div>
                                     </div>
@@ -757,28 +825,30 @@ const Dashboard: React.FC = () => {
                         </div>
                     )}
                 </main>
-            </div> {/* Closing main content flex */}
+            </div > {/* Closing main content flex */}
 
             {/* Chat Sidebar */}
-            {group && (
-                <>
-                    <Chat
-                        groupId={group._id}
-                        groupName={group.name}
-                        isOpen={isChatOpen}
-                        onClose={() => setIsChatOpen(false)}
-                    />
-                    {!isChatOpen && (
-                        <button
-                            onClick={() => setIsChatOpen(true)}
-                            className="fixed bottom-6 right-6 bg-indigo-600 text-white px-6 py-3 rounded-full shadow-lg hover:bg-indigo-700 transition-transform hover:scale-105 z-30 flex items-center gap-2 font-medium"
-                        >
-                            <MessageSquare className="w-5 h-5" />
-                            Chat with your team
-                        </button>
-                    )}
-                </>
-            )}
+            {
+                group && (
+                    <>
+                        <Chat
+                            groupId={group._id}
+                            groupName={group.name}
+                            isOpen={isChatOpen}
+                            onClose={() => setIsChatOpen(false)}
+                        />
+                        {!isChatOpen && (
+                            <button
+                                onClick={() => setIsChatOpen(true)}
+                                className="fixed bottom-6 right-6 bg-indigo-600 text-white px-6 py-3 rounded-full shadow-lg hover:bg-indigo-700 transition-transform hover:scale-105 z-30 flex items-center gap-2 font-medium"
+                            >
+                                <MessageSquare className="w-5 h-5" />
+                                Chat with your team
+                            </button>
+                        )}
+                    </>
+                )
+            }
 
             {/* Post Update Dialog */}
             <Dialog.Root open={isUpdateDialogOpen} onOpenChange={setIsUpdateDialogOpen}>
@@ -885,7 +955,37 @@ const Dashboard: React.FC = () => {
                     </Dialog.Content>
                 </Dialog.Portal>
             </Dialog.Root>
-        </div>
+
+            {/* Proposal Warning Dialog */}
+            <Dialog.Root open={isProposalWarningOpen} onOpenChange={setIsProposalWarningOpen}>
+                <Dialog.Portal>
+                    <Dialog.Overlay className="fixed inset-0 bg-black/50 backdrop-blur-sm data-[state=open]:animate-overlayShow" />
+                    <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md bg-white p-6 rounded-2xl shadow-xl focus:outline-none data-[state=open]:animate-contentShow">
+                        <Dialog.Title className="text-lg font-bold mb-2 text-indigo-600">Multiple Proposals</Dialog.Title>
+                        <Dialog.Description className="text-neutral-500 mb-4">
+                            You are about to create another project proposal.
+                            <br /><br />
+                            Please note that if <strong>any</strong> of your proposals is <strong>Approved</strong> by a faculty member, all other Pending, Draft, or Rejected proposals will be automatically <strong>Archived</strong>.
+                        </Dialog.Description>
+
+                        <div className="flex justify-end gap-3 mt-6">
+                            <button
+                                onClick={() => setIsProposalWarningOpen(false)}
+                                className="px-4 py-2 text-sm font-medium text-neutral-600 hover:bg-neutral-50 rounded-lg"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={() => navigate('/project/propose')}
+                                className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg"
+                            >
+                                Proceed
+                            </button>
+                        </div>
+                    </Dialog.Content>
+                </Dialog.Portal>
+            </Dialog.Root>
+        </div >
     );
 };
 

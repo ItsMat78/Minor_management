@@ -17,9 +17,10 @@ interface ChatProps {
     groupName: string;
     isOpen: boolean;
     onClose: () => void;
+    onMessageReceived?: () => void;
 }
 
-const Chat: React.FC<ChatProps> = ({ groupId, groupName, isOpen, onClose }) => {
+const Chat: React.FC<ChatProps> = ({ groupId, groupName, isOpen, onClose, onMessageReceived }) => {
     const { user } = useAuth();
     const [messages, setMessages] = useState<Message[]>([]);
     const [newMessage, setNewMessage] = useState('');
@@ -27,12 +28,11 @@ const Chat: React.FC<ChatProps> = ({ groupId, groupName, isOpen, onClose }) => {
     const [file, setFile] = useState<File | null>(null);
 
     useEffect(() => {
-        if (!isOpen) return;
-
         socket.emit('joinGroup', groupId);
 
         const handleReceiveMessage = (data: Message) => {
             setMessages((prev) => [...prev, data]);
+            if (onMessageReceived) onMessageReceived();
         };
 
         const handleLoadMessages = (data: Message[]) => {
@@ -46,10 +46,12 @@ const Chat: React.FC<ChatProps> = ({ groupId, groupName, isOpen, onClose }) => {
             socket.off('receiveMessage', handleReceiveMessage);
             socket.off('loadMessages', handleLoadMessages);
         };
-    }, [groupId, isOpen]);
+    }, [groupId, onMessageReceived]);
 
     useEffect(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        if (isOpen) {
+            messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        }
     }, [messages, isOpen]);
 
     const sendMessage = (e: React.FormEvent) => {
@@ -88,10 +90,8 @@ const Chat: React.FC<ChatProps> = ({ groupId, groupName, isOpen, onClose }) => {
         });
     };
 
-    if (!isOpen) return null;
-
     return (
-        <div className="fixed right-0 top-16 bottom-0 w-80 bg-white shadow-xl border-l border-neutral-200 flex flex-col z-40 transition-transform duration-300">
+        <div className={`fixed right-0 top-16 bottom-0 w-80 bg-white shadow-xl border-l border-neutral-200 flex flex-col z-40 transition-transform duration-300 ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}>
             <div className="p-4 border-b border-neutral-100 flex items-center justify-between bg-indigo-600 text-white">
                 <div className="flex items-center gap-2">
                     <MessageSquare className="w-5 h-5" />

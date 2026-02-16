@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
-import {
-    CheckCircle, XCircle, Clock, FileText, ChevronDown, ChevronUp, Users, ExternalLink, Menu, X
-} from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
-
+import { Search, ChevronDown, Users, Clock, CheckCircle, XCircle, FileText, LayoutGrid, LayoutList, X, LogOut, ChevronRight, Layout, Settings, Menu } from 'lucide-react';
+import FilePreview from '../components/FilePreview';
+import { motion } from 'framer-motion';
+import * as Dialog from '@radix-ui/react-dialog';
+import MenteeGroupDetails from '../components/MenteeGroupDetails';
 
 interface Project {
     _id: string;
@@ -14,6 +14,7 @@ interface Project {
     description: string;
     tags: string[];
     status: 'Pending' | 'Approved' | 'Rejected';
+    semester?: number;
     group: {
         _id: string;
         name: string;
@@ -22,32 +23,147 @@ interface Project {
             name: string;
             email: string;
             rollNumber: string;
+            branch?: string;
         }[];
     };
     attachments: string[];
     createdAt: string;
     feedback?: string;
+    hasNewUpdate?: boolean;
+    updates?: any[];
+    updatedAt?: string; // Added for field
 }
+
+const MenteeCard = ({ item, activeTab, navigate, setSelectedProject }: any) => (
+    <motion.div
+        layout
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        onClick={() => {
+            if (setSelectedProject) {
+                setSelectedProject(item);
+            }
+        }}
+        className={`bg-white rounded-2xl border border-neutral-200 shadow-sm overflow-hidden hover:shadow-xl hover:border-indigo-200 hover:-translate-y-1 transition-all group flex flex-col cursor-pointer relative ${item.project?.hasNewUpdate ? 'ring-2 ring-red-400 ring-offset-2' : ''
+            }`}
+    >
+        {/* Status Stripe */}
+        <div className={`h-1.5 w-full ${(item.status || item.project?.status) === 'Approved' ? 'bg-green-500' :
+            (item.status || item.project?.status) === 'Rejected' ? 'bg-red-500' :
+                'bg-indigo-500'
+            }`} />
+
+        {item.project?.hasNewUpdate && (
+            <div className="absolute top-3 right-3 px-2 py-0.5 bg-red-500 text-white text-[10px] font-bold uppercase rounded shadow-sm animate-pulse z-10">
+                New Update
+            </div>
+        )}
+
+        <div className="p-6 flex-1 flex flex-col">
+            <div className="flex justify-between items-start mb-4">
+                {activeTab !== 'mentees' ? (
+                    <div className={`px-2.5 py-1 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 ${(item.status || item.project?.status) === 'Approved' ? 'bg-green-100 text-green-700' :
+                        (item.status || item.project?.status) === 'Rejected' ? 'bg-red-100 text-red-700' :
+                            'bg-indigo-100 text-indigo-700'
+                        }`}>
+                        {(item.status || item.project?.status) === 'Approved' ? <CheckCircle className="w-3 h-3" /> :
+                            (item.status || item.project?.status) === 'Rejected' ? <XCircle className="w-3 h-3" /> :
+                                <Clock className="w-3 h-3" />}
+                        {item.status || item.project?.status || 'Active'}
+                    </div>
+                ) : <div />}
+
+                {(item.semester || item.project?.semester) && (
+                    <span className="text-xs font-medium text-neutral-500 bg-neutral-100 px-2 py-1 rounded-md">
+                        Sem {item.semester || item.project?.semester}
+                    </span>
+                )}
+            </div>
+
+            <h3 className="text-lg font-bold text-neutral-900 line-clamp-2 leading-tight mb-2 group-hover:text-indigo-600 transition-colors">
+                {item.title || item.project?.title || item.name}
+            </h3>
+
+            <div className="flex items-center gap-2 text-sm text-neutral-600 font-medium mb-4">
+                <Users className="w-4 h-4 text-neutral-400" />
+                {item.group?.name || item.name}
+            </div>
+
+            <p className="text-sm text-neutral-500 line-clamp-3 mb-4 leading-relaxed">
+                {activeTab === 'mentees' ? (item.project?.description || "No description provided.") : (item.description || "No description provided.")}
+            </p>
+
+            {/* Tags */}
+            {((item.tags || item.project?.tags)?.length > 0) && (
+                <div className="flex flex-wrap gap-1.5 mb-4">
+                    {(item.tags || item.project?.tags).slice(0, 3).map((tag: string, i: number) => (
+                        <span key={i} className="px-2 py-0.5 bg-neutral-50 text-neutral-500 text-xs rounded-md border border-neutral-100">
+                            {tag}
+                        </span>
+                    ))}
+                    {(item.tags || item.project?.tags).length > 3 && <span className="text-xs text-neutral-400">+{item.tags.length - 3}</span>}
+                </div>
+            )}
+
+            <div className="mt-auto pt-4 border-t border-neutral-100 flex items-center justify-between text-xs text-neutral-500">
+                <span>{new Date(item.createdAt || Date.now()).toLocaleDateString()}</span>
+
+                {(activeTab === 'proposals' && item.status === 'Approved') ? (
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(`/faculty/group/${item.group?._id}`);
+                        }}
+                        className="z-10 px-3 py-1.5 bg-indigo-50 text-indigo-700 rounded-lg font-bold hover:bg-indigo-100 transition-colors flex items-center gap-1.5"
+                    >
+                        See updates <ChevronDown className="w-3 h-3 -rotate-90" />
+                    </button>
+                ) : (
+                    <span className="group-hover:translate-x-1 transition-transform text-indigo-600 font-medium flex items-center gap-1">
+                        {activeTab === 'proposals' ? 'Review Details' : 'View Dashboard'} <ChevronDown className="w-3 h-3 -rotate-90" />
+                    </span>
+                )}
+            </div>
+        </div>
+    </motion.div>
+);
 
 const FacultyDashboard: React.FC = () => {
     const { user, logout } = useAuth();
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
+    const initialTab = searchParams.get('tab') as 'proposals' | 'mentees' | 'profile' | 'directory' | null;
     const [projects, setProjects] = useState<Project[]>([]);
     const [loading, setLoading] = useState(true);
-    const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+    const [selectedProject, setSelectedProject] = useState<Project | null>(null);
     const [actionLoading, setActionLoading] = useState<string | null>(null);
     const [feedback, setFeedback] = useState('');
-    const [activeActionId, setActiveActionId] = useState<string | null>(null);
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-    const [activeTab, setActiveTab] = useState<'proposals' | 'mentees' | 'profile'>('proposals');
+    const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+    const [activeTab, setActiveTab] = useState<'proposals' | 'mentees' | 'profile' | 'directory'>(initialTab || 'proposals');
     const [mentees, setMentees] = useState<any[]>([]);
+    const [students, setStudents] = useState<any[]>([]);
+    const [loadingStudents, setLoadingStudents] = useState(false);
     const [loadingMentees, setLoadingMentees] = useState(false);
+
+    // Filters & Search
+    const [searchTerm, setSearchTerm] = useState('');
+    const [filterBatch, setFilterBatch] = useState<string>('All');
+    const [proposalView, setProposalView] = useState<'proposals' | 'approved'>('proposals');
+    const [filterDirectoryYear, setFilterDirectoryYear] = useState<string>('All');
+    const [filterStatus, setFilterStatus] = useState<'All' | 'Grouped' | 'Available'>('All');
+    const [filterBranch, setFilterBranch] = useState<string>('All');
+
+    // Group Details View State (integrated to fix sidebar issues)
+    const [viewGroup, setViewGroup] = useState<any>(null);
 
     useEffect(() => {
         if (activeTab === 'proposals') {
             fetchProjects();
         } else if (activeTab === 'mentees') {
             fetchMentees();
+        } else if (activeTab === 'directory') {
+            fetchStudents();
         }
     }, [activeTab]);
 
@@ -74,20 +190,34 @@ const FacultyDashboard: React.FC = () => {
         }
     };
 
-    const toggleExpand = (id: string) => {
-        const newExpanded = new Set(expandedIds);
-        if (newExpanded.has(id)) newExpanded.delete(id);
-        else newExpanded.add(id);
-        setExpandedIds(newExpanded);
+    const fetchStudents = async () => {
+        setLoadingStudents(true);
+        try {
+            const studentsRes = await api.get('/users/students');
+            if (Array.isArray(studentsRes.data)) {
+                setStudents(studentsRes.data);
+            }
+        } catch (error) {
+            console.error("Failed to fetch students", error);
+        } finally {
+            setLoadingStudents(false);
+        }
     };
 
     const handleAction = async (id: string, status: 'Approved' | 'Rejected') => {
         setActionLoading(id);
         try {
-            await api.put(`/projects/${id}/status`, { status, feedback });
-            setProjects(projects.map(p => p._id === id ? { ...p, status, feedback } : p));
-            setActiveActionId(null);
+            const res = await api.put(`/projects/${id}/status`, { status, feedback });
+            setProjects(prev => prev.map(p => p._id === id ? { ...p, status, feedback: res.data.feedback, updatedAt: res.data.updatedAt } : p));
+
+            // Also update selectedProject if it's the one being modified
+            if (selectedProject && selectedProject._id === id) {
+                setSelectedProject(prev => prev ? { ...prev, status, feedback: res.data.feedback, updatedAt: res.data.updatedAt } : null);
+            }
+
             setFeedback('');
+            // Optional: Close dialog on success? Or let user see result?
+            // User might want to close manually.
         } catch (error) {
             console.error(`Failed to ${status} project`, error);
             alert(`Failed to ${status} project`);
@@ -96,21 +226,19 @@ const FacultyDashboard: React.FC = () => {
         }
     };
 
-    const getStatusColor = (status: string) => {
-        switch (status) {
-            case 'Approved': return 'bg-green-100 text-green-800 border-green-200';
-            case 'Rejected': return 'bg-red-100 text-red-800 border-red-200';
-            default: return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+    const handleGroupClick = async (group: any) => {
+        setViewGroup(group);
+        if (group.project?.hasNewUpdate) {
+            try {
+                await api.put(`/projects/${group.project._id}/updates/read`);
+                // Update local state to reflect read status
+                setMentees(prev => prev.map(m => m._id === group._id ? { ...m, project: { ...m.project, hasNewUpdate: false } } : m));
+            } catch (error) {
+                console.error("Failed to mark update as read", error);
+            }
         }
     };
 
-    const getStatusIcon = (status: string) => {
-        switch (status) {
-            case 'Approved': return <CheckCircle className="w-4 h-4" />;
-            case 'Rejected': return <XCircle className="w-4 h-4" />;
-            default: return <Clock className="w-4 h-4" />;
-        }
-    };
 
     const SidebarItem = ({ icon, label, active, onClick }: any) => (
         <button
@@ -122,368 +250,770 @@ const FacultyDashboard: React.FC = () => {
         </button>
     );
 
+    // Filter Logic
+    const getFilteredProjects = () => {
+        return projects.filter(p => {
+            let matches = true;
+
+            const matchesSearch =
+                p.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                p.group.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                p.group.members.some(m => m.name.toLowerCase().includes(searchTerm.toLowerCase())) ||
+                p.tags?.some(t => t.toLowerCase().includes(searchTerm.toLowerCase()));
+
+            if (!matchesSearch) matches = false;
+
+            if (filterBatch !== 'All') {
+                const batchSuffix = filterBatch.slice(2);
+                const hasMemberInBatch = p.group?.members?.some((m: any) => m.rollNumber && m.rollNumber.startsWith(batchSuffix));
+                if (!hasMemberInBatch) matches = false;
+            }
+
+            if (activeTab === 'proposals') {
+                if (proposalView === 'proposals') {
+                    if ((p.status as string) !== 'Pending' && (p.status as string) !== 'Draft') matches = false;
+                } else { // proposalView === 'approved'
+                    if ((p.status as string) !== 'Approved') matches = false;
+                }
+            }
+
+            return matches;
+        });
+    };
+
+    const getFilteredMentees = () => {
+        const filtered = mentees.filter(g => {
+            const matchesSearch =
+                g.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                g.project?.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                g.members.some((m: any) => m.name.toLowerCase().includes(searchTerm.toLowerCase()));
+
+            const matchesBatch = filterBatch === 'All' || (() => {
+                const batchSuffix = filterBatch.slice(2);
+                return g.members?.some((m: any) => m.rollNumber && m.rollNumber.startsWith(batchSuffix));
+            })();
+
+            return matchesSearch && matchesBatch;
+        });
+
+        // Sort: Has Update First
+        return filtered.sort((a, b) => {
+            const aUpdate = a.project?.hasNewUpdate ? 1 : 0;
+            const bUpdate = b.project?.hasNewUpdate ? 1 : 0;
+            return bUpdate - aUpdate;
+        });
+    };
+
+    const filteredProjects = getFilteredProjects();
+    const filteredMentees = getFilteredMentees();
+    const displayItems = activeTab === 'proposals' ? filteredProjects : filteredMentees;
+
+    // Calculate stats from approved projects based on current filter
+    const approvedInView = projects.filter(p => {
+        const isApproved = p.status === 'Approved';
+
+        let matchesBatch = true;
+        if (filterBatch !== 'All') {
+            const batchSuffix = filterBatch.slice(2);
+            const hasMemberInBatch = p.group?.members?.some((m: any) => m.rollNumber && m.rollNumber.startsWith(batchSuffix));
+            matchesBatch = hasMemberInBatch || false;
+        }
+
+        return isApproved && matchesBatch;
+    });
+
+    const currentTeamsCount = approvedInView.length;
+    const currentStudentsCount = approvedInView.reduce((acc, p) => acc + (p.group?.members?.length || 0), 0);
+
     return (
         <div className="flex h-screen bg-neutral-50 font-jakarta text-neutral-900 overflow-hidden">
             {/* Sidebar */}
             <motion.aside
                 initial={{ x: -250 }}
                 animate={{ x: isSidebarOpen ? 0 : -250 }}
-                className={`${isSidebarOpen ? 'w-64' : 'w-0'} flex-shrink-0 bg-white border-r border-neutral-200 transition-width duration-300 flex flex-col`}
+                className={`${isSidebarOpen ? 'w-64' : 'w-0'} flex-shrink-0 bg-white border-r border-neutral-200 transition-width duration-300 flex flex-col z-20`}
             >
                 <div className="p-6 border-b border-neutral-100 flex items-center justify-between">
-                    <h2 className="text-lg font-bold">Faculty Portal</h2>
+                    <h2 className="text-lg font-bold flex items-center gap-2">
+                        <div className="h-8 w-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white">
+                            <Users className="w-5 h-5" />
+                        </div>
+                        Faculty Portal
+                    </h2>
                     <button onClick={() => setIsSidebarOpen(false)} className="lg:hidden">
                         <X className="w-5 h-5" />
                     </button>
                 </div>
                 <nav className="flex-1 p-4 space-y-2">
                     <SidebarItem
+                        icon={<Layout className="w-5 h-5" />}
+                        label="Student Directory"
+                        active={activeTab === 'directory'}
+                        onClick={() => { setActiveTab('directory'); setViewGroup(null); }}
+                    />
+                    <SidebarItem
                         icon={<FileText className="w-5 h-5" />}
                         label="Project Proposals"
                         active={activeTab === 'proposals'}
-                        onClick={() => setActiveTab('proposals')}
+                        onClick={() => { setActiveTab('proposals'); setViewGroup(null); }}
                     />
                     <SidebarItem
                         icon={<Users className="w-5 h-5" />}
                         label="My Mentees"
                         active={activeTab === 'mentees'}
-                        onClick={() => setActiveTab('mentees')}
+                        onClick={() => { setActiveTab('mentees'); setViewGroup(null); }}
                     />
                     <SidebarItem
-                        icon={<Users className="w-5 h-5" />}
+                        icon={<Settings className="w-5 h-5" />}
                         label="My Profile"
                         active={activeTab === 'profile'}
-                        onClick={() => setActiveTab('profile')}
+                        onClick={() => { setActiveTab('profile'); setViewGroup(null); }}
                     />
                 </nav>
                 <div className="p-4 border-t border-neutral-100">
                     <div className="flex items-center gap-3 mb-4">
-                        <div className="h-8 w-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold">
+                        <div className="h-9 w-9 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold border-2 border-white shadow-sm">
                             {user?.name.charAt(0)}
                         </div>
                         <div className="overflow-hidden">
-                            <p className="text-sm font-medium truncate">{user?.name}</p>
+                            <p className="text-sm font-bold text-neutral-900 truncate">{user?.name}</p>
                             <p className="text-xs text-neutral-500 truncate">{user?.email}</p>
                         </div>
                     </div>
                     <button
                         onClick={logout}
-                        className="w-full rounded-lg border border-neutral-200 py-2 text-sm font-medium hover:bg-red-50 hover:text-red-600 transition-colors"
+                        className="w-full flex items-center justify-center gap-2 rounded-xl border border-neutral-200 py-2.5 text-sm font-medium hover:bg-red-50 hover:text-red-600 hover:border-red-100 transition-all"
                     >
-                        Sign out
+                        <LogOut className="w-4 h-4" /> Sign out
                     </button>
                 </div>
             </motion.aside>
 
             {/* Main Content */}
-            <div className="flex-1 flex flex-col min-w-0">
-                <header className="flex items-center h-16 px-6 border-b border-neutral-200 bg-white justify-between">
+            <div className="flex-1 flex flex-col min-w-0 bg-neutral-50/50">
+                <header className="flex items-center h-16 px-6 border-b border-neutral-200 bg-white sticky top-0 z-10 justify-between">
                     <div className="flex items-center gap-4">
                         {!isSidebarOpen && (
-                            <button onClick={() => setIsSidebarOpen(true)} className="p-2 hover:bg-neutral-100 rounded-lg">
+                            <button onClick={() => setIsSidebarOpen(true)} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
                                 <Menu className="w-5 h-5" />
                             </button>
                         )}
-                        <h1 className="text-xl font-bold">
-                            {activeTab === 'proposals' ? 'Project Proposals' : activeTab === 'mentees' ? 'My Mentees' : 'My Profile'}
+                        <h1 className="text-xl font-bold text-neutral-800 flex items-center gap-2">
+                            {activeTab === 'mentees' && viewGroup ? (
+                                <>
+                                    <span onClick={() => setViewGroup(null)} className="cursor-pointer hover:text-indigo-600 transition-colors">My Mentees</span>
+                                    <ChevronRight className="w-5 h-5 text-neutral-400" />
+                                    <span className="text-neutral-900">{viewGroup.name}</span>
+                                </>
+                            ) : (
+                                activeTab === 'proposals' ? 'Project Proposals' : activeTab === 'mentees' ? 'My Mentees' : activeTab === 'directory' ? 'Student Directory' : 'My Profile'
+                            )}
                         </h1>
                     </div>
                 </header>
 
                 <main className="flex-1 overflow-y-auto p-6">
-                    {activeTab === 'proposals' ? (
-                        <div className="max-w-5xl mx-auto">
-                            <div className="mb-8 flex items-center justify-between">
-                                <div>
-                                    <h2 className="text-2xl font-bold text-gray-800">Received Proposals</h2>
-                                    <p className="text-gray-500 mt-1">Review and manage student project submissions.</p>
-                                </div>
-                            </div>
-
-                            {loading ? (
-                                <div className="text-center py-20">
-                                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
-                                    <p className="mt-4 text-gray-500">Loading projects...</p>
-                                </div>
-                            ) : projects.length === 0 ? (
-                                <div className="text-center py-20 bg-white rounded-2xl border border-gray-200 shadow-sm">
-                                    <div className="h-16 w-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                                        <FileText className="h-8 w-8 text-gray-400" />
-                                    </div>
-                                    <h3 className="text-lg font-bold text-gray-900">No Proposals Yet</h3>
-                                    <p className="text-gray-500 max-w-md mx-auto mt-2">
-                                        You haven't received any project proposals from student groups yet.
-                                    </p>
-                                </div>
-                            ) : (
-                                <div className="space-y-4">
-                                    {projects.map(project => (
-                                        <motion.div
-                                            key={project._id}
-                                            layout
-                                            initial={{ opacity: 0, y: 10 }}
-                                            animate={{ opacity: 1, y: 0 }}
-                                            className={`bg-white rounded-xl border transition-all shadow-sm overflow-hidden ${expandedIds.has(project._id) ? 'border-indigo-200 ring-4 ring-indigo-50/50' : 'border-gray-200 hover:border-indigo-100'
-                                                }`}
-                                        >
-                                            <div
-                                                onClick={() => toggleExpand(project._id)}
-                                                className="p-6 cursor-pointer flex items-start justify-between group"
-                                            >
-                                                <div className="flex gap-4">
-                                                    <div className={`mt-1 p-2 rounded-lg ${project.status === 'Pending' ? 'bg-yellow-50 text-yellow-600' :
-                                                        project.status === 'Approved' ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'
-                                                        }`}>
-                                                        <FileText className="w-5 h-5" />
-                                                    </div>
-                                                    <div>
-                                                        <h3 className="text-lg font-bold text-gray-900 group-hover:text-indigo-600 transition-colors">
-                                                            {project.title}
-                                                        </h3>
-                                                        <div className="flex items-center gap-3 mt-1 text-sm text-gray-500">
-                                                            <span className="flex items-center gap-1">
-                                                                <Users className="w-4 h-4" /> {project.group.name}
-                                                            </span>
-                                                            <span>•</span>
-                                                            <span>{new Date(project.createdAt).toLocaleDateString()}</span>
-                                                        </div>
-                                                    </div>
-                                                </div>
-
-                                                <div className="flex items-center gap-4">
-                                                    <div className={`px-3 py-1 rounded-full text-xs font-medium border flex items-center gap-1.5 ${getStatusColor(project.status)}`}>
-                                                        {getStatusIcon(project.status)}
-                                                        {project.status}
-                                                    </div>
-                                                    <button className="text-gray-400 hover:text-indigo-600 transition-colors">
-                                                        {expandedIds.has(project._id) ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
-                                                    </button>
-                                                </div>
-                                            </div>
-
-                                            <AnimatePresence>
-                                                {expandedIds.has(project._id) && (
-                                                    <motion.div
-                                                        initial={{ height: 0, opacity: 0 }}
-                                                        animate={{ height: "auto", opacity: 1 }}
-                                                        exit={{ height: 0, opacity: 0 }}
-                                                        className="border-t border-gray-100 bg-gray-50/50"
-                                                    >
-                                                        <div className="p-6 grid grid-cols-1 lg:grid-cols-3 gap-8">
-                                                            <div className="lg:col-span-2 space-y-6">
-                                                                <div>
-                                                                    <h4 className="text-sm font-semibold text-gray-900 uppercase tracking-wider mb-2">Description</h4>
-                                                                    <p className="text-gray-600 leading-relaxed whitespace-pre-wrap">{project.description}</p>
-                                                                </div>
-
-                                                                {project.attachments.length > 0 && (
-                                                                    <div>
-                                                                        <h4 className="text-sm font-semibold text-gray-900 uppercase tracking-wider mb-2">Attachments</h4>
-                                                                        <div className="flex flex-wrap gap-2">
-                                                                            {project.attachments.map((link, i) => (
-                                                                                <a
-                                                                                    key={i}
-                                                                                    href={link}
-                                                                                    target="_blank"
-                                                                                    rel="noreferrer"
-                                                                                    className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm text-indigo-600 hover:text-indigo-800 hover:border-indigo-200 transition-colors"
-                                                                                >
-                                                                                    <ExternalLink className="w-3 h-3" /> Resource {i + 1}
-                                                                                </a>
-                                                                            ))}
-                                                                        </div>
-                                                                    </div>
-                                                                )}
-
-                                                                {project.status !== 'Pending' && project.feedback && (
-                                                                    <div className={`border p-4 rounded-lg ${project.status === 'Approved' ? 'bg-green-50 border-green-100' : 'bg-red-50 border-red-100'
-                                                                        }`}>
-                                                                        <h4 className={`text-sm font-semibold mb-1 ${project.status === 'Approved' ? 'text-green-800' : 'text-red-800'
-                                                                            }`}>Admin Feedback:</h4>
-                                                                        <p className={`text-sm ${project.status === 'Approved' ? 'text-green-700' : 'text-red-700'
-                                                                            }`}>{project.feedback}</p>
-                                                                    </div>
-                                                                )}
-                                                            </div>
-
-                                                            <div className="space-y-6">
-                                                                <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
-                                                                    <h4 className="text-sm font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                                                                        <Users className="w-4 h-4" /> Group Members
-                                                                    </h4>
-                                                                    <div className="space-y-3">
-                                                                        {project.group.members.map(member => (
-                                                                            <div key={member._id} className="flex items-center gap-3 text-sm">
-                                                                                <div className="h-8 w-8 rounded-full bg-gray-100 flex items-center justify-center font-medium text-gray-600">
-                                                                                    {member.name.charAt(0)}
-                                                                                </div>
-                                                                                <div>
-                                                                                    <p className="text-gray-900 font-medium">{member.name}</p>
-                                                                                    <p className="text-gray-500 text-xs">{member.rollNumber}</p>
-                                                                                </div>
-                                                                            </div>
-                                                                        ))}
-                                                                    </div>
-                                                                </div>
-
-                                                                {project.status === 'Pending' && (
-                                                                    <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
-                                                                        <h4 className="text-sm font-semibold text-gray-900 mb-4">Action Required</h4>
-
-                                                                        {activeActionId === project._id ? (
-                                                                            <div className="space-y-3 animate-fadeIn">
-                                                                                <textarea
-                                                                                    className="w-full text-sm p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
-                                                                                    placeholder="Add feedback or comments (optional)..."
-                                                                                    rows={3}
-                                                                                    value={feedback}
-                                                                                    onChange={e => setFeedback(e.target.value)}
-                                                                                />
-                                                                                <div className="flex gap-2">
-                                                                                    <button
-                                                                                        onClick={() => handleAction(project._id, 'Approved')}
-                                                                                        disabled={!!actionLoading}
-                                                                                        className="flex-1 bg-green-600 text-white text-sm py-2 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
-                                                                                    >
-                                                                                        {actionLoading === project._id ? 'Processing...' : 'Approve'}
-                                                                                    </button>
-                                                                                    <button
-                                                                                        onClick={() => handleAction(project._id, 'Rejected')}
-                                                                                        disabled={!!actionLoading}
-                                                                                        className="flex-1 bg-red-600 text-white text-sm py-2 rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
-                                                                                    >
-                                                                                        {actionLoading === project._id ? 'Processing...' : 'Reject'}
-                                                                                    </button>
-                                                                                </div>
-                                                                                <button
-                                                                                    onClick={() => setActiveActionId(null)}
-                                                                                    className="w-full text-center text-xs text-gray-500 hover:text-gray-700 mt-2"
-                                                                                >
-                                                                                    Cancel
-                                                                                </button>
-                                                                            </div>
-                                                                        ) : (
-                                                                            <div className="flex gap-2">
-                                                                                <button
-                                                                                    onClick={() => setActiveActionId(project._id)}
-                                                                                    className="flex-1 bg-indigo-600 text-white text-sm py-2.5 rounded-lg hover:bg-indigo-700 transition-colors shadow-sm font-medium"
-                                                                                >
-                                                                                    Review Proposal
-                                                                                </button>
-                                                                            </div>
-                                                                        )}
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                        </div>
-                                                    </motion.div>
-                                                )}
-                                            </AnimatePresence>
-                                        </motion.div>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                    ) : activeTab === 'mentees' ? (
-                        <div className="max-w-6xl mx-auto">
-                            <div className="mb-8">
-                                <h2 className="text-2xl font-bold text-gray-800">My Mentees</h2>
-                                <p className="text-gray-500 mt-1">Student groups working under your supervision.</p>
-                            </div>
-
-                            {loadingMentees ? (
-                                <div className="text-center py-20">
-                                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
-                                    <p className="mt-4 text-gray-500">Loading mentees...</p>
-                                </div>
-                            ) : mentees.length === 0 ? (
-                                <div className="text-center py-20 bg-white rounded-2xl border border-gray-200 shadow-sm">
-                                    <div className="h-16 w-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                                        <Users className="h-8 w-8 text-gray-400" />
-                                    </div>
-                                    <h3 className="text-lg font-bold text-gray-900">No Mentees assigned</h3>
-                                    <p className="text-gray-500 max-w-md mx-auto mt-2">
-                                        You don't have any student groups assigned to you yet.
-                                    </p>
-                                </div>
-                            ) : (
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                    {mentees.map(group => (
-                                        <div key={group._id} className={`bg-white rounded-xl border shadow-sm overflow-hidden flex flex-col h-full transition-all ${group.project?.hasNewUpdate ? 'border-indigo-500 ring-2 ring-indigo-200' : 'border-gray-200 hover:border-indigo-200'
-                                            }`}>
-                                            <div className="p-6 flex-1">
-                                                <div className="flex justify-between items-start mb-4">
-                                                    <div>
-                                                        <h3 className="text-lg font-bold text-gray-900 line-clamp-1" title={group.name}>{group.name}</h3>
-                                                        {group.project?.hasNewUpdate && (
-                                                            <span className="inline-block mt-1 px-2 py-0.5 bg-indigo-100 text-indigo-700 text-xs font-bold rounded-full animate-pulse">
-                                                                New Update
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                    <span className="px-2 py-1 bg-indigo-50 text-indigo-700 text-xs rounded font-medium shrink-0">
-                                                        {group.members.length} Members
-                                                    </span>
-                                                </div>
-
-                                                <div className="space-y-3 mb-6">
-                                                    {group.members.slice(0, 3).map((member: any) => (
-                                                        <div key={member._id} className="flex items-center gap-3 text-sm">
-                                                            <div className="h-6 w-6 rounded-full bg-gray-100 flex items-center justify-center font-medium text-xs text-gray-600 shrink-0">
-                                                                {member.name.charAt(0)}
-                                                            </div>
-                                                            <span className="text-gray-700 truncate">{member.name}</span>
-                                                        </div>
-                                                    ))}
-                                                    {group.members.length > 3 && (
-                                                        <p className="text-xs text-gray-500 pl-9">+{group.members.length - 3} more</p>
-                                                    )}
-                                                </div>
-
-                                                {group.project && (
-                                                    <div className="pt-4 border-t border-gray-100">
-                                                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Project</p>
-                                                        <p className="font-medium text-gray-900 line-clamp-2" title={group.project.title}>
-                                                            {group.project.title}
-                                                        </p>
-                                                    </div>
-                                                )}
-                                            </div>
-                                            <div className="bg-gray-50 px-6 py-4 border-t border-gray-100 mt-auto">
-                                                <button
-                                                    onClick={() => navigate(`/faculty/group/${group._id}`)}
-                                                    className="w-full text-center text-sm font-medium text-indigo-600 hover:text-indigo-800 transition-colors"
-                                                >
-                                                    View Details
-                                                </button>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                    ) : (
-                        <div className="max-w-4xl mx-auto">
-                            <div className="bg-white p-8 rounded-xl border border-neutral-200 shadow-sm text-center">
-                                <div className="h-20 w-20 bg-indigo-100 rounded-full flex items-center justify-center mx-auto mb-4 text-indigo-600 font-bold text-2xl">
+                    {activeTab === 'profile' ? (
+                        /* Profile View */
+                        <div className="max-w-2xl mx-auto">
+                            <div className="bg-white p-10 rounded-3xl border border-neutral-200 shadow-sm text-center">
+                                <div className="h-24 w-24 bg-indigo-100 rounded-full flex items-center justify-center mx-auto mb-6 text-indigo-600 font-bold text-3xl">
                                     {user?.name.charAt(0)}
                                 </div>
-                                <h2 className="text-2xl font-bold text-gray-900">{user?.name}</h2>
-                                <p className="text-gray-500">{user?.email}</p>
-                                <div className="mt-6 flex justify-center gap-4">
-                                    <div className="px-4 py-2 bg-gray-50 rounded-lg border border-gray-100">
-                                        <p className="text-xs text-gray-500 uppercase tracking-wider font-semibold">Role</p>
-                                        <p className="font-medium text-gray-900">{user?.role}</p>
+                                <h2 className="text-3xl font-bold text-neutral-900">{user?.name}</h2>
+                                <p className="text-lg text-neutral-500 mt-2">{user?.email}</p>
+                                <div className="mt-8 flex justify-center gap-4">
+                                    <div className="px-6 py-3 bg-neutral-50 rounded-2xl border border-neutral-100">
+                                        <p className="text-xs text-neutral-500 uppercase tracking-wider font-bold">Role</p>
+                                        <p className="font-semibold text-neutral-900">{user?.role}</p>
                                     </div>
-                                    <div className="px-4 py-2 bg-gray-50 rounded-lg border border-gray-100">
-                                        <p className="text-xs text-gray-500 uppercase tracking-wider font-semibold">Department</p>
-                                        <p className="font-medium text-gray-900">{user?.department || 'N/A'}</p>
+                                    <div className="px-6 py-3 bg-neutral-50 rounded-2xl border border-neutral-100">
+                                        <p className="text-xs text-neutral-500 uppercase tracking-wider font-bold">Department</p>
+                                        <p className="font-semibold text-neutral-900">{user?.department || 'N/A'}</p>
                                     </div>
                                 </div>
                             </div>
+                        </div>
+                    ) : (
+                        <div className="max-w-7xl mx-auto flex flex-col h-full">
+
+                            {/* Top Toolbar: Search (Left) + Stats & Filters (Right) */}
+                            {/* Top Toolbar: Search (Left) + Stats & Filters (Right) */}
+                            {!viewGroup && (
+                                <div className="flex flex-col gap-5 mb-8">
+                                    {/* Row 1: Search Bar */}
+                                    <div className="relative w-full">
+                                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400" />
+                                        <input
+                                            type="text"
+                                            placeholder={activeTab === 'directory' ? "Search students by name or roll number..." : "Search projects, students, groups..."}
+                                            className="w-full pl-12 pr-4 py-3 rounded-2xl border border-neutral-200 focus:outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all bg-white shadow-sm text-base"
+                                            value={searchTerm}
+                                            onChange={(e) => setSearchTerm(e.target.value)}
+                                        />
+                                    </div>
+
+                                    {/* Row 2: Filters (Left) and Stats/Toggles (Right) */}
+                                    <div className="flex flex-wrap items-center justify-between gap-4">
+                                        {/* Filters - Left Side */}
+                                        <div className="flex gap-4 items-center">
+                                            {activeTab === 'proposals' && (
+                                                <div className="flex p-1 bg-neutral-100 rounded-xl border border-neutral-200">
+                                                    <button
+                                                        onClick={() => setProposalView('proposals')}
+                                                        className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition-all ${proposalView === 'proposals' ? 'bg-white text-indigo-600 shadow-sm' : 'text-neutral-500 hover:text-neutral-700'}`}
+                                                    >
+                                                        Proposals
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setProposalView('approved')}
+                                                        className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition-all ${proposalView === 'approved' ? 'bg-white text-emerald-600 shadow-sm' : 'text-neutral-500 hover:text-neutral-700'}`}
+                                                    >
+                                                        Approved
+                                                    </button>
+                                                </div>
+                                            )}
+
+                                            {activeTab === 'directory' ? (
+                                                <>
+                                                    <select
+                                                        className="px-3 py-2 bg-white rounded-xl border border-neutral-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer hover:border-indigo-300 transition-colors"
+                                                        value={filterStatus}
+                                                        onChange={(e) => setFilterStatus(e.target.value as any)}
+                                                    >
+                                                        <option value="All">Status: All</option>
+                                                        <option value="Grouped">Grouped</option>
+                                                        <option value="Available">Available</option>
+                                                    </select>
+                                                    <select
+                                                        className="px-3 py-2 bg-white rounded-xl border border-neutral-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer hover:border-indigo-300 transition-colors"
+                                                        value={filterBranch}
+                                                        onChange={(e) => setFilterBranch(e.target.value)}
+                                                    >
+                                                        <option value="All">Branch: All</option>
+                                                        <option value="CSE">CSE</option>
+                                                        <option value="DSAI">DSAI</option>
+                                                        <option value="ECE">ECE</option>
+                                                    </select>
+                                                    <select
+                                                        className="px-3 py-2 bg-white rounded-xl border border-neutral-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer hover:border-indigo-300 transition-colors"
+                                                        value={filterDirectoryYear}
+                                                        onChange={(e) => setFilterDirectoryYear(e.target.value)}
+                                                    >
+                                                        <option value="All">Batch: All</option>
+                                                        {Array.from({ length: 10 }, (_, i) => 2020 + i).map(y => (
+                                                            <option key={y} value={y.toString()}>{y}</option>
+                                                        ))}
+                                                    </select>
+                                                </>
+                                            ) : (
+                                                <select
+                                                    className="px-3 py-2 bg-white rounded-xl border border-neutral-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer hover:border-indigo-300 transition-colors"
+                                                    value={filterBatch}
+                                                    onChange={(e) => setFilterBatch(e.target.value)}
+                                                >
+                                                    <option value="All">Batch: All</option>
+                                                    {Array.from({ length: 10 }, (_, i) => 2020 + i).map(year => (
+                                                        <option key={year} value={year.toString()}>{year}</option>
+                                                    ))}
+                                                </select>
+                                            )}
+                                        </div>
+
+                                        {/* Stats & View Toggle - Right Side */}
+                                        <div className="flex items-center gap-4">
+                                            {/* Stats Badges */}
+                                            {activeTab === 'mentees' && filterBatch !== 'All' && (
+                                                <div className="flex items-center gap-3">
+                                                    <div className="px-5 py-2.5 bg-white text-indigo-600 rounded-xl border border-indigo-100 flex items-center gap-3 shadow-sm">
+                                                        <div className="p-1.5 bg-indigo-50 rounded-lg">
+                                                            <Users className="w-4 h-4" />
+                                                        </div>
+                                                        <div className="flex flex-col">
+                                                            <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-400">Batch {filterBatch} Teams</span>
+                                                            <span className="text-base font-bold leading-none">
+                                                                {currentTeamsCount} <span className="text-indigo-200 text-sm">/ {user?.maxGroups || 7}</span>
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                    <div className="px-5 py-2.5 bg-white text-emerald-600 rounded-xl border border-emerald-100 flex items-center gap-3 shadow-sm">
+                                                        <div className="p-1.5 bg-emerald-50 rounded-lg">
+                                                            <Users className="w-4 h-4" />
+                                                        </div>
+                                                        <div className="flex flex-col">
+                                                            <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">Batch {filterBatch} Students</span>
+                                                            <span className="text-base font-bold leading-none">
+                                                                {currentStudentsCount} <span className="text-emerald-200 text-sm">/ {user?.maxStudents || 21}</span>
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* View Toggle (Only for Mentees tab) */}
+                                            {activeTab === 'mentees' && (
+                                                <div className="flex bg-neutral-100 p-1 rounded-xl border border-neutral-200">
+                                                    <button
+                                                        onClick={() => setViewMode('grid')}
+                                                        className={`p-2 rounded-lg transition-all ${viewMode === 'grid' ? 'bg-white shadow-sm text-indigo-600' : 'text-neutral-400 hover:text-neutral-600'}`}
+                                                    >
+                                                        <LayoutGrid className="w-4 h-4" />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setViewMode('list')}
+                                                        className={`p-2 rounded-lg transition-all ${viewMode === 'list' ? 'bg-white shadow-sm text-indigo-600' : 'text-neutral-400 hover:text-neutral-600'}`}
+                                                    >
+                                                        <LayoutList className="w-4 h-4" />
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Content Grid */}
+                            {activeTab === 'directory' ? (
+                                <div className="bg-white rounded-xl border border-neutral-200 overflow-hidden shadow-sm">
+                                    <table className="w-full text-left text-sm">
+                                        <thead className="bg-neutral-50 border-b border-neutral-200">
+                                            <tr>
+                                                <th className="px-6 py-3 font-semibold text-neutral-500">Roll Number</th>
+                                                <th className="px-6 py-3 font-semibold text-neutral-500">Name</th>
+                                                <th className="px-6 py-3 font-semibold text-neutral-500">Email</th>
+                                                <th className="px-6 py-3 font-semibold text-neutral-500">Branch</th>
+                                                <th className="px-6 py-3 font-semibold text-neutral-500 text-center">Status</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-neutral-100">
+                                            {loadingStudents ? (
+                                                <tr>
+                                                    <td colSpan={5} className="px-6 py-4 text-center text-gray-500">
+                                                        Loading students directory...
+                                                    </td>
+                                                </tr>
+                                            ) : students.length === 0 ? (
+                                                <tr>
+                                                    <td colSpan={5} className="px-6 py-4 text-center text-gray-500">
+                                                        No students found.
+                                                    </td>
+                                                </tr>
+                                            ) : students.filter(s => {
+                                                const matchesSearch = s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                                    s.rollNumber?.includes(searchTerm);
+                                                const matchesStatus = filterStatus === 'All' ||
+                                                    (filterStatus === 'Grouped' ? s.isGrouped : !s.isGrouped);
+                                                const matchesBranch = filterBranch === 'All' || s.branch === filterBranch;
+                                                const matchesYear = filterDirectoryYear === 'All' ||
+                                                    (s.batch === filterDirectoryYear) ||
+                                                    (s.rollNumber && (s.rollNumber.startsWith(filterDirectoryYear.slice(2)) || s.rollNumber.startsWith(filterDirectoryYear)));
+
+                                                return matchesSearch && matchesStatus && matchesBranch && matchesYear;
+                                            }).map(student => (
+                                                <tr key={student._id} className="hover:bg-neutral-50 transition-colors">
+                                                    <td className="px-6 py-4 font-mono text-neutral-600">{student.rollNumber || '-'}</td>
+                                                    <td className="px-6 py-4 font-medium text-neutral-900">{student.name}</td>
+                                                    <td className="px-6 py-4 text-neutral-500">{student.email}</td>
+                                                    <td className="px-6 py-4 text-neutral-500">{student.branch || '-'}</td>
+                                                    <td className="px-6 py-4 text-center">
+                                                        {student.isGrouped ? (
+                                                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
+                                                                Grouped
+                                                            </span>
+                                                        ) : (
+                                                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-neutral-100 text-neutral-800">
+                                                                Available
+                                                            </span>
+                                                        )}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            ) : (loading || loadingMentees) ? (
+                                <div className="text-center py-20">
+                                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
+                                    <p className="mt-4 text-gray-500">Loading...</p>
+                                </div>
+                            ) : displayItems.length === 0 ? (
+                                <div className="text-center py-20 bg-white rounded-3xl border border-dashed border-neutral-200">
+                                    <div className="h-16 w-16 bg-neutral-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                                        <FileText className="h-8 w-8 text-neutral-300" />
+                                    </div>
+                                    <h3 className="text-lg font-bold text-neutral-900">No items found</h3>
+                                    <p className="text-neutral-500">Try adjusting your filters or search terms.</p>
+                                </div>
+                            ) : (
+                                <>
+                                    {viewMode === 'list' && activeTab === 'mentees' ? (
+                                        <div className="space-y-12 pb-20">
+                                            {/* Logic to render sections if filterBatch is All, else just one section */}
+                                            {viewGroup ? (
+                                                <MenteeGroupDetails
+                                                    group={viewGroup}
+                                                    user={user}
+                                                    onBack={() => setViewGroup(null)}
+                                                    onUpdateSuccess={fetchMentees}
+                                                />
+                                            ) : (
+                                                (filterBatch === 'All' ? Array.from({ length: 10 }, (_, i) => 2020 + i).reverse() : [parseInt(filterBatch || '0')]).map(batchYear => {
+                                                    if (filterBatch !== 'All' && batchYear === 0) return null; // Safe guard
+
+                                                    const batchSuffix = batchYear.toString().slice(2);
+                                                    const batchMentees = filterBatch === 'All'
+                                                        ? displayItems.filter((item: any) => {
+                                                            const members = item.members || item.group?.members || [];
+                                                            return members.some((m: any) => m.rollNumber && m.rollNumber.startsWith(batchSuffix));
+                                                        })
+                                                        : displayItems; // If specific batch filter, displayItems is already filtered
+
+                                                    if (batchMentees.length === 0) return null;
+
+                                                    const teamsCount = batchMentees.length;
+                                                    const studentsCount = batchMentees.reduce((acc: number, item: any) => acc + (item.members?.length || item.group?.members?.length || 0), 0);
+
+                                                    return (
+                                                        <div key={batchYear} className="space-y-6">
+                                                            {filterBatch === 'All' && (
+                                                                <div className="flex items-center gap-6">
+                                                                    <div className="flex items-baseline gap-3">
+                                                                        <h3 className="text-2xl font-bold text-neutral-900">Batch {batchYear}</h3>
+                                                                        <span className="text-sm font-medium text-neutral-400">{batchMentees.length} Active Projects</span>
+                                                                    </div>
+                                                                    <div className="h-px bg-neutral-100 flex-1"></div>
+                                                                    <div className="flex gap-4">
+                                                                        <div className="px-4 py-2 bg-white text-indigo-600 rounded-xl border border-indigo-100 flex items-center gap-2 shadow-sm">
+                                                                            <div className="p-1 bg-indigo-50 rounded-lg">
+                                                                                <Users className="w-3 h-3" />
+                                                                            </div>
+                                                                            <div className="flex flex-col">
+                                                                                <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-400">Teams</span>
+                                                                                <span className="text-sm font-bold leading-none">{teamsCount}</span>
+                                                                            </div>
+                                                                        </div>
+                                                                        <div className="px-4 py-2 bg-white text-emerald-600 rounded-xl border border-emerald-100 flex items-center gap-2 shadow-sm">
+                                                                            <div className="p-1 bg-emerald-50 rounded-lg">
+                                                                                <Users className="w-3 h-3" />
+                                                                            </div>
+                                                                            <div className="flex flex-col">
+                                                                                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">Students</span>
+                                                                                <span className="text-sm font-bold leading-none">{studentsCount}</span>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            )}
+
+                                                            <div className="bg-white rounded-2xl border border-neutral-200 shadow-sm overflow-hidden">
+                                                                <div className="overflow-x-auto">
+                                                                    <table className="w-full text-left">
+                                                                        <thead className="bg-neutral-50 border-b border-neutral-100">
+                                                                            <tr>
+                                                                                <th className="px-6 py-4 text-xs font-bold text-neutral-400 uppercase tracking-wider w-1/3">Project Details</th>
+                                                                                <th className="px-6 py-4 text-xs font-bold text-neutral-400 uppercase tracking-wider">Members</th>
+                                                                                <th className="px-6 py-4 text-xs font-bold text-neutral-400 uppercase tracking-wider">Status</th>
+                                                                                <th className="px-6 py-4 text-xs font-bold text-neutral-400 uppercase tracking-wider">Last Update</th>
+                                                                                <th className="px-6 py-4 text-xs font-bold text-neutral-400 uppercase tracking-wider text-right">Action</th>
+                                                                            </tr>
+                                                                        </thead>
+                                                                        <tbody className="divide-y divide-neutral-100">
+                                                                            {batchMentees.map((item: any) => (
+                                                                                <tr
+                                                                                    key={item._id}
+                                                                                    onClick={() => handleGroupClick(item)}
+                                                                                    className={`cursor-pointer transition-all group ${item.project?.hasNewUpdate
+                                                                                        ? 'bg-amber-50/50 hover:bg-amber-50 relative'
+                                                                                        : 'hover:bg-neutral-50'}`}
+                                                                                >
+                                                                                    {item.project?.hasNewUpdate && (
+                                                                                        <td className="absolute left-0 top-0 bottom-0 w-1 bg-amber-400 animate-pulse"></td>
+                                                                                    )}
+                                                                                    <td className="px-6 py-4">
+                                                                                        <div className="flex flex-col gap-1">
+                                                                                            <div className="flex items-start justify-between gap-2">
+                                                                                                <span className="font-bold text-neutral-900 group-hover:text-indigo-600 transition-colors line-clamp-1 text-base">
+                                                                                                    {item.project?.title || item.name}
+                                                                                                </span>
+                                                                                                {item.project?.hasNewUpdate && (
+                                                                                                    <span className="px-2 py-0.5 bg-amber-100 text-amber-700 border border-amber-200 text-[10px] font-bold uppercase rounded-md shadow-sm whitespace-nowrap">
+                                                                                                        New Update
+                                                                                                    </span>
+                                                                                                )}
+                                                                                            </div>
+                                                                                            <span className="text-xs font-medium text-neutral-500 uppercase tracking-wider flex items-center gap-1.5">
+                                                                                                <Users className="w-3 h-3" />
+                                                                                                {item.name}
+                                                                                            </span>
+                                                                                            {item.project?.tags && item.project.tags.length > 0 && (
+                                                                                                <div className="flex flex-wrap gap-1 mt-1">
+                                                                                                    {item.project.tags.slice(0, 3).map((tag: string, i: number) => (
+                                                                                                        <span key={i} className="px-1.5 py-0.5 bg-neutral-100 text-neutral-500 text-[10px] rounded border border-neutral-200">
+                                                                                                            {tag}
+                                                                                                        </span>
+                                                                                                    ))}
+                                                                                                </div>
+                                                                                            )}
+                                                                                        </div>
+                                                                                    </td>
+                                                                                    <td className="px-6 py-4">
+                                                                                        <div className="flex -space-x-2">
+                                                                                            {item.members.slice(0, 3).map((m: any, idx: number) => (
+                                                                                                <div key={idx} className="h-8 w-8 rounded-full bg-indigo-100 border-2 border-white flex items-center justify-center text-xs font-bold text-indigo-600 hover:z-10 transition-transform hover:scale-110" title={m.name}>
+                                                                                                    {m.name.charAt(0)}
+                                                                                                </div>
+                                                                                            ))}
+                                                                                            {item.members.length > 3 && (
+                                                                                                <div className="h-8 w-8 rounded-full bg-neutral-100 border-2 border-white flex items-center justify-center text-xs font-bold text-neutral-500">
+                                                                                                    +{item.members.length - 3}
+                                                                                                </div>
+                                                                                            )}
+                                                                                        </div>
+                                                                                    </td>
+                                                                                    <td className="px-6 py-4">
+                                                                                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${(item.status || item.project?.status) === 'Approved' ? 'bg-green-100 text-green-700' :
+                                                                                            (item.status || item.project?.status) === 'Rejected' ? 'bg-red-100 text-red-700' :
+                                                                                                'bg-indigo-100 text-indigo-700'
+                                                                                            }`}>
+                                                                                            <div className={`w-1.5 h-1.5 rounded-full ${(item.status || item.project?.status) === 'Approved' ? 'bg-green-500' :
+                                                                                                (item.status || item.project?.status) === 'Rejected' ? 'bg-red-500' :
+                                                                                                    'bg-indigo-500'
+                                                                                                }`} />
+                                                                                            {item.status || item.project?.status || 'Active'}
+                                                                                        </span>
+                                                                                    </td>
+                                                                                    <td className="px-6 py-4 text-sm text-neutral-500 font-mono text-xs">
+                                                                                        {new Date(item.project?.updatedAt || item.createdAt).toLocaleDateString()}
+                                                                                    </td>
+                                                                                    <td className="px-6 py-4 text-right">
+                                                                                        <div className="inline-flex items-center gap-1 text-indigo-600 font-bold text-xs opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                                            View <ChevronRight className="w-3 h-3" />
+                                                                                        </div>
+                                                                                    </td>
+                                                                                </tr>
+                                                                            ))}
+                                                                        </tbody>
+                                                                    </table>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                }))}
+                                        </div>
+                                    ) : (
+                                        <div className="pb-20">
+                                            {activeTab === 'mentees' && viewGroup ? (
+                                                <MenteeGroupDetails
+                                                    group={viewGroup}
+                                                    user={user}
+                                                    onBack={() => setViewGroup(null)}
+                                                    onUpdateSuccess={fetchMentees}
+                                                />
+                                            ) : activeTab === 'mentees' && filterBatch === 'All' ? (
+                                                <div className="space-y-12">
+                                                    {Array.from({ length: 10 }, (_, i) => 2020 + i).reverse().map(batchYear => {
+                                                        const batchSuffix = batchYear.toString().slice(2);
+                                                        const batchMentees = displayItems.filter((item: any) => {
+                                                            const members = item.members || item.group?.members || [];
+                                                            return members.some((m: any) => m.rollNumber && m.rollNumber.startsWith(batchSuffix));
+                                                        });
+
+                                                        if (batchMentees.length === 0) return null;
+
+                                                        const teamsCount = batchMentees.length;
+                                                        const studentsCount = batchMentees.reduce((acc: number, item: any) => acc + (item.members?.length || item.group?.members?.length || 0), 0);
+
+                                                        return (
+                                                            <div key={batchYear} className="space-y-6">
+                                                                <div className="flex items-center gap-6">
+                                                                    <div className="flex items-baseline gap-3">
+                                                                        <h3 className="text-2xl font-bold text-neutral-900">Batch {batchYear}</h3>
+                                                                        <span className="text-sm font-medium text-neutral-400">{batchMentees.length} Active Projects</span>
+                                                                    </div>
+                                                                    <div className="h-px bg-neutral-100 flex-1"></div>
+                                                                    <div className="flex gap-4">
+                                                                        <div className="px-4 py-2 bg-white text-indigo-600 rounded-xl border border-indigo-100 flex items-center gap-2 shadow-sm">
+                                                                            <div className="p-1 bg-indigo-50 rounded-lg">
+                                                                                <Users className="w-3 h-3" />
+                                                                            </div>
+                                                                            <div className="flex flex-col">
+                                                                                <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-400">Teams</span>
+                                                                                <span className="text-sm font-bold leading-none">{teamsCount}</span>
+                                                                            </div>
+                                                                        </div>
+                                                                        <div className="px-4 py-2 bg-white text-emerald-600 rounded-xl border border-emerald-100 flex items-center gap-2 shadow-sm">
+                                                                            <div className="p-1 bg-emerald-50 rounded-lg">
+                                                                                <Users className="w-3 h-3" />
+                                                                            </div>
+                                                                            <div className="flex flex-col">
+                                                                                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">Students</span>
+                                                                                <span className="text-sm font-bold leading-none">{studentsCount}</span>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-6">
+                                                                    {batchMentees.map((item: any) => (
+                                                                        <MenteeCard
+                                                                            key={item._id}
+                                                                            item={item}
+                                                                            activeTab={activeTab}
+                                                                            navigate={navigate}
+                                                                            setSelectedProject={activeTab === 'mentees' ? handleGroupClick : setSelectedProject}
+                                                                        />
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            ) : (
+                                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-6 auto-rows-fr">
+                                                    {displayItems.map((item: any) => (
+                                                        <MenteeCard
+                                                            key={item._id}
+                                                            item={item}
+                                                            activeTab={activeTab}
+                                                            navigate={navigate}
+                                                            setSelectedProject={activeTab === 'mentees' ? handleGroupClick : setSelectedProject}
+                                                        />
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                </>
+                            )}
                         </div>
                     )}
                 </main>
+
+                {/* Project Details Modal */}
+                <Dialog.Root open={!!selectedProject} onOpenChange={(open) => !open && setSelectedProject(null)}>
+                    <Dialog.Portal>
+                        <Dialog.Overlay className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 transition-opacity" />
+                        <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-2xl bg-white rounded-3xl shadow-2xl z-50 overflow-hidden max-h-[90vh] flex flex-col focus:outline-none">
+                            <div className="flex items-center justify-between p-6 border-b border-neutral-100">
+                                <Dialog.Title className="text-xl font-bold text-neutral-900">
+                                    {selectedProject?.title}
+                                </Dialog.Title>
+                                <Dialog.Close className="p-2 rounded-full hover:bg-neutral-100 transition-colors">
+                                    <X className="w-5 h-5 text-neutral-500" />
+                                </Dialog.Close>
+                            </div>
+
+                            <div className="p-6 overflow-y-auto">
+                                <div className="space-y-6">
+                                    <div className="flex flex-wrap gap-2">
+
+                                        <h4 className="text-sm font-bold text-neutral-900 uppercase tracking-wider mb-2">Description</h4>
+                                        <p className="text-neutral-600 leading-relaxed">
+                                            {selectedProject?.description}
+                                        </p>
+                                    </div>
+
+                                    {selectedProject?.tags && selectedProject.tags.length > 0 && (
+                                        <div>
+                                            <h4 className="text-sm font-bold text-neutral-900 uppercase tracking-wider mb-2">Technologie & Tags</h4>
+                                            <div className="flex flex-wrap gap-2">
+                                                {selectedProject.tags.map((tag: string, i: number) => (
+                                                    <span key={i} className="px-3 py-1 bg-white border border-neutral-200 text-neutral-600 rounded-lg text-sm shadow-sm">
+                                                        {tag}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Attachments */}
+                                    {selectedProject?.attachments && selectedProject.attachments.length > 0 && (
+                                        <div>
+                                            <h4 className="text-sm font-bold text-neutral-900 uppercase tracking-wider mb-2">Project Files</h4>
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                {selectedProject.attachments.map((url: string, i: number) => (
+                                                    <FilePreview key={i} url={url} />
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="p-4 bg-neutral-50 rounded-xl border border-neutral-100">
+                                            <h4 className="text-xs font-bold text-neutral-500 uppercase tracking-wider mb-1">Group</h4>
+                                            <p className="font-bold text-neutral-900">{selectedProject?.group?.name}</p>
+                                        </div>
+                                        <div className="p-4 bg-neutral-50 rounded-xl border border-neutral-100">
+                                            <h4 className="text-xs font-bold text-neutral-500 uppercase tracking-wider mb-1">Leader</h4>
+                                            <p className="font-bold text-neutral-900">{(selectedProject as any)?.leader?.name}</p>
+                                        </div>
+                                    </div>
+                                    {(selectedProject as any)?.members && (
+                                        <div className="p-4 bg-neutral-50 rounded-xl border border-neutral-100">
+                                            <h4 className="text-xs font-bold text-neutral-500 uppercase tracking-wider mb-2">Team Members</h4>
+                                            <div className="flex flex-wrap gap-2">
+                                                {(selectedProject as any).members.map((m: any) => (
+                                                    <span key={m._id} className="px-2 py-1 bg-white rounded border border-neutral-200 text-sm">{m.name}</span>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Action Footer */}
+                            {(selectedProject?.status === 'Pending' || (selectedProject?.status as any) === 'Draft') && (
+                                <div className="p-6 border-t border-neutral-100 bg-neutral-50">
+                                    <div className="mb-4">
+                                        <label className="block text-sm font-bold text-neutral-700 mb-1">Feedback / Remarks (Optional)</label>
+                                        <textarea
+                                            value={feedback}
+                                            onChange={(e) => setFeedback(e.target.value)}
+                                            placeholder="Add comments specifically for Rejection or modifications..."
+                                            className="w-full px-4 py-3 rounded-xl border border-neutral-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-sm"
+                                            rows={2}
+                                        />
+                                    </div>
+                                    <div className="flex gap-3">
+                                        <button
+                                            onClick={() => selectedProject && handleAction(selectedProject._id, 'Approved')}
+                                            disabled={!!actionLoading}
+                                            className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-sm shadow-indigo-200 transition-all flex items-center justify-center gap-2"
+                                        >
+                                            {actionLoading === 'Approved' ? 'Processing...' : <><CheckCircle className="w-4 h-4" /> Approve Proposal</>}
+                                        </button>
+                                        <button
+                                            onClick={() => selectedProject && handleAction(selectedProject._id, 'Rejected')}
+                                            disabled={!!actionLoading}
+                                            className="flex-1 py-3 bg-white border border-red-200 text-red-600 hover:bg-red-50 rounded-xl font-bold transition-all flex items-center justify-center gap-2"
+                                        >
+                                            {actionLoading === 'Rejected' ? 'Processing...' : <><XCircle className="w-4 h-4" /> Reject</>}
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* View Dashboard Button for Approved Projects */}
+                            {selectedProject?.status === 'Approved' && (
+                                <div className="p-6 border-t border-neutral-100 bg-neutral-50">
+                                    <button
+                                        onClick={() => {
+                                            if (selectedProject?.group?._id) {
+                                                navigate(`/faculty/group/${selectedProject.group._id}`);
+                                            } else {
+                                                // Fallback if no group ID (shouldn't happen for approved)
+                                                console.error("No group ID for project", selectedProject);
+                                            }
+                                        }}
+                                        className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-sm shadow-indigo-200 transition-all flex items-center justify-center gap-2"
+                                    >
+                                        View Project Dashboard <ChevronRight className="w-4 h-4" />
+                                    </button>
+                                </div>
+                            )}
+                        </Dialog.Content>
+                    </Dialog.Portal>
+                </Dialog.Root>
+
             </div>
         </div>
     );

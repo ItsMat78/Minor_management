@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import Group from '../models/Group';
 import User from '../models/User';
+import Project from '../models/Project';
 
 // Create a group
 export const createGroup = async (req: Request, res: Response) => {
@@ -60,11 +61,22 @@ export const getMyGroup = async (req: Request, res: Response) => {
         const userId = (req as any).user.id;
         const group = await Group.findOne({ members: userId })
             .populate('members', 'name email role branch rollNumber')
-            .populate('project');
+            .populate({
+                path: 'project',
+                populate: { path: 'faculty', select: 'name department email' }
+            });
 
         if (!group) return res.status(404).json({ message: 'No group found' });
 
-        res.json(group);
+        // Fetch all projects for this group to support multiple proposals
+        const allProjects = await Project.find({ group: group._id })
+            .populate('faculty', 'name department email')
+            .sort({ createdAt: -1 });
+
+        const groupData = group.toObject();
+        (groupData as any).projects = allProjects;
+
+        res.json(groupData);
     } catch (error) {
         res.status(500).json({ message: 'Server error', error });
     }
@@ -110,17 +122,8 @@ export const leaveGroup = async (req: Request, res: Response) => {
 export const getMyMentees = async (req: Request, res: Response) => {
     try {
         const userId = (req as any).user.id;
-        // Find groups where the project has the faculty assigned
-        // This is a bit complex because faculty is on Project, not Group directly in current schema?
-        // Let's check Project schema. Project has 'group' and 'faculty'.
-        // So we find Projects where faculty = userId, then populate the group.
-
-        // Wait, the user asked for "My Mentees" showing all groups.
-        // Assuming "Mentees" means groups whose project is supervised by this faculty.
-
-        const Project = require('../models/Project').default;
-
-        const projects = await Project.find({ faculty: userId })
+        // Find groups where the project has been APPROVED by this faculty
+        const projects = await Project.find({ faculty: userId, status: 'Approved' })
             .populate({
                 path: 'group',
                 populate: { path: 'members', select: 'name email rollNumber branch' }
@@ -130,10 +133,15 @@ export const getMyMentees = async (req: Request, res: Response) => {
             ...p.group.toObject(),
             project: {
                 title: p.title,
+                description: p.description,
                 status: p.status,
                 _id: p._id,
                 hasNewUpdate: p.hasNewUpdate,
-                updates: p.updates // Optional: include updates content if needed immediately
+                updates: p.updates,
+                semester: p.semester,
+                tags: p.tags,
+                attachments: p.attachments,
+                feedback: p.feedback
             }
         }));
 

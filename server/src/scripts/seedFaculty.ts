@@ -1,57 +1,160 @@
-
 import mongoose from 'mongoose';
 import User, { UserRole } from '../models/User';
 import dotenv from 'dotenv';
+import fs from 'fs';
+import path from 'path';
 import bcrypt from 'bcryptjs';
 
-dotenv.config();
-
-// List of faculty to auto-register
-const FacultyList = [
-    { name: 'Dr. Srinivasa K G', email: 'srinivasa@iiitnr.edu.in', department: 'DSAI', role: 'Faculty' },
-    { name: 'Dr. Vijaya J', email: 'vijaya@iiitnr.edu.in', department: 'DSAI', role: 'Faculty' },
-    { name: 'Dr. Vinay Kumar', email: 'vinay@iiitnr.edu.in', department: 'CSE', role: 'Faculty' },
-    { name: 'Dr. Sresha Yadav', email: 'sresha@iiitnr.edu.in', department: 'Full Stack', role: 'Faculty' }, // Updated department based on context or leave generic
-    { name: 'Dr. Abhishek Sharma', email: 'abhishek@iiitnr.edu.in', department: 'ECE', role: 'Faculty' },
-    { name: 'Dr. Amit Kumar Agrawal', email: 'amit@iiitnr.edu.in', department: 'Management', role: 'Faculty' },
-    { name: 'Dr. Anurag Singh', email: 'anurag@iiitnr.edu.in', department: 'ECE', role: 'Faculty' },
-    { name: 'Dr. Kavita Jaiswal', email: 'kavita@iiitnr.edu.in', department: 'CSE', role: 'Faculty' },
-    { name: 'Dr. Lakhindar Murmu', email: 'lakhindar@iiitnr.edu.in', department: 'ECE', role: 'Faculty' },
-    { name: 'Dr. Manoj Kumar Majumder', email: 'manoj@iiitnr.edu.in', department: 'ECE', role: 'Faculty' },
-    { name: 'Ms. Shashi Tiwari', email: 'shashi@iiitnr.edu.in', department: 'ECE', role: 'Faculty' },
-    { name: 'Dr. Sachchida Nand Mishra', email: 'sachchida@iiitnr.edu.in', department: 'DSAI', role: 'Faculty' }
-];
+dotenv.config({ path: path.join(__dirname, '../../.env') });
 
 const seedFaculty = async () => {
     try {
-        await mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/minor_management');
-        console.log('MongoDB Connected');
+        await mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/minor-project-portal');
+        console.log('Connected to MongoDB');
 
-        for (const faculty of FacultyList) {
-            const existingUser = await User.findOne({ email: faculty.email });
-            if (existingUser) {
-                console.log(`Faculty ${faculty.name} already exists.`);
+        // Read the faculty list file
+        const facultyListPath = path.join(__dirname, '../../../faculty_list.txt');
+        const fileContent = fs.readFileSync(facultyListPath, 'utf-8');
+        const lines = fileContent.split('\n');
+
+        const facultyToAdd = [];
+        const seenEmails = new Set();
+        const seenNames = new Set();
+
+        let currentFaculty: any = null;
+
+        for (const line of lines) {
+            const rawLine = line.trim();
+            if (!rawLine) continue;
+
+            // Check for Research:
+            // "Research :Bio-metrics, ..."
+            // Regex: ^Research\s*[:]\s*(.*)
+            const researchMatch = rawLine.match(/^Research\s*[:]\s*(.*)/i);
+
+            if (researchMatch && currentFaculty) {
+                const expertiseStr = researchMatch[1].trim();
+                // Split by comma or semicolon, remove "Read More"
+                // Also handle "and" sometimes? Just splitting by comma is safer for now.
+                const expertise = expertiseStr.split(/[;,]/)
+                    .map(s => s.trim())
+                    .filter(s => s.length > 0 && !s.toLowerCase().includes('read more') && s !== '.');
+
+                currentFaculty.expertise = expertise;
                 continue;
             }
 
-            const hashedPassword = await bcrypt.hash('faculty123', 10); // Default password
+            // Check for Name line
+            // Looking for "Name (Designation)" pattern
+            // Regex to capture name before the first opening parenthesis and content inside
+            const nameMatch = rawLine.match(/^(?:HYPERLINK\s+".*?")?\s*([^(]+?)\s*\((.*?)\)/);
 
-            const newFaculty = new User({
-                name: faculty.name,
-                email: faculty.email,
-                password: hashedPassword,
-                role: UserRole.FACULTY,
-                department: faculty.department,
-                isVerified: true,
-                expertise: [] // Can be filled later
-            });
+            if (nameMatch) {
+                let fullName = nameMatch[1].trim();
+                let parenContent = nameMatch[2].trim();
 
-            await newFaculty.save();
-            console.log(`Registered ${faculty.name}`);
+                // Junk removal logic
+                if (fullName.startsWith('HYPERLINK')) {
+                    const m = fullName.match(/HYPERLINK\s+".*?"(.*?)$/);
+                    if (m) fullName = m[1].trim();
+                }
+
+                // More robust junk filtration
+                const invalidPrefixes = [
+                    'Qualification', 'Department', 'Email', 'Contact', 'Research', 'Read More', 'Designation',
+                    'Sitemap', 'Terms', 'Privacy', 'FAQs', 'RTI', 'Helpline', 'Page last updated',
+                    'OLA', 'Telephone', 'General Information', 'Route', 'Useful Services', 'Convocation',
+                    'Admissions', 'HR', 'Placement', 'Ph.D.', 'M.Tech.', 'B.Tech'
+                ];
+                if (invalidPrefixes.some(p => fullName.startsWith(p)) || fullName.includes('http') || fullName.length < 3) {
+                    continue;
+                }
+
+                // If valid name found, save previous faculty
+                if (currentFaculty) {
+                    facultyToAdd.push(currentFaculty);
+                    currentFaculty = null;
+                }
+
+                if (seenNames.has(fullName)) continue;
+                seenNames.add(fullName);
+
+                // parse email
+                const nameParts = fullName.split(' ');
+                let firstName = nameParts[0].toLowerCase().replace(/[^a-z]/g, '');
+
+                if (firstName === 'dr' && nameParts.length > 1) {
+                    firstName = nameParts[1].toLowerCase().replace(/[^a-z]/g, '');
+                }
+
+                if (!firstName) continue;
+
+                let email = `${firstName}@iiitnr.edu.in`;
+                if (seenEmails.has(email)) {
+                    // Try to resolve collision with last name or middle name
+                    // e.g. "Amit Kumar Agrawal" vs "Amit ..."
+                    // If simple first name fails, try initials + last name logic?
+                    // Or first name + last name part.
+                    // Let's iterate parts to find unique email
+                    let foundUnique = false;
+                    for (let i = 1; i < nameParts.length; i++) {
+                        const nextPart = nameParts[i].toLowerCase().replace(/[^a-z]/g, '');
+                        const tryEmail = `${firstName}.${nextPart}@iiitnr.edu.in`;
+                        if (!seenEmails.has(tryEmail)) {
+                            email = tryEmail;
+                            foundUnique = true;
+                            break;
+                        }
+                    }
+                    if (!foundUnique) {
+                        // Fallback: append number?
+                        let counter = 1;
+                        while (seenEmails.has(email)) {
+                            email = `${firstName}${counter}@iiitnr.edu.in`;
+                            counter++;
+                        }
+                    }
+                }
+                seenEmails.add(email);
+
+                // Department
+                let department = 'DS';
+                const content = parenContent.toUpperCase();
+                if (content.includes('ECE')) department = 'ECE';
+                else if (content.includes('CSE')) department = 'CSE';
+                else if (content.includes('DSAI')) department = 'DSAI';
+                else if (content.includes('SHM') || content.includes('MATH') || content.includes('ENGLISH') || content.includes('PHYSICS')) department = 'SHM';
+                else if (content.includes('MANAGEMENT')) department = 'Management';
+
+                currentFaculty = {
+                    name: fullName,
+                    email: email,
+                    password: await bcrypt.hash('123456', 10),
+                    role: UserRole.FACULTY,
+                    department: department,
+                    expertise: [],
+                    isVerified: true
+                };
+            }
+        }
+        // Push last one
+        if (currentFaculty) facultyToAdd.push(currentFaculty);
+
+        console.log(`Found ${facultyToAdd.length} faculty members.`);
+
+        // Delete existing faculty
+        console.log('Clearing existing faculty...');
+        await User.deleteMany({ role: UserRole.FACULTY });
+
+        // Insert new faculty
+        if (facultyToAdd.length > 0) {
+            await User.insertMany(facultyToAdd);
+            console.log('Faculty seeded successfully.');
+        } else {
+            console.log('No faculty found to seed.');
         }
 
-        console.log('Faculty seeding completed.');
-        process.exit(0);
+        mongoose.connection.close();
     } catch (error) {
         console.error('Error seeding faculty:', error);
         process.exit(1);
