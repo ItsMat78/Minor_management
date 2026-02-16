@@ -151,3 +151,21 @@ export const getMyMentees = async (req: Request, res: Response) => {
         res.status(500).json({ message: 'Server error', error });
     }
 };
+
+export const getAllGroups = async (req: Request, res: Response) => {
+    try {
+        const groups = await Group.find()
+            .populate('members', 'name email rollNumber branch')
+            .populate({
+                path: 'project',
+                populate: { path: 'faculty', select: 'name email department' },
+                select: 'title description status tags semester attachments feedback hasNewUpdate updates faculty'
+            })
+            .sort({ createdAt: -1 });
+
+        res.json(groups);
+    } catch (error) {
+        console.error("Error fetching all groups:", error);
+        res.status(500).json({ message: 'Server error', error });
+    }
+};

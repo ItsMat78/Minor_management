@@ -351,3 +351,40 @@ export const deleteProject = async (req: Request, res: Response) => {
         res.status(500).json({ message: 'Server error', error });
     }
 };
+
+export const submitEvaluation = async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const { type, marks, remarks } = req.body;
+        const userId = (req as any).user.id;
+
+        const project = await Project.findById(id);
+        if (!project) return res.status(404).json({ message: 'Project not found' });
+
+        // Authorization: Only assigned faculty or Admin
+        if (project.faculty?.toString() !== userId && (req as any).user.role !== 'Admin') {
+            return res.status(403).json({ message: 'Not authorized to evaluate this project' });
+        }
+
+        const evaluationData = {
+            marks,
+            remarks,
+            gradedBy: userId,
+            date: new Date()
+        };
+
+        if (type === 'mid-term') {
+            project.midTermEvaluation = evaluationData;
+        } else if (type === 'end-term') {
+            project.endTermEvaluation = evaluationData;
+        } else {
+            return res.status(400).json({ message: 'Invalid evaluation type' });
+        }
+
+        await project.save();
+        res.json(project);
+    } catch (error) {
+        console.error("Evaluation error:", error);
+        res.status(500).json({ message: 'Server error', error });
+    }
+};

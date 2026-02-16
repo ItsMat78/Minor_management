@@ -1,6 +1,6 @@
 
 import express from 'express';
-import { getFaculty, getAllStudents } from '../controllers/userController';
+import { getFaculty, getAllStudents, updateUser } from '../controllers/userController';
 import { auth } from '../middleware/authMiddleware';
 
 const router = express.Router();
@@ -24,5 +24,6 @@ router.use(auth);
 
 router.get('/faculty', getFaculty);
 router.get('/students', getAllStudents);
+router.put('/:id', updateUser);
 
 export default router;

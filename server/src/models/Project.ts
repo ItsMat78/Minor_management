@@ -19,6 +19,18 @@ export interface IProject extends Document {
         links?: string[];
     }[];
     hasNewUpdate: boolean;
+    midTermEvaluation?: {
+        marks: number;
+        remarks: string;
+        gradedBy: mongoose.Types.ObjectId;
+        date: Date;
+    };
+    endTermEvaluation?: {
+        marks: number;
+        remarks: string;
+        gradedBy: mongoose.Types.ObjectId;
+        date: Date;
+    };
 }
 
 const ProjectSchema: Schema = new Schema({
@@ -38,7 +50,19 @@ const ProjectSchema: Schema = new Schema({
         attachments: [{ type: String }],
         links: [{ type: String }]
     }],
-    hasNewUpdate: { type: Boolean, default: false } // Flag for faculty notification
+    hasNewUpdate: { type: Boolean, default: false }, // Flag for faculty notification
+    midTermEvaluation: {
+        marks: { type: Number },
+        remarks: { type: String },
+        gradedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+        date: { type: Date }
+    },
+    endTermEvaluation: {
+        marks: { type: Number },
+        remarks: { type: String },
+        gradedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+        date: { type: Date }
+    }
 }, {
     timestamps: true
 });

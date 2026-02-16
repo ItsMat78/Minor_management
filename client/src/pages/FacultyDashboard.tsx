@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
-import { Search, ChevronDown, Users, Clock, CheckCircle, XCircle, FileText, LayoutGrid, LayoutList, X, LogOut, ChevronRight, Layout, Settings, Menu } from 'lucide-react';
+import { Search, ChevronDown, Users, Clock, CheckCircle, XCircle, FileText, LayoutGrid, LayoutList, X, LogOut, ChevronRight, Layout, Settings, Menu, GraduationCap, Medal, Save } from 'lucide-react';
 import FilePreview from '../components/FilePreview';
 import { motion } from 'framer-motion';
 import * as Dialog from '@radix-ui/react-dialog';
@@ -32,6 +32,8 @@ interface Project {
     hasNewUpdate?: boolean;
     updates?: any[];
     updatedAt?: string; // Added for field
+    midTermEvaluation?: { marks: number, remarks: string, date: string };
+    endTermEvaluation?: { marks: number, remarks: string, date: string };
 }
 
 const MenteeCard = ({ item, activeTab, navigate, setSelectedProject }: any) => (
@@ -140,11 +142,17 @@ const FacultyDashboard: React.FC = () => {
     const [feedback, setFeedback] = useState('');
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-    const [activeTab, setActiveTab] = useState<'proposals' | 'mentees' | 'profile' | 'directory'>(initialTab || 'proposals');
+    const [activeTab, setActiveTab] = useState<'proposals' | 'mentees' | 'profile' | 'directory' | 'mid-term' | 'end-term'>(initialTab || 'proposals');
     const [mentees, setMentees] = useState<any[]>([]);
     const [students, setStudents] = useState<any[]>([]);
     const [loadingStudents, setLoadingStudents] = useState(false);
     const [loadingMentees, setLoadingMentees] = useState(false);
+
+    // Evaluation State
+    const [evaluatingProject, setEvaluatingProject] = useState<any>(null);
+    const [evaluationMarks, setEvaluationMarks] = useState<number>(0);
+    const [evaluationRemarks, setEvaluationRemarks] = useState<string>('');
+    const [evaluationType, setEvaluationType] = useState<'mid-term' | 'end-term' | null>(null);
 
     // Filters & Search
     const [searchTerm, setSearchTerm] = useState('');
@@ -160,7 +168,7 @@ const FacultyDashboard: React.FC = () => {
     useEffect(() => {
         if (activeTab === 'proposals') {
             fetchProjects();
-        } else if (activeTab === 'mentees') {
+        } else if (activeTab === 'mentees' || activeTab === 'mid-term' || activeTab === 'end-term') {
             fetchMentees();
         } else if (activeTab === 'directory') {
             fetchStudents();
@@ -226,6 +234,8 @@ const FacultyDashboard: React.FC = () => {
         }
     };
 
+
+
     const handleGroupClick = async (group: any) => {
         setViewGroup(group);
         if (group.project?.hasNewUpdate) {
@@ -236,6 +246,36 @@ const FacultyDashboard: React.FC = () => {
             } catch (error) {
                 console.error("Failed to mark update as read", error);
             }
+        }
+    };
+
+    const handleOpenEvaluation = (project: any, type: 'mid-term' | 'end-term') => {
+        setEvaluatingProject(project);
+        setEvaluationType(type);
+        const existingEval = type === 'mid-term' ? project.project?.midTermEvaluation : project.project?.endTermEvaluation;
+        setEvaluationMarks(existingEval?.marks || 0);
+        setEvaluationRemarks(existingEval?.remarks || '');
+    };
+
+    const handleSubmitEvaluation = async () => {
+        if (!evaluatingProject || !evaluationType) return;
+        try {
+            const projectId = evaluatingProject.project?._id || evaluatingProject._id; // Handle if passing mentee group or raw project
+            await api.put(`/projects/${projectId}/evaluation`, {
+                type: evaluationType,
+                marks: evaluationMarks,
+                remarks: evaluationRemarks
+            });
+
+            // Refresh Data
+            await fetchMentees();
+            setEvaluatingProject(null);
+            setEvaluationType(null);
+            setEvaluationMarks(0);
+            setEvaluationRemarks('');
+        } catch (error) {
+            console.error("Failed to submit evaluation", error);
+            alert("Failed to submit evaluation");
         }
     };
 
@@ -369,6 +409,22 @@ const FacultyDashboard: React.FC = () => {
                         active={activeTab === 'profile'}
                         onClick={() => { setActiveTab('profile'); setViewGroup(null); }}
                     />
+
+                    <div className="pt-4 border-t border-neutral-100 mt-4">
+                        <p className="px-4 text-xs font-bold text-neutral-400 uppercase tracking-wider mb-2">Evaluations</p>
+                        <SidebarItem
+                            icon={<GraduationCap className="w-5 h-5" />}
+                            label="Mid-Term Eval"
+                            active={activeTab === 'mid-term'}
+                            onClick={() => { setActiveTab('mid-term'); setViewGroup(null); }}
+                        />
+                        <SidebarItem
+                            icon={<Medal className="w-5 h-5" />}
+                            label="End-Term Eval"
+                            active={activeTab === 'end-term'}
+                            onClick={() => { setActiveTab('end-term'); setViewGroup(null); }}
+                        />
+                    </div>
                 </nav>
                 <div className="p-4 border-t border-neutral-100">
                     <div className="flex items-center gap-3 mb-4">
@@ -406,7 +462,12 @@ const FacultyDashboard: React.FC = () => {
                                     <span className="text-neutral-900">{viewGroup.name}</span>
                                 </>
                             ) : (
-                                activeTab === 'proposals' ? 'Project Proposals' : activeTab === 'mentees' ? 'My Mentees' : activeTab === 'directory' ? 'Student Directory' : 'My Profile'
+                                activeTab === 'proposals' ? 'Project Proposals' :
+                                    activeTab === 'mentees' ? 'My Mentees' :
+                                        activeTab === 'directory' ? 'Student Directory' :
+                                            activeTab === 'mid-term' ? 'Mid-Term Evaluation' :
+                                                activeTab === 'end-term' ? 'End-Term Evaluation' :
+                                                    'My Profile'
                             )}
                         </h1>
                     </div>
@@ -800,6 +861,109 @@ const FacultyDashboard: React.FC = () => {
                                                     );
                                                 }))}
                                         </div>
+                                    ) : activeTab === 'mid-term' || activeTab === 'end-term' ? (
+                                        /* EVALUATION VIEW - Grouped by Semester */
+                                        <div className="space-y-12 pb-20">
+                                            {Array.from({ length: 10 }, (_, i) => 2020 + i).reverse().map(batchYear => {
+                                                const batchSuffix = batchYear.toString().slice(2);
+                                                const batchProjects = filteredMentees.filter((item: any) => {
+                                                    const members = item.members || item.group?.members || [];
+                                                    return members.some((m: any) => m.rollNumber && m.rollNumber.startsWith(batchSuffix));
+                                                });
+
+                                                if (batchProjects.length === 0) return null;
+
+                                                return (
+                                                    <div key={batchYear} className="space-y-4">
+                                                        <div className="flex items-center gap-4">
+                                                            <h3 className="text-xl font-bold text-neutral-800 flex items-center gap-2">
+                                                                <span className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center text-sm font-bold border-2 border-white shadow-sm">
+                                                                    {batchSuffix}
+                                                                </span>
+                                                                Batch {batchYear}
+                                                            </h3>
+                                                            <div className="h-px bg-neutral-200 flex-1"></div>
+                                                            <span className="text-sm font-medium text-neutral-400 bg-white px-3 py-1 rounded-full border border-neutral-100 shadow-sm">
+                                                                {batchProjects.length} Projects
+                                                            </span>
+                                                        </div>
+
+                                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                                            {batchProjects.map((item: any) => {
+                                                                const projectData = item.project;
+                                                                const evalData = activeTab === 'mid-term' ? projectData?.midTermEvaluation : projectData?.endTermEvaluation;
+                                                                const isEvaluated = !!evalData;
+
+                                                                return (
+                                                                    <div key={item._id} className="bg-white rounded-2xl border border-neutral-200 p-6 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden group">
+                                                                        {isEvaluated && (
+                                                                            <div className="absolute top-0 right-0 p-3 bg-green-50 rounded-bl-2xl border-l border-b border-green-100 text-green-700 flex items-center gap-1.5 font-bold text-xs z-10">
+                                                                                <CheckCircle className="w-4 h-4" /> Evaluated
+                                                                            </div>
+                                                                        )}
+
+                                                                        <div className="mb-4">
+                                                                            <h3 className="text-lg font-bold text-gray-900 mb-1 line-clamp-1 pr-8" title={projectData?.title}>{projectData?.title || 'Untitled Project'}</h3>
+                                                                            <p className="text-sm text-neutral-500 font-medium flex items-center gap-1.5 align-middle">
+                                                                                <Users className="w-4 h-4" /> {item.name}
+                                                                            </p>
+                                                                        </div>
+
+                                                                        <div className="mb-6">
+                                                                            <div className="flex -space-x-2 mb-2 pl-1">
+                                                                                {item.members.slice(0, 4).map((m: any, idx: number) => (
+                                                                                    <div key={idx} className="h-8 w-8 rounded-full bg-indigo-50 border-2 border-white flex items-center justify-center text-xs font-bold text-indigo-600 shadow-sm tooltip-trigger" title={m.name}>
+                                                                                        {m.name.charAt(0)}
+                                                                                    </div>
+                                                                                ))}
+                                                                                {item.members.length > 4 && (
+                                                                                    <div className="h-8 w-8 rounded-full bg-neutral-100 border-2 border-white flex items-center justify-center text-xs font-bold text-neutral-500 shadow-sm">
+                                                                                        +{item.members.length - 4}
+                                                                                    </div>
+                                                                                )}
+                                                                            </div>
+                                                                        </div>
+
+                                                                        <div className="bg-neutral-50 rounded-xl p-4 border border-neutral-100 flex flex-col gap-3 group-hover:border-indigo-100 transition-colors">
+                                                                            <div className="flex justify-between items-center">
+                                                                                <span className="text-xs font-bold text-neutral-400 uppercase tracking-wider">Score</span>
+                                                                                <span className={`text-xl font-bold ${isEvaluated ? 'text-indigo-600' : 'text-neutral-300'}`}>
+                                                                                    {isEvaluated ? evalData.marks : '--'} <span className="text-sm text-neutral-400 font-medium">/ 100</span>
+                                                                                </span>
+                                                                            </div>
+                                                                            <button
+                                                                                onClick={() => handleOpenEvaluation(item, activeTab as 'mid-term' | 'end-term')}
+                                                                                className={`w-full py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-all ${isEvaluated
+                                                                                    ? 'bg-white border border-neutral-200 text-neutral-600 hover:bg-neutral-50 hover:text-indigo-600 hover:border-indigo-200'
+                                                                                    : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-md shadow-indigo-200 hover:shadow-lg hover:-translate-y-0.5'
+                                                                                    }`}
+                                                                            >
+                                                                                {isEvaluated ? 'Edit Evaluation' : 'Evaluate Now'}
+                                                                            </button>
+                                                                        </div>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+
+                                            {/* Fallback if no projects found in semesters (e.g. data missing semester) */}
+                                            {/* Note: In a real app, handle unclassified projects. For now, assuming all have semester or we filter tightly. */}
+                                            {filteredMentees.length === 0 && (
+                                                <div className="text-center py-20">
+                                                    <div className="w-16 h-16 bg-neutral-100 rounded-full flex items-center justify-center mx-auto mb-4 text-neutral-400">
+                                                        <FileText className="w-8 h-8" />
+                                                    </div>
+                                                    <h3 className="text-lg font-bold text-neutral-900 mb-2">No Projects Found</h3>
+                                                    <p className="text-neutral-500 max-w-md mx-auto">
+                                                        There are no projects assigned for evaluation matching your filters.
+                                                    </p>
+                                                </div>
+                                            )}
+                                        </div>
+
                                     ) : (
                                         <div className="pb-20">
                                             {activeTab === 'mentees' && viewGroup ? (
@@ -887,134 +1051,241 @@ const FacultyDashboard: React.FC = () => {
                         </div>
                     )}
                 </main>
+            </div>
 
-                {/* Project Details Modal */}
-                <Dialog.Root open={!!selectedProject} onOpenChange={(open) => !open && setSelectedProject(null)}>
-                    <Dialog.Portal>
-                        <Dialog.Overlay className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 transition-opacity" />
-                        <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-2xl bg-white rounded-3xl shadow-2xl z-50 overflow-hidden max-h-[90vh] flex flex-col focus:outline-none">
-                            <div className="flex items-center justify-between p-6 border-b border-neutral-100">
-                                <Dialog.Title className="text-xl font-bold text-neutral-900">
-                                    {selectedProject?.title}
-                                </Dialog.Title>
-                                <Dialog.Close className="p-2 rounded-full hover:bg-neutral-100 transition-colors">
-                                    <X className="w-5 h-5 text-neutral-500" />
-                                </Dialog.Close>
-                            </div>
+            {/* Project Details Modal */}
+            <Dialog.Root open={!!selectedProject} onOpenChange={(open) => !open && setSelectedProject(null)}>
+                <Dialog.Portal>
+                    <Dialog.Overlay className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 transition-opacity" />
+                    <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-2xl bg-white rounded-3xl shadow-2xl z-50 overflow-hidden max-h-[90vh] flex flex-col focus:outline-none">
+                        <div className="flex items-center justify-between p-6 border-b border-neutral-100">
+                            <Dialog.Title className="text-xl font-bold text-neutral-900">
+                                {selectedProject?.title}
+                            </Dialog.Title>
+                            <Dialog.Close className="p-2 rounded-full hover:bg-neutral-100 transition-colors">
+                                <X className="w-5 h-5 text-neutral-500" />
+                            </Dialog.Close>
+                        </div>
 
-                            <div className="p-6 overflow-y-auto">
-                                <div className="space-y-6">
-                                    <div className="flex flex-wrap gap-2">
+                        <div className="p-6 overflow-y-auto">
+                            <div className="space-y-6">
+                                <div className="flex flex-wrap gap-2">
 
-                                        <h4 className="text-sm font-bold text-neutral-900 uppercase tracking-wider mb-2">Description</h4>
-                                        <p className="text-neutral-600 leading-relaxed">
-                                            {selectedProject?.description}
-                                        </p>
-                                    </div>
-
-                                    {selectedProject?.tags && selectedProject.tags.length > 0 && (
-                                        <div>
-                                            <h4 className="text-sm font-bold text-neutral-900 uppercase tracking-wider mb-2">Technologie & Tags</h4>
-                                            <div className="flex flex-wrap gap-2">
-                                                {selectedProject.tags.map((tag: string, i: number) => (
-                                                    <span key={i} className="px-3 py-1 bg-white border border-neutral-200 text-neutral-600 rounded-lg text-sm shadow-sm">
-                                                        {tag}
-                                                    </span>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {/* Attachments */}
-                                    {selectedProject?.attachments && selectedProject.attachments.length > 0 && (
-                                        <div>
-                                            <h4 className="text-sm font-bold text-neutral-900 uppercase tracking-wider mb-2">Project Files</h4>
-                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                                {selectedProject.attachments.map((url: string, i: number) => (
-                                                    <FilePreview key={i} url={url} />
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div className="p-4 bg-neutral-50 rounded-xl border border-neutral-100">
-                                            <h4 className="text-xs font-bold text-neutral-500 uppercase tracking-wider mb-1">Group</h4>
-                                            <p className="font-bold text-neutral-900">{selectedProject?.group?.name}</p>
-                                        </div>
-                                        <div className="p-4 bg-neutral-50 rounded-xl border border-neutral-100">
-                                            <h4 className="text-xs font-bold text-neutral-500 uppercase tracking-wider mb-1">Leader</h4>
-                                            <p className="font-bold text-neutral-900">{(selectedProject as any)?.leader?.name}</p>
-                                        </div>
-                                    </div>
-                                    {(selectedProject as any)?.members && (
-                                        <div className="p-4 bg-neutral-50 rounded-xl border border-neutral-100">
-                                            <h4 className="text-xs font-bold text-neutral-500 uppercase tracking-wider mb-2">Team Members</h4>
-                                            <div className="flex flex-wrap gap-2">
-                                                {(selectedProject as any).members.map((m: any) => (
-                                                    <span key={m._id} className="px-2 py-1 bg-white rounded border border-neutral-200 text-sm">{m.name}</span>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
+                                    <h4 className="text-sm font-bold text-neutral-900 uppercase tracking-wider mb-2">Description</h4>
+                                    <p className="text-neutral-600 leading-relaxed">
+                                        {selectedProject?.description}
+                                    </p>
                                 </div>
-                            </div>
 
-                            {/* Action Footer */}
-                            {(selectedProject?.status === 'Pending' || (selectedProject?.status as any) === 'Draft') && (
-                                <div className="p-6 border-t border-neutral-100 bg-neutral-50">
-                                    <div className="mb-4">
-                                        <label className="block text-sm font-bold text-neutral-700 mb-1">Feedback / Remarks (Optional)</label>
-                                        <textarea
-                                            value={feedback}
-                                            onChange={(e) => setFeedback(e.target.value)}
-                                            placeholder="Add comments specifically for Rejection or modifications..."
-                                            className="w-full px-4 py-3 rounded-xl border border-neutral-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-sm"
-                                            rows={2}
-                                        />
+                                {selectedProject?.tags && selectedProject.tags.length > 0 && (
+                                    <div>
+                                        <h4 className="text-sm font-bold text-neutral-900 uppercase tracking-wider mb-2">Technologie & Tags</h4>
+                                        <div className="flex flex-wrap gap-2">
+                                            {selectedProject.tags.map((tag: string, i: number) => (
+                                                <span key={i} className="px-3 py-1 bg-white border border-neutral-200 text-neutral-600 rounded-lg text-sm shadow-sm">
+                                                    {tag}
+                                                </span>
+                                            ))}
+                                        </div>
                                     </div>
-                                    <div className="flex gap-3">
-                                        <button
-                                            onClick={() => selectedProject && handleAction(selectedProject._id, 'Approved')}
-                                            disabled={!!actionLoading}
-                                            className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-sm shadow-indigo-200 transition-all flex items-center justify-center gap-2"
-                                        >
-                                            {actionLoading === 'Approved' ? 'Processing...' : <><CheckCircle className="w-4 h-4" /> Approve Proposal</>}
-                                        </button>
-                                        <button
-                                            onClick={() => selectedProject && handleAction(selectedProject._id, 'Rejected')}
-                                            disabled={!!actionLoading}
-                                            className="flex-1 py-3 bg-white border border-red-200 text-red-600 hover:bg-red-50 rounded-xl font-bold transition-all flex items-center justify-center gap-2"
-                                        >
-                                            {actionLoading === 'Rejected' ? 'Processing...' : <><XCircle className="w-4 h-4" /> Reject</>}
-                                        </button>
+                                )}
+
+                                {/* Attachments */}
+                                {selectedProject?.attachments && selectedProject.attachments.length > 0 && (
+                                    <div>
+                                        <h4 className="text-sm font-bold text-neutral-900 uppercase tracking-wider mb-2">Project Files</h4>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                            {selectedProject.attachments.map((url: string, i: number) => (
+                                                <FilePreview key={i} url={url} />
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="p-4 bg-neutral-50 rounded-xl border border-neutral-100">
+                                        <h4 className="text-xs font-bold text-neutral-500 uppercase tracking-wider mb-1">Group</h4>
+                                        <p className="font-bold text-neutral-900">{selectedProject?.group?.name}</p>
+                                    </div>
+                                    <div className="p-4 bg-neutral-50 rounded-xl border border-neutral-100">
+                                        <h4 className="text-xs font-bold text-neutral-500 uppercase tracking-wider mb-1">Leader</h4>
+                                        <p className="font-bold text-neutral-900">{(selectedProject as any)?.leader?.name}</p>
                                     </div>
                                 </div>
-                            )}
+                                {(selectedProject as any)?.members && (
+                                    <div className="p-4 bg-neutral-50 rounded-xl border border-neutral-100">
+                                        <h4 className="text-xs font-bold text-neutral-500 uppercase tracking-wider mb-2">Team Members</h4>
+                                        <div className="flex flex-wrap gap-2">
+                                            {(selectedProject as any).members.map((m: any) => (
+                                                <span key={m._id} className="px-2 py-1 bg-white rounded border border-neutral-200 text-sm">{m.name}</span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
 
-                            {/* View Dashboard Button for Approved Projects */}
-                            {selectedProject?.status === 'Approved' && (
-                                <div className="p-6 border-t border-neutral-100 bg-neutral-50">
+                        {/* Action Footer */}
+                        {(selectedProject?.status === 'Pending' || (selectedProject?.status as any) === 'Draft') && (
+                            <div className="p-6 border-t border-neutral-100 bg-neutral-50">
+                                <div className="mb-4">
+                                    <label className="block text-sm font-bold text-neutral-700 mb-1">Feedback / Remarks (Optional)</label>
+                                    <textarea
+                                        value={feedback}
+                                        onChange={(e) => setFeedback(e.target.value)}
+                                        placeholder="Add comments specifically for Rejection or modifications..."
+                                        className="w-full px-4 py-3 rounded-xl border border-neutral-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-sm"
+                                        rows={2}
+                                    />
+                                </div>
+                                <div className="flex gap-3">
                                     <button
-                                        onClick={() => {
-                                            if (selectedProject?.group?._id) {
-                                                navigate(`/faculty/group/${selectedProject.group._id}`);
-                                            } else {
-                                                // Fallback if no group ID (shouldn't happen for approved)
-                                                console.error("No group ID for project", selectedProject);
-                                            }
-                                        }}
-                                        className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-sm shadow-indigo-200 transition-all flex items-center justify-center gap-2"
+                                        onClick={() => selectedProject && handleAction(selectedProject._id, 'Approved')}
+                                        disabled={!!actionLoading}
+                                        className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-sm shadow-indigo-200 transition-all flex items-center justify-center gap-2"
                                     >
-                                        View Project Dashboard <ChevronRight className="w-4 h-4" />
+                                        {actionLoading === 'Approved' ? 'Processing...' : <><CheckCircle className="w-4 h-4" /> Approve Proposal</>}
+                                    </button>
+                                    <button
+                                        onClick={() => selectedProject && handleAction(selectedProject._id, 'Rejected')}
+                                        disabled={!!actionLoading}
+                                        className="flex-1 py-3 bg-white border border-red-200 text-red-600 hover:bg-red-50 rounded-xl font-bold transition-all flex items-center justify-center gap-2"
+                                    >
+                                        {actionLoading === 'Rejected' ? 'Processing...' : <><XCircle className="w-4 h-4" /> Reject</>}
                                     </button>
                                 </div>
-                            )}
-                        </Dialog.Content>
-                    </Dialog.Portal>
-                </Dialog.Root>
+                            </div>
+                        )}
 
-            </div>
+                        {/* View Dashboard Button for Approved Projects */}
+                        {selectedProject?.status === 'Approved' && (
+                            <div className="p-6 border-t border-neutral-100 bg-neutral-50">
+                                <button
+                                    onClick={() => {
+                                        if (selectedProject?.group?._id) {
+                                            navigate(`/faculty/group/${selectedProject.group._id}`);
+                                        } else {
+                                            // Fallback if no group ID (shouldn't happen for approved)
+                                            console.error("No group ID for project", selectedProject);
+                                        }
+                                    }}
+                                    className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-sm shadow-indigo-200 transition-all flex items-center justify-center gap-2"
+                                >
+                                    View Project Dashboard <ChevronRight className="w-4 h-4" />
+                                </button>
+                            </div>
+                        )}
+                    </Dialog.Content>
+                </Dialog.Portal>
+            </Dialog.Root>
+
+            {/* Evaluation Modal */}
+            <Dialog.Root open={!!evaluatingProject} onOpenChange={(open) => !open && setEvaluatingProject(null)}>
+                <Dialog.Portal>
+                    <Dialog.Overlay className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 transition-opacity" />
+                    <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-2xl bg-white rounded-3xl shadow-2xl z-50 overflow-hidden flex flex-col focus:outline-none max-h-[90vh]">
+                        <div className="flex items-center justify-between p-6 border-b border-neutral-100">
+                            <Dialog.Title className="text-xl font-bold text-neutral-900">
+                                {evaluationType === 'mid-term' ? 'Mid-Term Evaluation' : 'End-Term Evaluation'}
+                            </Dialog.Title>
+                            <Dialog.Close className="p-2 rounded-full hover:bg-neutral-100 transition-colors">
+                                <X className="w-5 h-5 text-neutral-500" />
+                            </Dialog.Close>
+                        </div>
+                        <div className="p-6 space-y-6 overflow-y-auto">
+                            {/* Project Info Section */}
+                            <div className="bg-neutral-50 rounded-2xl p-5 border border-neutral-100 space-y-4">
+                                <div>
+                                    <div className="flex items-start justify-between gap-4 mb-2">
+                                        <h4 className="text-lg font-bold text-neutral-900">{evaluatingProject?.project?.title || evaluatingProject?.title}</h4>
+                                        <span className="px-3 py-1 bg-white border border-neutral-200 rounded-lg text-xs font-bold text-neutral-500 uppercase tracking-wider whitespace-nowrap">
+                                            {evaluatingProject?.group?.name || evaluatingProject?.name}
+                                        </span>
+                                    </div>
+                                    <p className="text-neutral-600 text-sm leading-relaxed">
+                                        {evaluatingProject?.project?.description || "No description provided."}
+                                    </p>
+                                </div>
+
+                                {evaluatingProject?.project?.tags && evaluatingProject.project.tags.length > 0 && (
+                                    <div className="flex flex-wrap gap-2">
+                                        {evaluatingProject.project.tags.map((tag: string, i: number) => (
+                                            <span key={i} className="px-2 py-1 bg-white border border-neutral-200 text-neutral-500 rounded text-xs">
+                                                {tag}
+                                            </span>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {/* Team Members */}
+                                <div>
+                                    <h5 className="text-xs font-bold text-neutral-500 uppercase tracking-wider mb-3 flex items-center gap-2">
+                                        <Users className="w-3 h-3" /> Team Members
+                                    </h5>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                        {evaluatingProject?.members?.map((member: any) => (
+                                            <div key={member._id} className="flex items-center gap-3 bg-white p-2 rounded-xl border border-neutral-100">
+                                                <div className="h-8 w-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-xs border border-indigo-200">
+                                                    {member.name.charAt(0)}
+                                                </div>
+                                                <div className="overflow-hidden">
+                                                    <p className="text-sm font-bold text-neutral-900 truncate">{member.name}</p>
+                                                    <p className="text-xs text-neutral-500 truncate font-mono">{member.rollNumber}</p>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="h-px bg-neutral-100 w-full"></div>
+
+                            {/* Evaluation Inputs */}
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                <div className="md:col-span-1">
+                                    <label className="block text-sm font-bold text-neutral-700 mb-2">Marks (0-100)</label>
+                                    <div className="relative">
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            max="100"
+                                            value={evaluationMarks}
+                                            onChange={(e) => setEvaluationMarks(Number(e.target.value))}
+                                            className="w-full px-4 py-3 rounded-xl border border-neutral-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-2xl font-bold font-mono text-center"
+                                        />
+                                        <div className="absolute right-4 top-1/2 -translate-y-1/2 text-neutral-400 font-bold text-sm">/ 100</div>
+                                    </div>
+                                </div>
+
+                                <div className="md:col-span-2">
+                                    <label className="block text-sm font-bold text-neutral-700 mb-2">Remarks & Feedback</label>
+                                    <textarea
+                                        value={evaluationRemarks}
+                                        onChange={(e) => setEvaluationRemarks(e.target.value)}
+                                        placeholder="Enter detailed feedback for the team..."
+                                        className="w-full px-4 py-3 rounded-xl border border-neutral-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-sm h-[120px] resize-none"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                        <div className="p-6 border-t border-neutral-100 bg-neutral-50 flex gap-3">
+                            <button
+                                onClick={() => setEvaluatingProject(null)}
+                                className="flex-1 py-3 bg-white border border-neutral-200 text-neutral-600 font-bold rounded-xl hover:bg-neutral-50 transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleSubmitEvaluation}
+                                className="flex-1 py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 shadow-sm shadow-indigo-200 transition-colors flex items-center justify-center gap-2"
+                            >
+                                <CheckCircle className="w-4 h-4" /> Submit Evaluation
+                            </button>
+                        </div>
+                    </Dialog.Content>
+                </Dialog.Portal>
+            </Dialog.Root>
+
         </div>
     );
 };
