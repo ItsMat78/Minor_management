@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import api from '../utils/api';
 import { useNavigate } from 'react-router-dom';
-import { FileText, Send, X, Check, ArrowRight } from 'lucide-react';
+import { Send, X, Check, ArrowRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useAuth } from '../context/AuthContext';
 
 interface Faculty {
     _id: string;
@@ -13,13 +14,16 @@ interface Faculty {
 }
 
 const ProjectProposal: React.FC = () => {
+    const { user } = useAuth();
     const navigate = useNavigate();
     const [step, setStep] = useState(1);
     const [formData, setFormData] = useState({
         title: '',
         description: '',
         tags: '',
-        facultyId: ''
+        facultyId: '', // Optional now
+        attachments: '',
+        semester: 0
     });
     const [facultyList, setFacultyList] = useState<Faculty[]>([]);
     const [loading, setLoading] = useState(false);
@@ -29,7 +33,20 @@ const ProjectProposal: React.FC = () => {
         api.get('/users/faculty')
             .then(res => setFacultyList(res.data))
             .catch(err => console.error('Failed to fetch faculty', err));
-    }, []);
+
+        if (user?.rollNumber) {
+            const batchYear = 2000 + parseInt(user.rollNumber.substring(0, 2));
+            const now = new Date();
+            const currentYear = now.getFullYear();
+            const currentMonth = now.getMonth(); // 0-11
+
+            let sem = (currentYear - batchYear) * 2;
+            if (currentMonth >= 5) sem += 1; // Odd sem (June to Dec)
+
+            if (sem < 1) sem = 1;
+            setFormData(prev => ({ ...prev, semester: sem }));
+        }
+    }, [user]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -46,17 +63,22 @@ const ProjectProposal: React.FC = () => {
 
     const prevStep = () => setStep(step - 1);
 
-    const handleSubmit = async (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent, isDraft = false) => {
         e.preventDefault();
         setLoading(true);
         setError('');
 
+        // Auto-capitalize title: Start of every word
+        const formattedTitle = formData.title.replace(/\b\w/g, char => char.toUpperCase());
+
         try {
             await api.post('/projects', {
                 ...formData,
-                tags: formData.tags.split(',').map(t => t.trim())
+                title: formattedTitle,
+                tags: formData.tags.split(',').map(t => t.trim()),
+                attachments: formData.attachments.split(',').map(a => a.trim()).filter(Boolean),
+                status: isDraft ? 'Draft' : 'Pending'
             });
-            // Redirect to dashboard (Project view)
             navigate('/');
         } catch (err: any) {
             setError(err.response?.data?.message || 'Failed to submit proposal');
@@ -85,7 +107,7 @@ const ProjectProposal: React.FC = () => {
                         </div>
                     )}
 
-                    <form onSubmit={handleSubmit}>
+                    <form>
                         <AnimatePresence mode="wait">
                             {step === 1 && (
                                 <motion.div
@@ -96,11 +118,20 @@ const ProjectProposal: React.FC = () => {
                                     className="space-y-6"
                                 >
                                     <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Semester (Auto-detected)</label>
+                                        <input
+                                            type="text"
+                                            value={formData.semester ? `Semester ${formData.semester}` : 'Detecting...'}
+                                            disabled
+                                            className="w-full px-4 py-3 rounded-lg border border-gray-200 bg-gray-50 text-gray-500 cursor-not-allowed"
+                                        />
+                                    </div>
+                                    <div>
                                         <label className="block text-sm font-medium text-gray-700 mb-1">Project Title</label>
                                         <input
                                             type="text"
                                             name="title"
-                                            className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all"
+                                            className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all capitalize"
                                             placeholder="e.g. Smart Traffic Management System"
                                             value={formData.title}
                                             onChange={handleChange}
@@ -129,6 +160,17 @@ const ProjectProposal: React.FC = () => {
                                             onChange={handleChange}
                                         />
                                     </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Attachments (Optional URLs, comma separated)</label>
+                                        <input
+                                            type="text"
+                                            name="attachments"
+                                            className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all"
+                                            placeholder="https://drive.google.com/..., https://github.com/..."
+                                            value={formData.attachments}
+                                            onChange={handleChange}
+                                        />
+                                    </div>
                                 </motion.div>
                             )}
 
@@ -142,13 +184,29 @@ const ProjectProposal: React.FC = () => {
                                 >
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 mb-2">Select Faculty Mentor</label>
+
+                                        {/* Option to skip faculty */}
+                                        <div className="mb-4">
+                                            <label className="flex items-center gap-2 cursor-pointer p-3 border border-gray-200 rounded-lg hover:bg-gray-50">
+                                                <input
+                                                    type="radio"
+                                                    name="facultyId"
+                                                    value=""
+                                                    checked={formData.facultyId === ""}
+                                                    onChange={handleChange}
+                                                    className="h-4 w-4 text-gray-500"
+                                                />
+                                                <span className="font-medium text-gray-700">Decide Later (No Faculty Selected)</span>
+                                            </label>
+                                        </div>
+
                                         <div className="grid grid-cols-1 gap-3 max-h-[400px] overflow-y-auto pr-2">
                                             {facultyList.map(faculty => (
                                                 <label
                                                     key={faculty._id}
                                                     className={`cursor-pointer p-4 rounded-xl border-2 transition-all flex items-center justify-between group ${formData.facultyId === faculty._id
-                                                            ? 'border-indigo-600 bg-indigo-50'
-                                                            : 'border-gray-100 hover:border-indigo-200 hover:bg-gray-50'
+                                                        ? 'border-indigo-600 bg-indigo-50'
+                                                        : 'border-gray-100 hover:border-indigo-200 hover:bg-gray-50'
                                                         }`}
                                                 >
                                                     <div className="flex items-center gap-3">
@@ -170,8 +228,8 @@ const ProjectProposal: React.FC = () => {
                                                         </div>
                                                     </div>
                                                     <span className={`text-xs px-2 py-1 rounded-full ${faculty.currentStudents >= faculty.maxStudents
-                                                            ? 'bg-red-100 text-red-600'
-                                                            : 'bg-green-100 text-green-600'
+                                                        ? 'bg-red-100 text-red-600'
+                                                        : 'bg-green-100 text-green-600'
                                                         }`}>
                                                         {faculty.currentStudents}/{faculty.maxStudents} Students
                                                     </span>
@@ -205,13 +263,24 @@ const ProjectProposal: React.FC = () => {
                                     Next Step <ArrowRight className="w-4 h-4" />
                                 </button>
                             ) : (
-                                <button
-                                    type="submit"
-                                    disabled={loading || !formData.facultyId}
-                                    className="px-8 py-3 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 shadow-lg shadow-green-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                    {loading ? 'Submitting...' : 'Submit Proposal'} <Send className="w-4 h-4" />
-                                </button>
+                                <div className="flex gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={(e) => handleSubmit(e, true)}
+                                        disabled={loading}
+                                        className="px-6 py-3 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200"
+                                    >
+                                        Save as Draft
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={(e) => handleSubmit(e, false)}
+                                        disabled={loading}
+                                        className="px-8 py-3 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 shadow-lg shadow-green-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                        {loading ? 'Submitting...' : 'Submit Proposal'} <Send className="w-4 h-4" />
+                                    </button>
+                                </div>
                             )}
                         </div>
                     </form>

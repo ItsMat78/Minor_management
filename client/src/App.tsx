@@ -6,8 +6,9 @@ import Signup from './pages/Signup';
 import Dashboard from './pages/Dashboard';
 import GroupFormation from './pages/GroupFormation';
 import ProjectProposal from './pages/ProjectProposal';
+import MenteeGroupPage from './pages/MenteeGroupPage'; // Added import
 
-import AdminDashboard from './pages/AdminDashboard'; // Import added
+import AdminDashboard from './pages/AdminDashboard';
 
 const App: React.FC = () => {
   return (
@@ -20,6 +21,7 @@ const App: React.FC = () => {
           <Route path="/admin" element={<ProtectedRoute adminOnly><AdminDashboard /></ProtectedRoute>} />
           <Route path="/group/create" element={<ProtectedRoute><GroupFormation /></ProtectedRoute>} />
           <Route path="/project/propose" element={<ProtectedRoute><ProjectProposal /></ProtectedRoute>} />
+          <Route path="/faculty/group/:groupId" element={<ProtectedRoute><MenteeGroupPage /></ProtectedRoute>} />
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </AuthProvider>

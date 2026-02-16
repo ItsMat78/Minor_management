@@ -11,18 +11,48 @@ const Signup: React.FC = () => {
         email: '',
         password: '',
         confirmPassword: '',
-        role: 'Student', // Default role
-        rollNumber: '', // Conditional
-        branch: '', // Conditional
-        department: '', // Conditional
+        role: 'Student',
+        rollNumber: '',
+        branch: '',
+        department: '',
+        title: '', // For Faculty
     });
+    const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const { login } = useAuth();
     const navigate = useNavigate();
 
+    const facultyTitles = ['Dr.', 'Mr.', 'Mrs.', 'Ms.', 'Prof.'];
+    const departments = ['Computer Science & Engineering', 'Electronics & Communication Engineering', 'Data Science & AI', 'Physics', 'Mathematics', 'Humanities'];
+
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-        setFormData({ ...formData, [e.target.name]: e.target.value });
+        const { name, value } = e.target;
+
+        if (name === 'name') {
+            // Auto-capitalize first letter of each word
+            const capitalized = value.replace(/\b\w/g, c => c.toUpperCase());
+            setFormData({ ...formData, [name]: capitalized });
+            return;
+        }
+
+        if (name === 'rollNumber') {
+            const roll = value.replace(/\D/g, '').slice(0, 9); // Only digits, max 9
+            let branch = '';
+
+            // Auto-fill branch based on roll number
+            if (roll.length >= 5) {
+                const branchCode = roll.charAt(4); // 5th digit (index 4)
+                if (branchCode === '0') branch = 'CSE';
+                else if (branchCode === '1') branch = 'ECE';
+                else if (branchCode === '2') branch = 'DSAI';
+            }
+
+            setFormData({ ...formData, rollNumber: roll, branch });
+            return;
+        }
+
+        setFormData({ ...formData, [name]: value });
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -36,9 +66,29 @@ const Signup: React.FC = () => {
             return;
         }
 
+        if (formData.role === 'Student') {
+            if (formData.rollNumber.length !== 9) {
+                setError("Roll Number must be exactly 9 digits.");
+                setIsLoading(false);
+                return;
+            }
+            if (!formData.email.endsWith('@iiitnr.edu.in')) {
+                setError("Please use your Institute Email ID (@iiitnr.edu.in)");
+                setIsLoading(false);
+                return;
+            }
+        }
+
         try {
-            const { confirmPassword, ...dataToSend } = formData;
-            const res = await axios.post('http://localhost:5000/api/auth/signup', dataToSend);
+            const { confirmPassword, title, ...dataToSend } = formData;
+            const finalName = title && formData.role === 'Faculty' ? `${title} ${formData.name}` : formData.name;
+
+            const payload = {
+                ...dataToSend,
+                name: finalName
+            };
+
+            const res = await axios.post('http://localhost:5000/api/auth/signup', payload);
             login(res.data.token, res.data.user);
             navigate('/dashboard');
         } catch (err: any) {
@@ -64,6 +114,24 @@ const Signup: React.FC = () => {
                     </p>
                 </div>
 
+                {/* Role Selection Toggle */}
+                <div className="mb-6 flex p-1 bg-neutral-100 rounded-lg">
+                    <button
+                        type="button"
+                        onClick={() => setFormData({ ...formData, role: 'Student' })}
+                        className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${formData.role === 'Student' ? 'bg-white shadow-sm text-neutral-900' : 'text-neutral-500 hover:text-neutral-900'}`}
+                    >
+                        Student
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setFormData({ ...formData, role: 'Faculty' })}
+                        className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${formData.role === 'Faculty' ? 'bg-white shadow-sm text-neutral-900' : 'text-neutral-500 hover:text-neutral-900'}`}
+                    >
+                        Faculty
+                    </button>
+                </div>
+
                 <form onSubmit={handleSubmit} className="space-y-5">
                     <AnimatePresence>
                         {error && (
@@ -79,37 +147,97 @@ const Signup: React.FC = () => {
                     </AnimatePresence>
 
                     <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-                        <div className="md:col-span-2">
+                        {formData.role === 'Faculty' && (
+                            <div>
+                                <label className="mb-1 block text-sm font-medium text-neutral-700">Title</label>
+                                <select
+                                    name="title"
+                                    className="block w-full rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-3 text-neutral-900 outline-none transition-all focus:border-neutral-900 focus:bg-white focus:ring-0"
+                                    value={formData.title}
+                                    onChange={handleChange}
+                                    required
+                                >
+                                    <option value="">Select</option>
+                                    {facultyTitles.map(t => <option key={t} value={t}>{t}</option>)}
+                                </select>
+                            </div>
+                        )}
+                        <div className={formData.role === 'Faculty' ? "" : "md:col-span-2"}>
                             <label className="mb-1 block text-sm font-medium text-neutral-700">Full Name</label>
                             <input
                                 name="name"
                                 type="text"
                                 required
                                 className="block w-full rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-3 text-neutral-900 outline-none transition-all placeholder:text-neutral-400 focus:border-neutral-900 focus:bg-white focus:ring-0"
-                                placeholder="John Doe"
+                                placeholder={formData.role === 'Student' ? "John Doe" : "Enter Name"}
                                 value={formData.name}
                                 onChange={handleChange}
                             />
                         </div>
 
                         <div className="md:col-span-2">
-                            <label className="mb-1 block text-sm font-medium text-neutral-700">Email Address</label>
+                            <label className="mb-1 block text-sm font-medium text-neutral-700">Institute Email</label>
                             <input
                                 name="email"
                                 type="email"
                                 required
                                 className="block w-full rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-3 text-neutral-900 outline-none transition-all placeholder:text-neutral-400 focus:border-neutral-900 focus:bg-white focus:ring-0"
-                                placeholder="john@iiitnr.edu.in"
+                                placeholder={formData.role === 'Student' ? "john@iiitnr.edu.in" : "faculty@iiitnr.edu.in"}
                                 value={formData.email}
                                 onChange={handleChange}
                             />
                         </div>
 
-                        <div>
+                        {formData.role === 'Student' && (
+                            <>
+                                <div>
+                                    <label className="mb-1 block text-sm font-medium text-neutral-700">Roll Number</label>
+                                    <input
+                                        name="rollNumber"
+                                        type="text"
+                                        required
+                                        maxLength={9}
+                                        className="block w-full rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-3 text-neutral-900 outline-none transition-all placeholder:text-neutral-400 focus:border-neutral-900 focus:bg-white focus:ring-0"
+                                        placeholder="e.g. 241020269"
+                                        value={formData.rollNumber}
+                                        onChange={handleChange}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="mb-1 block text-sm font-medium text-neutral-700">Branch (Auto)</label>
+                                    <input
+                                        name="branch"
+                                        type="text"
+                                        readOnly
+                                        className="block w-full rounded-lg border border-neutral-200 bg-neutral-100 px-4 py-3 text-neutral-500 cursor-not-allowed outline-none"
+                                        placeholder="Auto-detected"
+                                        value={formData.branch}
+                                    />
+                                </div>
+                            </>
+                        )}
+
+                        {formData.role === 'Faculty' && (
+                            <div className="md:col-span-2">
+                                <label className="mb-1 block text-sm font-medium text-neutral-700">Department</label>
+                                <select
+                                    name="department"
+                                    className="block w-full rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-3 text-neutral-900 outline-none transition-all focus:border-neutral-900 focus:bg-white focus:ring-0"
+                                    value={formData.department}
+                                    onChange={handleChange}
+                                    required
+                                >
+                                    <option value="">Select Department</option>
+                                    {departments.map(d => <option key={d} value={d}>{d}</option>)}
+                                </select>
+                            </div>
+                        )}
+
+                        <div className="relative">
                             <label className="mb-1 block text-sm font-medium text-neutral-700">Password</label>
                             <input
                                 name="password"
-                                type="password"
+                                type={showPassword ? "text" : "password"}
                                 required
                                 className="block w-full rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-3 text-neutral-900 outline-none transition-all placeholder:text-neutral-400 focus:border-neutral-900 focus:bg-white focus:ring-0"
                                 placeholder="••••••••"
@@ -117,11 +245,11 @@ const Signup: React.FC = () => {
                                 onChange={handleChange}
                             />
                         </div>
-                        <div>
+                        <div className="relative">
                             <label className="mb-1 block text-sm font-medium text-neutral-700">Confirm Password</label>
                             <input
                                 name="confirmPassword"
-                                type="password"
+                                type={showPassword ? "text" : "password"}
                                 required
                                 className="block w-full rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-3 text-neutral-900 outline-none transition-all placeholder:text-neutral-400 focus:border-neutral-900 focus:bg-white focus:ring-0"
                                 placeholder="••••••••"
@@ -130,82 +258,16 @@ const Signup: React.FC = () => {
                             />
                         </div>
 
-                        <div className="md:col-span-2">
-                            <label className="mb-1 block text-sm font-medium text-neutral-700">Role</label>
-                            <select
-                                name="role"
-                                className="block w-full rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-3 text-neutral-900 outline-none transition-all focus:border-neutral-900 focus:bg-white focus:ring-0"
-                                value={formData.role}
-                                onChange={handleChange}
+                        <div className="md:col-span-2 flex justify-end">
+                            <button
+                                type="button"
+                                onClick={() => setShowPassword(!showPassword)}
+                                className="text-sm text-neutral-500 hover:text-neutral-900 underline"
                             >
-                                <option value="Student">Student</option>
-                                <option value="Faculty">Faculty</option>
-                            </select>
+                                {showPassword ? "Hide Passwords" : "Show Passwords"}
+                            </button>
                         </div>
                     </div>
-
-                    <AnimatePresence mode="wait">
-                        {formData.role === 'Student' && (
-                            <motion.div
-                                key="student-fields"
-                                initial={{ opacity: 0, height: 0 }}
-                                animate={{ opacity: 1, height: 'auto' }}
-                                exit={{ opacity: 0, height: 0 }}
-                                className="grid grid-cols-1 gap-5 md:grid-cols-2 overflow-hidden"
-                            >
-                                <div>
-                                    <label className="mb-1 block text-sm font-medium text-neutral-700">Roll Number</label>
-                                    <input
-                                        name="rollNumber"
-                                        type="text"
-                                        required
-                                        className="block w-full rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-3 text-neutral-900 outline-none transition-all placeholder:text-neutral-400 focus:border-neutral-900 focus:bg-white focus:ring-0"
-                                        placeholder="e.g. 21100"
-                                        value={formData.rollNumber}
-                                        onChange={handleChange}
-                                    />
-                                </div>
-                                <div>
-                                    <label className="mb-1 block text-sm font-medium text-neutral-700">Branch</label>
-                                    <select
-                                        name="branch"
-                                        required
-                                        className="block w-full rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-3 text-neutral-900 outline-none transition-all focus:border-neutral-900 focus:bg-white focus:ring-0"
-                                        value={formData.branch}
-                                        onChange={handleChange}
-                                    >
-                                        <option value="">Select Branch</option>
-                                        <option value="CSE">CSE</option>
-                                        <option value="DSAI">DSAI</option>
-                                        <option value="ECE">ECE</option>
-                                    </select>
-                                </div>
-                            </motion.div>
-                        )}
-
-                        {formData.role === 'Faculty' && (
-                            <motion.div
-                                key="faculty-fields"
-                                initial={{ opacity: 0, height: 0 }}
-                                animate={{ opacity: 1, height: 'auto' }}
-                                exit={{ opacity: 0, height: 0 }}
-                                className="overflow-hidden"
-                            >
-                                <div>
-                                    <label className="mb-1 block text-sm font-medium text-neutral-700">Department</label>
-                                    <input
-                                        name="department"
-                                        type="text"
-                                        required
-                                        className="block w-full rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-3 text-neutral-900 outline-none transition-all placeholder:text-neutral-400 focus:border-neutral-900 focus:bg-white focus:ring-0"
-                                        placeholder="e.g. Computer Science"
-                                        value={formData.department}
-                                        onChange={handleChange}
-                                    />
-                                </div>
-                            </motion.div>
-                        )}
-                    </AnimatePresence>
 
                     <button
                         type="submit"

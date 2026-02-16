@@ -21,6 +21,7 @@ const port = process.env.PORT || 5000;
 
 app.use(cors());
 app.use(express.json());
+app.use('/uploads', express.static('uploads'));
 
 // Database Connection
 const mongoUri = process.env.MONGO_URI || 'mongodb://localhost:27017/minor_management';

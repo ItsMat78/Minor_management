@@ -8,6 +8,8 @@ interface User {
     role: 'Student' | 'Faculty' | 'Admin';
     branch?: string;
     rollNumber?: string;
+    department?: string;
+    expertise?: string[];
 }
 
 interface AuthContextType {

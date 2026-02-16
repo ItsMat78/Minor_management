@@ -1,5 +1,5 @@
 import express from 'express';
-import { createGroup, getMyGroup } from '../controllers/groupController';
+import { createGroup, getMyGroup, leaveGroup, getMyMentees } from '../controllers/groupController';
 import { auth } from '../middleware/authMiddleware';
 
 const router = express.Router();
@@ -9,5 +9,8 @@ router.use(auth);
 
 router.post('/', createGroup);
 router.get('/my', getMyGroup);
+router.get('/mentees', getMyMentees);
+
+router.post('/leave', leaveGroup);
 
 export default router;

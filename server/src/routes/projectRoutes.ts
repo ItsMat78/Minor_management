@@ -1,12 +1,17 @@
 import express from 'express';
-import { createProject, getProjects } from '../controllers/projectController';
+import { createProject, getProjects, getFacultyProjects, updateProjectStatus, addUpdate, markUpdatesRead } from '../controllers/projectController';
 import { auth } from '../middleware/authMiddleware';
+import { upload } from '../middleware/uploadMiddleware';
 
 const router = express.Router();
 
 router.use(auth);
 
 router.post('/', createProject);
+router.get('/faculty', getFacultyProjects);
+router.put('/:id/status', updateProjectStatus);
+router.post('/:id/updates', upload.array('files', 5), addUpdate);
+router.put('/:id/updates/read', markUpdatesRead);
 router.get('/', getProjects);
 
 export default router;

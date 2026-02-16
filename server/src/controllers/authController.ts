@@ -36,7 +36,10 @@ export const signup = async (req: Request, res: Response) => {
 
         const token = jwt.sign({ id: newUser._id, role: newUser.role }, JWT_SECRET, { expiresIn: '1d' });
 
-        res.status(201).json({ token, user: { id: newUser._id, name: newUser.name, email: newUser.email, role: newUser.role } });
+        const userObj = newUser.toObject() as any;
+        delete userObj.password;
+
+        res.status(201).json({ token, user: userObj });
     } catch (error) {
         res.status(500).json({ message: 'Server error', error });
     }
@@ -58,7 +61,10 @@ export const login = async (req: Request, res: Response) => {
 
         const token = jwt.sign({ id: user._id, role: user.role }, JWT_SECRET, { expiresIn: '1d' });
 
-        res.json({ token, user: { id: user._id, name: user.name, email: user.email, role: user.role } });
+        const userObj = user.toObject() as any;
+        delete userObj.password;
+
+        res.json({ token, user: userObj });
     } catch (error) {
         res.status(500).json({ message: 'Server error', error });
     }
