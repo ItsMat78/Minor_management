@@ -73,7 +73,15 @@ const MenteeCard = ({ item, activeTab, navigate, setSelectedProject }: any) => (
                                 <Clock className="w-3 h-3" />}
                         {item.status || item.project?.status || 'Active'}
                     </div>
-                ) : <div />}
+                ) : (
+                    <div className="flex flex-wrap gap-1 max-w-[75%]">
+                        {(item.members || item.group?.members || []).map((m: any, idx: number) => (
+                            <span key={idx} className="text-[10px] font-bold text-neutral-500 bg-neutral-100 px-1.5 py-0.5 rounded border border-neutral-200">
+                                {m.name}
+                            </span>
+                        ))}
+                    </div>
+                )}
 
                 {(item.semester || item.project?.semester) && (
                     <span className="text-xs font-medium text-neutral-500 bg-neutral-100 px-2 py-1 rounded-md">
@@ -90,6 +98,8 @@ const MenteeCard = ({ item, activeTab, navigate, setSelectedProject }: any) => (
                 <Users className="w-4 h-4 text-neutral-400" />
                 {item.group?.name || item.name}
             </div>
+
+
 
             <p className="text-sm text-neutral-500 line-clamp-3 mb-4 leading-relaxed">
                 {activeTab === 'mentees' ? (item.project?.description || "No description provided.") : (item.description || "No description provided.")}

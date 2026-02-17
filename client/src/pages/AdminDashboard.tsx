@@ -435,6 +435,7 @@ const AdminDashboard: React.FC = () => {
                                                     <th className="px-6 py-3 font-semibold text-neutral-500">Name</th>
                                                     <th className="px-6 py-3 font-semibold text-neutral-500">Email</th>
                                                     <th className="px-6 py-3 font-semibold text-neutral-500">Branch</th>
+                                                    <th className="px-6 py-3 font-semibold text-neutral-500">Status</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-neutral-100">
@@ -444,6 +445,17 @@ const AdminDashboard: React.FC = () => {
                                                         <td className="px-6 py-4 font-medium text-neutral-900">{student.name}</td>
                                                         <td className="px-6 py-4 text-neutral-500">{student.email}</td>
                                                         <td className="px-6 py-4 text-neutral-500">{student.branch || '-'}</td>
+                                                        <td className="px-6 py-4">
+                                                            {student.isGrouped ? (
+                                                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                                                    In Group
+                                                                </span>
+                                                            ) : (
+                                                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                                                                    Unassigned
+                                                                </span>
+                                                            )}
+                                                        </td>
                                                     </tr>
                                                 ))}
                                                 {students.length === 0 && (
@@ -513,14 +525,14 @@ const AdminDashboard: React.FC = () => {
                                                     if (batchGroups.length === 0) return null;
 
                                                     return (
-                                                        <div key={batchYear} className="space-y-6 mb-12">
+                                                        <div key={batchYear} className="mb-10">
                                                             {filterBatch === 'All' && (
-                                                                <div className="flex items-center gap-6">
+                                                                <div className="sticky top-0 z-20 bg-neutral-50/95 backdrop-blur py-3 -mx-6 px-6 md:-mx-8 md:px-8 border-b border-neutral-200/50 flex items-center gap-6 mb-4">
                                                                     <div className="flex items-baseline gap-3">
-                                                                        <h3 className="text-2xl font-bold text-neutral-900">Batch {batchYear}</h3>
+                                                                        <h3 className="text-xl font-bold text-neutral-900">Batch {batchYear}</h3>
                                                                         <span className="text-sm font-medium text-neutral-400">{batchGroups.length} Groups</span>
                                                                     </div>
-                                                                    <div className="h-px bg-neutral-100 flex-1"></div>
+                                                                    <div className="h-px bg-neutral-100 flex-1 opacity-0"></div>
                                                                 </div>
                                                             )}
 
@@ -530,7 +542,6 @@ const AdminDashboard: React.FC = () => {
                                                                         <tr>
                                                                             <th className="px-6 py-4 text-xs font-bold text-neutral-400 uppercase tracking-wider">Group / Project</th>
                                                                             <th className="px-6 py-4 text-xs font-bold text-neutral-400 uppercase tracking-wider">Faculty</th>
-                                                                            <th className="px-6 py-4 text-xs font-bold text-neutral-400 uppercase tracking-wider">Members</th>
                                                                             <th className="px-6 py-4 text-xs font-bold text-neutral-400 uppercase tracking-wider">Status</th>
                                                                             <th className="px-6 py-4 text-xs font-bold text-neutral-400 uppercase tracking-wider text-right">Action</th>
                                                                         </tr>
@@ -541,7 +552,16 @@ const AdminDashboard: React.FC = () => {
                                                                                 <td className="px-6 py-4">
                                                                                     <div className="flex flex-col">
                                                                                         <span className="font-bold text-neutral-900 group-hover:text-indigo-600 transition-colors">{item.name}</span>
-                                                                                        <span className="text-sm text-neutral-500 line-clamp-1">{item.project?.title || 'No Project'}</span>
+                                                                                        <span className="text-sm text-neutral-500 line-clamp-1 mb-1">
+                                                                                            {item.project?.title || 'No Project'}
+                                                                                        </span>
+                                                                                        <div className="flex flex-wrap gap-1 mt-1">
+                                                                                            {item.members?.map((m: any, idx: number) => (
+                                                                                                <span key={idx} className="text-xs text-neutral-600 bg-neutral-100 px-1.5 py-0.5 rounded border border-neutral-200">
+                                                                                                    {m.name}
+                                                                                                </span>
+                                                                                            ))}
+                                                                                        </div>
                                                                                     </div>
                                                                                 </td>
                                                                                 <td className="px-6 py-4">
@@ -552,15 +572,6 @@ const AdminDashboard: React.FC = () => {
                                                                                         <span className="text-sm font-medium text-neutral-700">
                                                                                             {item.project?.faculty?.name || 'Unassigned'}
                                                                                         </span>
-                                                                                    </div>
-                                                                                </td>
-                                                                                <td className="px-6 py-4">
-                                                                                    <div className="flex -space-x-2">
-                                                                                        {item.members.slice(0, 3).map((m: any, idx: number) => (
-                                                                                            <div key={idx} className="h-8 w-8 rounded-full bg-indigo-100 border-2 border-white flex items-center justify-center text-xs font-bold text-indigo-600" title={m.name}>
-                                                                                                {m.name.charAt(0)}
-                                                                                            </div>
-                                                                                        ))}
                                                                                     </div>
                                                                                 </td>
                                                                                 <td className="px-6 py-4">

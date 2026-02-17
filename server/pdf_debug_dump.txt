@@ -1,0 +1,404 @@
+
+
+K
+Project Group Members 
+NameRoll NoDepartmentTitle of the Minor ProjectArea of ProjectName of the  Supervisor
+1Aakansha Verma 241010201ECE
+skinsense AIAI, Web development Dr. Abhishek SharmaAbhay Yadav 241000001CSE
+2Siddharth 241000477CSE
+Related To AI Dr. Avantika Singh
+Rajgire Akhil Reddy241020464DSAI
+Utkarsh Gupta241020484DSAI
+3Arpita Dash241000016CSE
+College assignment and 
+assessment portalSoftware development, AIDr. Abhishek SharmaDivyanshu Kumar241000027CSE
+4Aksh Verma241000010CSE
+PR review and issue tracker agent 
+embedded with GitHub Agentic AIProf. (Dr.) Srinivasa KG
+Gaurav Singh241000029CSE
+Harsh Kaushik241000031CSE
+5Pulkit Shrivastava 241000065CSE
+software developmentDr. Amit Agrawal
+Trishanth Kottapalli241000040CSE
+Mayank Dewangan241020444DSAI
+6Manas Chaudhary241020443DSAI
+An Interactive Visualization Tool 
+for RAG Optimization (ai engineer 
+tool)development tool, ai , webDr. Ramakrishna Bandi
+Asmit Shaw241000213CSE
+Manreet Kaur241010243ECE
+7Kush Agrawal 241020442DSAI
+TBDCybersecurity Dr. Satyanarayana VollalaTanishq Bhattacharjee 241020482DSAI
+8Meruva Kodanda Suraj241020446DSAI
+TBDAI, Software DevelopmentDr. Mallikharjuna Rao K
+Boini Abhiram241020424DSAI
+Pavan Konduri241000089CSE
+9Ishaan Singh241020436DSAI
+Autonomous Decentralized Drone 
+Surveilence SystemRobotics, AI, CybersecurityDr. Shailesh KhapreFahmin Mohammed K K241010226ECE
+10Abhishek Agrawal241010204ECE
+Dr. Bipin Chandra Mandi
+Amaan Khan241010208ECE
+Abhineet Sagar241000003CSE
+11Harshwardhan Singh241000229CSE
+Dr. Avantika Singh
+Aakash Sen241000202CSE
+Harsh Dadsena241020433DSAI
+12Arkapriya Das 241000015CSE
+To Be DecidedRelated to AIMLDr. Vijaya J
+Adarsh Anchal 241000005CSE
+Muskan Baghel241020448DSAI
+13Harsh Ogare 241020434DSAI
+TBDTBDDr. Anurag Singh
+Pushpraj Nareti241020462DSAI
+Vimla Chouhan241000087CSE
+14Dauoo Bhaiya241000025CSE
+To Be DecidedSoftware DevDr. Kavita Jaiswal
+Ashank Mishra241000017CSE
+Varshil Pandey241000086CSE
+15Utsav Garg241010279ECE
+Handwritten Form Digitisation 
+System for Government Offices
+Image Processing & 
+Machine learningDr. Abhishek SharmaRishikant 241010259ECE
+16Anjaney Jha241020412DSAI
+Dr. Aruna Shukla
+Shikhar Varshney 241020471DSAI
+Shubhanshu Sinha 241020475DSAI
+17Nandita Sahu 241020450DSAI
+CertifyX Web development Mr. Kumar Gaurav AtramVaibhav Bhagat 241020485DSAI
+18 Shubhang Singh 241000073CSE
+Related to Web devWeb development Dr. Punya P. Paltani
+Sharma Dhanesh Jasraj241000071CSE
+Akshat Gupta241000011CSE
+19Aditya Tiwari241020405DSAI
+Dr. Punya P. Paltani
+Yog Verma241020490DSAI
+Yashvardhan Jadon241010289ECE
+20Sonali Minj241000076CSE
+TBDTBDDr. Chandra Shekhar Nishad
+Lalini Kanwar241000048CSE
+Neelam Kanwar 241000055CSE
+21Ashutosh Kumar241020419DSAI
+Dr. Vinay Kumar
+Asvin Malik241020420DSAI
+Atharva Waghmare 241020421DSAI
+
+22Akshita Sondhi241010207ECE
+Applications of AIML in Electric 
+VehiclesAI/ML & IoTDr. Sachida Nand Mishra
+Ekansh Arohi241020429DSAI
+ 
+23Patel Saurin Arunkumar241010250ECE
+Transistor-Level Design and 
+Analysis of CMOS Circuits Using 
+CadenceAnalogDr. Manoj Kumar Majumder
+Priyanshu Sharma241010256ECE
+Saurabh Sinha241010264ECE
+24Ayush Kumar Bhadra241010214ECE
+TBDTBDDr. Vinay Kumar
+Anushka Paul241020415DSAI
+Punyansh Thakur241020461DSAI
+25Vishesh Devaguptapu241010288ECE
+TBDTBDDr. Mallikharjuna Rao K
+Addanki Ashish241010205ECE
+Mude Naveen Naik241010244ECE
+26Devanshu Verma 241020426DSAI
+TBDRelated to ml/dlDr. Shrivishal Tripathi
+Devesh Gour 241020427DSAI
+Vishal Agrawal 241020488DSAI
+27Mayank Dixit241000050CSE
+OpenTender Decentralized 
+SystemBlockchain TechnologyDr. Kavita Jaiswal
+Vaibhav Singh241000085CSE
+Avani Dewangan241000019CSE
+28Mayank Sahu241020445DSAI
+SnapMacro Dr. Sachida Nand Mishra
+Tushar Dadsena241000084CSE
+Abhinav Shrivastava 241020404DSAI
+29Shruti Dhruw241020474DSAI
+Edge-AI Based Vehicle Accident 
+Detection & Risk Assessment 
+SystemAI + IOT Dr. Krishnanand Vishwakarma
+Akritee Singh241020407DSAI
+Paridhi Agrawal 241010248ECE
+30Vineet Agrawal 241010285ECE
+Design and FPGA Implementation 
+of an Multi-Cycle RISC Processor
+VLSI Design
+Computer Architecture
+FPGA SystemsDr. Manoj Kumar Majumder
+Arnab Das241010212ECE
+Anurag Upadhyay 241010211ECE
+31Hitesh Kumar Chandra 241010230ECE
+TBD TBD Dr. Maifuz Ali
+Karan Ramdas Jadhav 241010235ECE
+Harsh Kumar Patel241010228ECE
+32Mukti Pandit241000053CSE
+Resume Builder AI+Web Development Dr. Ruhul Amin
+Janhvi Diwan241000036CSE
+Nishika Urwasha241000057CSE
+33Lakshya Dewangan241000045CSE
+A Gamified Constitutional Literacy 
+PlatformApp DevelopmentDr. Shailesh KhapreSparrsh Sanghi241000077CSE
+34Pulak Sharma241020460DSAIML + FintechDr. Vinay Kumar
+35Ananya R Nair 241020409DSAI
+TBDDr. Aruna Shukla
+Anushka Anil241020414DSAI
+P Stuti Keerthana 241020453DSAI
+36Darshna Sharma241010220ECE
+Dr. Abhishek Sharma
+Mouli Saraf241020247DSAI
+Soumya Awasthi 241010272ECE
+37Shivam Chaudhary 241010266ECE
+TBDProf. (Dr.) O. P. Vyas
+Shivam Tiwari 241010267ECE
+Shourya Vaidya Jain241010268ECE
+38Madhav Joshi241010242ECE
+app devDr. Amit Agrawal
+Malay Chaudhary241000023CSE
+Prashil Thul241000063CSE
+39Rishika Kherniwal 241000068CSE
+TBDAI + Web Development Dr. Punya P. Paltani
+Shreya Dubey241000072CSE
+Tanmay Kumar 241000080CSE
+40Ankitesh Shrivastava241020413DSAI
+TBDTBDDr. Vinay Kumar
+Siddarth Vaidya241020476DSAI
+Ch Tarun Kumar241020219DSAI
+41Prachi Priyadarshini241020456DSAI
+TBDAI + Web Development Dr. Aruna Shukla
+Shashank Verma241020470DSAI
+Abneesh Patel241000004CSE
+42iinesh jain241010232ECE
+TBDTBDDr. Shailesh Khapre
+
+Prakriti thakur241010252ECE
+TBDTBDDr. Shailesh KhapreVanam Kartheek241010280ECE
+43Tanmay Singh 241010276ECE
+TBDTBDDr. Shashi Tiwari
+Lokendra Kumar 241010239ECE
+Rupesh Kumar Kashyap 241010262ECE
+44Rakshit Joshi 241010258ECE
+EMFT
+EMFT and Communication 
+SystemDr. Maifuz Ali
+Rohan Maheshwari 241010260ECE
+Anmol Singh241010210ECE
+45Thomas Sajeev Varghese241010277ECE
+Electronics CircuitElectronics CircuitDr. Deepika Gupta
+Jayant Yadav241010233ECE
+Prithvi Singh Chauhan241010255ECE
+46Bind Vinod Rajkumar241010217ECE
+TBDTBDDr. Bipin Chandra Mandi
+Anirudh Pandey241010209ECE
+Omkar Dattatraya 
+Waghmode241010247ECE
+47Prachi Choudhary 241010251ECE
+tbdML + CloudDr. Ruhul AminOnkareshwar Sharma 241000058CSE
+48Pranjali Upadhyay241010253ECE
+CryptographyML+LEW (Lattice based)Prof. (Dr.) Srinivasa KG
+ Soumil Garg 241010271ECE
+Varun Bhargava241010282ECE
+49Siddhant Netam Dhruv241000074CSE
+RapidCareDr. Krishnanand Vishwakarma
+Lakshya Mandavi241000046CSE
+Ritu Raj Paikra241000069CSE
+50Sreeja Pal241020478DSAI
+Fair Skin Lesion DetectionDL,CVDr. Avantika Singh
+Patnana Jagan Mohan241020455DSAI
+ 
+51Shubham Kumar 241010270ECE
+TTT for a low resource Indian 
+language NLP, DLDr. Aruna ShuklaSameer Choudhary 241020467DSAI
+52Vanshika Bhumiya241010281ECE
+COPDML + web development Dr. Santosh Kumar
+Vaddi Venkata Sai Keerthika 241010283ECE
+Sumedha Chandak 241020480DSAI
+53Aryan Dubey241020417DSAI
+Spatio-Temporal Forecasting of 
+Aerosol Index and Composition 
+Using Multi-Satellite Data
+Deep Learning/Machine 
+LearningDr. Avantika Singh
+Pranjal Gupta241020459DSAI
+Swagata Barik241020481DSAI
+54Aarav Singh 241020203DSAI
+Translation Chat App NLP and App devDr. Aruna Shukla
+Animesh Pathak241000013CSE
+Navyansh Singh241020451DSAI
+55Tenneti Vineel Krishna241000083CSE
+AutismHealthcare AIDr. Mallikharjuna Rao K
+Eepu Narendra
+241020428DSAI
+Gonthina Ravi Kiran
+241010227ECE
+56Panduga Pruthvi Raj241000060CSE
+TBDTBD 
+Dr. Vijaya J
+Eapu Rohit241000028CSE
+Annam Hema Kumar 241000014CSE
+57Tatuskar Sreenivas241020483DSAI
+                    TBD AiDr. Punya P. Paltani
+Aaditya Meghrajani241020401DSAI
+Gireesh Mishra241020431DSAI
+58Abhi Udai Singh241020403DSAI
+TBDRelated to AI or NLPDr. Aruna Shukla
+Hemangini Satyarthi241020435DSAI
+Nibedan Deb241020452DSAI
+59Kaushal Singh Sidar241010237ECE
+Gesture VocalizerIOTDr. Bipin Chandra Mandi
+Om singh241010246ECE
+Nityam Banjare241010245ECE
+60Raj Kumar Sharma 241000067CSE
+IIITNR Inventory appSoftware Development Dr. Shailesh Khapre
+Madhav Seth 241000049CSE
+Md Athar Sharif241000051CSE
+61Kshitij Jain241000041CSE
+Adaptive Distributed Rate Limiting 
+System
+Backend and Distributed 
+SystemsDr. Chandra Shekhar Nishad
+Tarun Bhagat241000081CSE
+Bhupesh Kumar Rajak241000022CSE
+62Lakshya Patwari241000047CSE
+TBDDEV +MLDr. Krishnanand Vishwakarma
+Kushagra Kumar Singh241000044CSE
+Parth Sodhan241000061CSE
+63Sagnik DasECE
+TBDTBDDr. Krishnanand Vishwakarma
+Kalash Kumar VermaCSE
+
+Sahil MaddhesiyaDSAITBDTBDDr. Krishnanand Vishwakarma
+64vislavath nithin241020489DSAI
+ai relatedDr. Mallikharjuna Rao K
+banoth Digamber241000020CSE
+gunuru ramsairohit241020432DSAI
+65Akhil Nirala241000009CSE
+Dr. Aruna Shukla
+Shashank Bhoi241010265ECE
+Rudra Prakash Daharaya241010261ECE
+66Balagani Naresh 241020423DSAI
+TBDTBDDr. Mithilesh Kumar Chaube
+Kambala Bhuvan Sai241000039CSE
+Kanchireddy Siddhardh 
+Reddy241020437DSAI
+67Eishita Mishra 241010225ECE
+Software Development, ML
+
+Dr. Abhishek Sharma
+Kazy Mohmmad Zaid 241020438DSAI
+Kuldeep Patidar241000042CSE
+68Aryan Sahu241020418DSAI
+TBDWeb Development, AIDr. Sachida Nand Mishra
+Prashant Washnikar241020457DSAI
+Vipul Netam241010287ECE
+69Shreyansh Samaddar241020473DSAI
+TDBCybersecurityDr. Satyanarayana Vollala
+Keerat Khanuja241020439DSAI
+Aayush Agrawal241020402DSAI
+70Sameer Lakra241020468DSAI
+AquaAlert – Water Complaint & 
+Alert Management SystemWeb DevelopmentDr. Krishnanand Vishwakarma
+Vikas Kosma241010284ECE
+Anish Kumar Painkra241020411DSAI
+71Yadala Sri Hari241000090CSE
+News Synthesizer
+AI/ML
+Dr. Ramakrishna Bandi
+Muppalla Chaturya Vardhan 241000054CSE
+Dantu Venkat241020425DSAI
+72ARPAN KHAKHA241020416DSAI
+TBDMr. Kumar Gaurav Atram
+FEEL PRINCE TIRKEY241020430DSAI
+HARSAL  Kornelyus241000032CSE
+73Madhav Prakash241010218ECE
+Circuit design using spintronicsSpintronicsDr. Deepika Gupta
+Dileep Betha 241010216ECE
+Bala Siva sai241010240ECE
+74Hrishabh Kumar241010231ECE
+Government Fund Flow 
+Transparency DashboardWeb Dev, BlockchainDr. Abhishek Sharma
+Joy Sarkar241010234ECE
+Raj Chaudhary241010257ECE
+75Siddhant Singh241000075CSE
+Dr. Punya P. Paltani
+Aditya Tripathi 241000007CSE
+Akshat Tewari241000012CSE
+76Avinash Rathia 241020422DSAI
+AI-Based Answer Sheet 
+EvaluationDr. Krishnanand Vishwakarma
+Akash Lakra241020406DSAI
+ 
+77Palak Vastrakar 241000059CSE
+To be decided Dr. Punya P. Paltani
+Srishti Tripathi 241000078CSE
+Aditya Goyal 241000006CSE
+78Divit Menghani241010224ECE
+electronic circuitsanalog electronicsDr. Deepika Gupta
+Karishma Singha Roy241010236ECE
+Deeksha Netam241010221ECE
+79MADASU RAVEESH241010241ECE
+ElectronicsVLSIDr. Deepika Gupta
+DEVIKARANI  ANANT
+241010222
+ECE
+DHARAVATH ISWARYA241010223ECE
+80Sambhav Das241020466DSAI
+Dr. Vinay Kumar
+Sankalp Gupta241020469DSAI
+Srijan Kapoor241020479DSAI
+81Shreya Kumari241020472DSAI
+DevOpsDr. Shailesh Khapre
+Tejasvi Sinha241000082CSE
+Chiman Esda241000024CSE
+82Abhinav Bhagat241000002CSE
+TBDSoftware DevelopmentMr. Kumar Gaurav Atram
+Himanshu Deshmukh241000033CSE
+Rahul Barma241020463DSAI
+83Atharva Suresh Bedekar241000021CSE
+IIIT-NR Admission PortalSoftware DevelopmentDr. Ramakrishna Bandi
+Janay Bhanushali241000035CSE
+Sanidhya Solanki241000070CSE
+84Indala Siddharth241000034CSE
+TBDAIDr. Santosh Kumar
+Mudavath Jagadish241000052CSE
+Bandaru Yaswanth Gopal231010213ECE
+
+85Amey Vikrant Shende241020408DSAI
+Dr. Sachida Nand Mishra
+Tirumala Raju Manish Verma241010278ECE
+Aniruddha Ghosh 241020410DSAI
+86Vijay Kumar Sahare241020486DSAI
+“AI-Based Smart Crop Health 
+Monitoring and Automatic 
+Irrigation System”Agriculture Prof. (Dr.) Srinivasa KG
+ 
+ 
+87Lalit Diwan241010238ECE
+TBDTBDDr. Krishnanand Vishwakarma
+Nilkamal Dhruw241000056CSE
+Sukhram Markam241000079CSE
+88vinay241020487DSAI
+ai agentAi automationDr. Santosh Kumar
+Kumeshwar241020441DSAI
+Raj Sahana241000066CSE
+89Praveen Bajpai241010254ECE
+TBDTBDDr Vinay Kumar
+Vinit Yadav241010286ECE
+Shreyash Rai241020269DSAI
+90Ayush Singh241010015ECE
+TBDWeb Dev,Web3,Agentic AIProf. (Dr.) Srinivasa KG
+Swastik Yadav241010074ECE
+Pradhuman Singh Rathore241000062CSE
+91Vinamra Agrawal241000088CSE
+TBDTBDDr. Ruhul Amin
+Divyansh Rangari241000026CSE
+Justin Santosh241000037CSE
+92Parth Tekwani 241020454DSAI
+Canteen Queue Optimization using Queuing TheoryTBDDr. Chandra Shekhar NishadKheelit chandrawanshi I241020440DSAI
+93Tanmay Chauhn191020456DSAITBDTBD
+Dr. Shailesh Khapre
+
+
+94Vikas Patel221010258ECETBDTBDDr. Bipin Chandra Mandi
