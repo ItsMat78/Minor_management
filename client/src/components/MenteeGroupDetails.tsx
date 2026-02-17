@@ -67,19 +67,18 @@ const MenteeGroupDetails: React.FC<MenteeGroupDetailsProps> = ({ group, user, on
                 </button>
             </div>
 
-            <div className="max-w-7xl mx-auto w-full grid grid-cols-1 lg:grid-cols-3 gap-8">
-
-                {/* Left Column - Project Info (2/3 width) */}
-                <div className="lg:col-span-2 space-y-8">
+            <div className="max-w-7xl mx-auto w-full grid grid-cols-1 xl:grid-cols-4 gap-8">
+                {/* Left Column - Project Info (3/4 width) */}
+                <div className="xl:col-span-3 space-y-6">
 
                     {/* Main Project Card */}
-                    <div className="bg-white rounded-3xl border border-neutral-200 shadow-sm p-8">
+                    <div className="bg-white rounded-2xl border border-neutral-100 shadow-xl shadow-neutral-100/50 p-8">
                         <div className="flex flex-wrap items-center gap-3 mb-6">
                             <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${group.project?.status === 'Approved' ? 'bg-emerald-100 text-emerald-700' :
                                 group.project?.status === 'Rejected' ? 'bg-red-100 text-red-700' :
                                     'bg-indigo-100 text-indigo-700'
                                 }`}>
-                                <span className={`w-2 h-2 rounded-full ${group.project?.status === 'Approved' ? 'bg-emerald-500' :
+                                <span className={`w-1.5 h-1.5 rounded-full ${group.project?.status === 'Approved' ? 'bg-emerald-500' :
                                     group.project?.status === 'Rejected' ? 'bg-red-500' :
                                         'bg-indigo-500'
                                     }`} />
@@ -108,7 +107,7 @@ const MenteeGroupDetails: React.FC<MenteeGroupDetailsProps> = ({ group, user, on
                         {group.project?.tags && group.project.tags.length > 0 && (
                             <div className="flex flex-wrap gap-2 mb-6">
                                 {group.project.tags.map((tag: string, i: number) => (
-                                    <span key={i} className="px-3 py-1.5 bg-gray-50 text-gray-600 rounded-lg text-xs font-semibold border border-gray-100">
+                                    <span key={i} className="px-3 py-1 bg-neutral-50 text-neutral-600 rounded-md text-xs font-semibold border border-neutral-100">
                                         {tag}
                                     </span>
                                 ))}
@@ -119,7 +118,7 @@ const MenteeGroupDetails: React.FC<MenteeGroupDetailsProps> = ({ group, user, on
                         {group.project?.attachments && group.project.attachments.length > 0 && (
                             <div className="mb-6">
                                 <h5 className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-3 flex items-center gap-2">
-                                    Attachments
+                                    <LinkIcon className="w-3 h-3" /> Attachments
                                 </h5>
                                 <div className="flex flex-wrap gap-2">
                                     {group.project.attachments.map((url: string, index: number) => (
@@ -199,45 +198,45 @@ const MenteeGroupDetails: React.FC<MenteeGroupDetailsProps> = ({ group, user, on
                     </div>
                 </div>
 
-                {/* Right Column - Team & Mentor (1/3 width) */}
-                <div className="space-y-8">
+                {/* Right Column - Team & Mentor (1/4 width) */}
+                <div className="xl:col-span-1 space-y-6">
+                    <div className="sticky top-6 space-y-6">
+                        {/* Team Members */}
+                        <div className="bg-white rounded-2xl border border-neutral-200 shadow-sm p-6 max-h-[400px] overflow-y-auto">
+                            <h3 className="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
+                                <Users className="w-5 h-5 text-indigo-600" /> Team Members
+                            </h3>
+                            <div className="space-y-4">
+                                {group.members.map((member: any) => (
+                                    <div key={member._id} className="flex items-center gap-3 p-2 hover:bg-neutral-50 rounded-lg transition-colors">
+                                        <div className="h-8 w-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center font-bold text-white shadow-sm shrink-0 text-xs">
+                                            {member.name.charAt(0)}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <p className="font-bold text-gray-900 text-sm truncate">{member.name}</p>
+                                            <p className="text-xs text-gray-500 truncate">{member.email}</p>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
 
-                    {/* Team Members */}
-                    <div className="bg-white rounded-3xl border border-neutral-200 shadow-sm p-6">
-                        <h3 className="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
-                            <Users className="w-5 h-5 text-indigo-600" /> Team Members
-                        </h3>
-                        <div className="space-y-5">
-                            {group.members.map((member: any) => (
-                                <div key={member._id} className="flex items-center gap-4">
-                                    <div className="h-10 w-10 rounded-full bg-indigo-600 flex items-center justify-center font-bold text-white shadow-md shadow-indigo-200 shrink-0">
-                                        {member.name.charAt(0)}
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <p className="font-bold text-gray-900 text-sm truncate">{member.name}</p>
-                                        <p className="text-xs text-gray-500 truncate">{member.email}</p>
-                                    </div>
+                        {/* Faculty Mentor */}
+                        <div className="bg-white rounded-2xl border border-neutral-200 shadow-sm p-6">
+                            <h3 className="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
+                                <Users className="w-5 h-5 text-orange-600" /> Faculty Mentor
+                            </h3>
+                            <div className="flex items-center gap-3 p-2 bg-orange-50/50 rounded-lg border border-orange-100">
+                                <div className="h-8 w-8 rounded-full bg-orange-100 flex items-center justify-center font-bold text-orange-700 shrink-0 text-xs text-orange-600 border border-orange-200">
+                                    {(group.project?.faculty?.name || user?.name || 'F').charAt(0)}
                                 </div>
-                            ))}
-                        </div>
-                    </div>
-
-                    {/* Faculty Mentor */}
-                    <div className="bg-white rounded-3xl border border-neutral-200 shadow-sm p-6">
-                        <h3 className="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
-                            <Users className="w-5 h-5 text-orange-600" /> Faculty Mentor
-                        </h3>
-                        <div className="p-4 bg-orange-50 rounded-2xl border border-orange-100 flex items-center gap-4">
-                            <div className="h-10 w-10 rounded-full bg-orange-100 flex items-center justify-center font-bold text-orange-600 border border-orange-200 shrink-0">
-                                {user?.name?.charAt(0) || 'F'}
-                            </div>
-                            <div className="overflow-hidden">
-                                <p className="font-bold text-gray-900 text-sm truncate">{user?.name}</p>
-                                <p className="text-xs text-gray-500 truncate">{user?.department || 'Faculty'}</p>
+                                <div className="overflow-hidden">
+                                    <p className="font-bold text-gray-900 text-sm truncate">{group.project?.faculty?.name || user?.name || 'Unassigned'}</p>
+                                    <p className="text-xs text-gray-500 truncate">{group.project?.faculty?.department || user?.department || 'Faculty'}</p>
+                                </div>
                             </div>
                         </div>
                     </div>
-
                 </div>
             </div>
 

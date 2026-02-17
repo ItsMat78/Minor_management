@@ -186,7 +186,11 @@ export const addUpdate = async (req: Request, res: Response) => {
             attachments: fileUrls,
             links: linkUrls
         });
-        project.hasNewUpdate = true; // Flag for faculty
+        if (isFaculty) {
+            project.hasNewUpdate = false;
+        } else {
+            project.hasNewUpdate = true;
+        }
         await project.save();
 
         res.json(project);

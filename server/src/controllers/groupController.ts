@@ -124,6 +124,7 @@ export const getMyMentees = async (req: Request, res: Response) => {
         const userId = (req as any).user.id;
         // Find groups where the project has been APPROVED by this faculty
         const projects = await Project.find({ faculty: userId, status: 'Approved' })
+            .populate('faculty', 'name department email')
             .populate({
                 path: 'group',
                 populate: { path: 'members', select: 'name email rollNumber branch' }
@@ -141,7 +142,8 @@ export const getMyMentees = async (req: Request, res: Response) => {
                 semester: p.semester,
                 tags: p.tags,
                 attachments: p.attachments,
-                feedback: p.feedback
+                feedback: p.feedback,
+                faculty: p.faculty
             }
         }));
 

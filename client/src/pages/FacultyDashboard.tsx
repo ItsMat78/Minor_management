@@ -36,109 +36,125 @@ interface Project {
     endTermEvaluation?: { marks: number, remarks: string, date: string };
 }
 
-const MenteeCard = ({ item, activeTab, navigate, setSelectedProject }: any) => (
-    <motion.div
-        layout
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        onClick={() => {
-            if (setSelectedProject) {
-                setSelectedProject(item);
-            }
-        }}
-        className={`bg-white rounded-2xl border border-neutral-200 shadow-sm overflow-hidden hover:shadow-xl hover:border-indigo-200 hover:-translate-y-1 transition-all group flex flex-col cursor-pointer relative ${item.project?.hasNewUpdate ? 'ring-2 ring-red-400 ring-offset-2' : ''
-            }`}
-    >
-        {/* Status Stripe */}
-        <div className={`h-1.5 w-full ${(item.status || item.project?.status) === 'Approved' ? 'bg-green-500' :
-            (item.status || item.project?.status) === 'Rejected' ? 'bg-red-500' :
-                'bg-indigo-500'
-            }`} />
+const getProjectColor = (id: string) => {
+    const colors = [
+        'bg-blue-500', 'bg-indigo-500', 'bg-violet-500',
+        'bg-purple-500', 'bg-fuchsia-500', 'bg-pink-500',
+        'bg-rose-500', 'bg-orange-500', 'bg-amber-500',
+        'bg-emerald-500', 'bg-teal-500', 'bg-cyan-500', 'bg-sky-500',
+        'bg-lime-500'
+    ];
+    let hash = 0;
+    if (!id) return colors[0];
+    for (let i = 0; i < id.length; i++) {
+        hash = id.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    return colors[Math.abs(hash) % colors.length];
+};
 
-        {item.project?.hasNewUpdate && (
-            <div className="absolute top-3 right-3 px-2 py-0.5 bg-red-500 text-white text-[10px] font-bold uppercase rounded shadow-sm animate-pulse z-10">
-                New Update
-            </div>
-        )}
+const MenteeCard = ({ item, activeTab, navigate, setSelectedProject }: any) => {
+    const projectId = item.project?._id || item._id || 'default';
+    const borderColor = getProjectColor(projectId);
 
-        <div className="p-6 flex-1 flex flex-col">
-            <div className="flex justify-between items-start mb-4">
-                {activeTab !== 'mentees' ? (
-                    <div className={`px-2.5 py-1 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 ${(item.status || item.project?.status) === 'Approved' ? 'bg-green-100 text-green-700' :
-                        (item.status || item.project?.status) === 'Rejected' ? 'bg-red-100 text-red-700' :
-                            'bg-indigo-100 text-indigo-700'
-                        }`}>
-                        {(item.status || item.project?.status) === 'Approved' ? <CheckCircle className="w-3 h-3" /> :
-                            (item.status || item.project?.status) === 'Rejected' ? <XCircle className="w-3 h-3" /> :
-                                <Clock className="w-3 h-3" />}
-                        {item.status || item.project?.status || 'Active'}
-                    </div>
-                ) : (
-                    <div className="flex flex-wrap gap-1 max-w-[75%]">
-                        {(item.members || item.group?.members || []).map((m: any, idx: number) => (
-                            <span key={idx} className="text-[10px] font-bold text-neutral-500 bg-neutral-100 px-1.5 py-0.5 rounded border border-neutral-200">
-                                {m.name}
-                            </span>
-                        ))}
-                    </div>
-                )}
+    return (
+        <motion.div
+            layout
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            onClick={() => {
+                if (setSelectedProject) {
+                    setSelectedProject(item);
+                }
+            }}
+            className={`bg-white rounded-2xl border border-neutral-200 shadow-sm overflow-hidden hover:shadow-xl hover:border-indigo-200 hover:-translate-y-1 transition-all group flex flex-col cursor-pointer relative ${item.project?.hasNewUpdate ? '!border-blue-300 !shadow-md' : ''
+                }`}
+        >
+            {/* Unique Color Stripe */}
+            <div className={`h-1.5 w-full ${borderColor}`} />
 
-                {(item.semester || item.project?.semester) && (
-                    <span className="text-xs font-medium text-neutral-500 bg-neutral-100 px-2 py-1 rounded-md">
-                        Sem {item.semester || item.project?.semester}
-                    </span>
-                )}
-            </div>
-
-            <h3 className="text-lg font-bold text-neutral-900 line-clamp-2 leading-tight mb-2 group-hover:text-indigo-600 transition-colors">
-                {item.title || item.project?.title || item.name}
-            </h3>
-
-            <div className="flex items-center gap-2 text-sm text-neutral-600 font-medium mb-4">
-                <Users className="w-4 h-4 text-neutral-400" />
-                {item.group?.name || item.name}
-            </div>
-
-
-
-            <p className="text-sm text-neutral-500 line-clamp-3 mb-4 leading-relaxed">
-                {activeTab === 'mentees' ? (item.project?.description || "No description provided.") : (item.description || "No description provided.")}
-            </p>
-
-            {/* Tags */}
-            {((item.tags || item.project?.tags)?.length > 0) && (
-                <div className="flex flex-wrap gap-1.5 mb-4">
-                    {(item.tags || item.project?.tags).slice(0, 3).map((tag: string, i: number) => (
-                        <span key={i} className="px-2 py-0.5 bg-neutral-50 text-neutral-500 text-xs rounded-md border border-neutral-100">
-                            {tag}
-                        </span>
-                    ))}
-                    {(item.tags || item.project?.tags).length > 3 && <span className="text-xs text-neutral-400">+{item.tags.length - 3}</span>}
+            {item.project?.hasNewUpdate && (
+                <div className="absolute top-3 right-3 px-2 py-0.5 bg-blue-50 text-blue-600 text-[10px] font-bold uppercase rounded border border-blue-100 shadow-sm z-10">
+                    New Update
                 </div>
             )}
 
-            <div className="mt-auto pt-4 border-t border-neutral-100 flex items-center justify-between text-xs text-neutral-500">
-                <span>{new Date(item.createdAt || Date.now()).toLocaleDateString()}</span>
+            <div className="p-6 flex-1 flex flex-col">
+                <div className="flex justify-between items-start mb-4">
+                    {activeTab !== 'mentees' ? (
+                        <div className={`px-2.5 py-1 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 ${(item.status || item.project?.status) === 'Approved' ? 'bg-green-100 text-green-700' :
+                            (item.status || item.project?.status) === 'Rejected' ? 'bg-red-100 text-red-700' :
+                                'bg-indigo-100 text-indigo-700'
+                            }`}>
+                            {(item.status || item.project?.status) === 'Approved' ? <CheckCircle className="w-3 h-3" /> :
+                                (item.status || item.project?.status) === 'Rejected' ? <XCircle className="w-3 h-3" /> :
+                                    <Clock className="w-3 h-3" />}
+                            {item.status || item.project?.status || 'Active'}
+                        </div>
+                    ) : (
+                        <div className="flex flex-wrap gap-1 max-w-[75%]">
+                            {(item.members || item.group?.members || []).map((m: any, idx: number) => (
+                                <span key={idx} className="text-[10px] font-bold text-neutral-500 bg-neutral-100 px-1.5 py-0.5 rounded border border-neutral-200">
+                                    {m.name}
+                                </span>
+                            ))}
+                        </div>
+                    )}
 
-                {(activeTab === 'proposals' && item.status === 'Approved') ? (
-                    <button
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            navigate(`/faculty/group/${item.group?._id}`);
-                        }}
-                        className="z-10 px-3 py-1.5 bg-indigo-50 text-indigo-700 rounded-lg font-bold hover:bg-indigo-100 transition-colors flex items-center gap-1.5"
-                    >
-                        See updates <ChevronDown className="w-3 h-3 -rotate-90" />
-                    </button>
-                ) : (
-                    <span className="group-hover:translate-x-1 transition-transform text-indigo-600 font-medium flex items-center gap-1">
-                        {activeTab === 'proposals' ? 'Review Details' : 'View Dashboard'} <ChevronDown className="w-3 h-3 -rotate-90" />
-                    </span>
+                    {(item.semester || item.project?.semester) && (
+                        <span className="text-xs font-medium text-neutral-500 bg-neutral-100 px-2 py-1 rounded-md">
+                            Sem {item.semester || item.project?.semester}
+                        </span>
+                    )}
+                </div>
+
+                <h3 className="text-lg font-bold text-neutral-900 line-clamp-2 leading-tight mb-2 group-hover:text-indigo-600 transition-colors">
+                    {item.title || item.project?.title || item.name}
+                </h3>
+
+                <div className="flex items-center gap-2 text-sm text-neutral-600 font-medium mb-4">
+                    <Users className="w-4 h-4 text-neutral-400" />
+                    {item.group?.name || item.name}
+                </div>
+
+                <p className="text-sm text-neutral-500 line-clamp-3 mb-4 leading-relaxed">
+                    {activeTab === 'mentees' ? (item.project?.description || "No description provided.") : (item.description || "No description provided.")}
+                </p>
+
+                {/* Tags */}
+                {((item.tags || item.project?.tags)?.length > 0) && (
+                    <div className="flex flex-wrap gap-1.5 mb-4">
+                        {(item.tags || item.project?.tags).slice(0, 3).map((tag: string, i: number) => (
+                            <span key={i} className="px-2 py-0.5 bg-neutral-50 text-neutral-500 text-xs rounded-md border border-neutral-100">
+                                {tag}
+                            </span>
+                        ))}
+                        {(item.tags || item.project?.tags).length > 3 && <span className="text-xs text-neutral-400">+{item.tags.length - 3}</span>}
+                    </div>
                 )}
+
+                <div className="mt-auto pt-4 border-t border-neutral-100 flex items-center justify-between text-xs text-neutral-500">
+                    <span>{new Date(item.createdAt || Date.now()).toLocaleDateString()}</span>
+
+                    {(activeTab === 'proposals' && item.status === 'Approved') ? (
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                navigate(`/faculty/group/${item.group?._id}`);
+                            }}
+                            className="z-10 px-3 py-1.5 bg-indigo-50 text-indigo-700 rounded-lg font-bold hover:bg-indigo-100 transition-colors flex items-center gap-1.5"
+                        >
+                            See updates <ChevronDown className="w-3 h-3 -rotate-90" />
+                        </button>
+                    ) : (
+                        <span className="group-hover:translate-x-1 transition-transform text-indigo-600 font-medium flex items-center gap-1">
+                            {activeTab === 'proposals' ? 'Review Details' : 'View Dashboard'} <ChevronDown className="w-3 h-3 -rotate-90" />
+                        </span>
+                    )}
+                </div>
             </div>
-        </div>
-    </motion.div>
-);
+        </motion.div>
+    );
+};
 
 const FacultyDashboard: React.FC = () => {
     const { user, logout } = useAuth();
@@ -152,7 +168,7 @@ const FacultyDashboard: React.FC = () => {
     const [feedback, setFeedback] = useState('');
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-    const [activeTab, setActiveTab] = useState<'proposals' | 'mentees' | 'profile' | 'directory' | 'mid-term' | 'end-term'>(initialTab || 'proposals');
+    const [activeTab, setActiveTab] = useState<'proposals' | 'mentees' | 'profile' | 'directory' | 'mid-term' | 'end-term'>(initialTab || 'mentees');
     const [mentees, setMentees] = useState<any[]>([]);
     const [students, setStudents] = useState<any[]>([]);
     const [loadingStudents, setLoadingStudents] = useState(false);
@@ -174,6 +190,16 @@ const FacultyDashboard: React.FC = () => {
 
     // Group Details View State (integrated to fix sidebar issues)
     const [viewGroup, setViewGroup] = useState<any>(null);
+
+    // Keep viewGroup in sync with mentees data to reflect updates immediately
+    useEffect(() => {
+        if (viewGroup) {
+            const updatedGroup = mentees.find(m => m._id === viewGroup._id);
+            if (updatedGroup) {
+                setViewGroup(updatedGroup);
+            }
+        }
+    }, [mentees]);
 
     useEffect(() => {
         if (activeTab === 'proposals') {
@@ -506,7 +532,7 @@ const FacultyDashboard: React.FC = () => {
                             </div>
                         </div>
                     ) : (
-                        <div className="max-w-7xl mx-auto flex flex-col h-full">
+                        <div className="max-w-7xl mx-auto flex flex-col">
 
                             {/* Top Toolbar: Search (Left) + Stats & Filters (Right) */}
                             {/* Top Toolbar: Search (Left) + Stats & Filters (Right) */}
@@ -645,8 +671,8 @@ const FacultyDashboard: React.FC = () => {
 
                             {/* Content Grid */}
                             {activeTab === 'directory' ? (
-                                <div className="bg-white rounded-xl border border-neutral-200 overflow-hidden shadow-sm">
-                                    <table className="w-full text-left text-sm">
+                                <div className="bg-white rounded-xl border border-neutral-200 overflow-hidden shadow-sm overflow-x-auto">
+                                    <table className="w-full text-left text-sm min-w-[800px]">
                                         <thead className="bg-neutral-50 border-b border-neutral-200">
                                             <tr>
                                                 <th className="px-6 py-3 font-semibold text-neutral-500">Roll Number</th>
@@ -702,7 +728,7 @@ const FacultyDashboard: React.FC = () => {
                                         </tbody>
                                     </table>
                                 </div>
-                            ) : (loading || loadingMentees) ? (
+                            ) : (activeTab === 'proposals' ? loading : loadingMentees) ? (
                                 <div className="text-center py-20">
                                     <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
                                     <p className="mt-4 text-gray-500">Loading...</p>
