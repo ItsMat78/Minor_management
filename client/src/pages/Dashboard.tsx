@@ -41,6 +41,8 @@ const Dashboard: React.FC = () => {
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
     const [activeTab, setActiveTab] = useState<'directory' | 'project' | 'group' | 'archive'>('directory');
     const [isChatOpen, setIsChatOpen] = useState(false);
+    const [filterStatus, setFilterStatus] = useState<string>('all');
+    const [filterBranch, setFilterBranch] = useState<string>('all');
 
     // Dialog State
     const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -59,6 +61,26 @@ const Dashboard: React.FC = () => {
     const [isUpdateDialogOpen, setIsUpdateDialogOpen] = useState(false);
     const [isUpdateSubmitting, setIsUpdateSubmitting] = useState(false);
 
+    const fetchStudents = async () => {
+        setLoadingStudents(true);
+        try {
+            const params = new URLSearchParams();
+            if (filterStatus !== 'all') params.append('status', filterStatus);
+            if (filterBranch !== 'all') params.append('branch', filterBranch);
+
+            const studentsRes = await api.get(`/users/students?${params.toString()}`);
+            if (Array.isArray(studentsRes.data)) {
+                setStudents(studentsRes.data);
+            } else {
+                setStudents([]);
+            }
+        } catch (error) {
+            console.error("Error fetching students:", error);
+        } finally {
+            setLoadingStudents(false);
+        }
+    };
+
     const fetchDashboardData = async () => {
         try {
             // Fetch group info
@@ -67,21 +89,12 @@ const Dashboard: React.FC = () => {
                 setGroup(groupRes.data);
                 setActiveTab('project');
             }
-
-            // Fetch all students
-            setLoadingStudents(true);
-            const studentsRes = await api.get('/users/students');
-            if (Array.isArray(studentsRes.data)) {
-                setStudents(studentsRes.data);
-            } else {
-                console.error("Unexpected response for students:", studentsRes.data);
-                setStudents([]);
-            }
+            // Initial fetch of students
+            await fetchStudents();
         } catch (error) {
             console.error("Error fetching dashboard data", error);
         } finally {
             setLoading(false);
-            setLoadingStudents(false);
         }
     };
 
@@ -92,6 +105,12 @@ const Dashboard: React.FC = () => {
             setLoading(false);
         }
     }, [user]);
+
+    useEffect(() => {
+        if (user?.role === 'Student') {
+            fetchStudents();
+        }
+    }, [filterStatus, filterBranch]);
 
     const toggleStudentSelection = (id: string) => {
         const student = students.find(s => s._id === id);
@@ -320,6 +339,27 @@ const Dashboard: React.FC = () => {
                                         value={searchTerm}
                                         onChange={(e) => setSearchTerm(e.target.value)}
                                     />
+                                </div>
+                                <div className="flex gap-2 w-full sm:w-auto">
+                                    <select
+                                        value={filterStatus}
+                                        onChange={(e) => setFilterStatus(e.target.value)}
+                                        className="px-3 py-2 rounded-lg border border-neutral-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                                    >
+                                        <option value="all">All Status</option>
+                                        <option value="available">Available</option>
+                                        <option value="grouped">Grouped</option>
+                                    </select>
+                                    <select
+                                        value={filterBranch}
+                                        onChange={(e) => setFilterBranch(e.target.value)}
+                                        className="px-3 py-2 rounded-lg border border-neutral-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                                    >
+                                        <option value="all">All Branches</option>
+                                        <option value="CSE">CSE</option>
+                                        <option value="ECE">ECE</option>
+                                        <option value="DSAI">DSAI</option>
+                                    </select>
                                 </div>
                                 {!group && (
                                     <Dialog.Root open={isDialogOpen} onOpenChange={setIsDialogOpen}>
