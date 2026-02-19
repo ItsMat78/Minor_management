@@ -163,15 +163,18 @@ async function main() {
             }
         }
 
-        // Ensure Default Faculty
-        let defaultFaculty = await User.findOne({ email: 'hod.cse@iiitnr.edu.in' });
+        // Ensure Default Admin/Faculty Fallback
+        let defaultFaculty = await User.findOne({ email: 'admin@iiitnr.edu.in' });
         if (!defaultFaculty) {
+            // Should exist from create_admin.js or full_reset, but create if needed
+            const salt = await require('bcryptjs').genSalt(10);
+            const adminHash = await require('bcryptjs').hash('adminpassword', salt);
             defaultFaculty = await User.create({
-                name: 'HOD CSE',
-                email: 'hod.cse@iiitnr.edu.in',
-                password: 'password123',
-                role: 'Faculty',
-                department: 'CSE',
+                name: 'System Administrator',
+                email: 'admin@iiitnr.edu.in',
+                password: adminHash,
+                role: 'Admin',
+                department: 'Administration',
                 isVerified: true
             });
         }

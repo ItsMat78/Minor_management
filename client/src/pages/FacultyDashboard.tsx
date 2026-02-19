@@ -187,6 +187,7 @@ const FacultyDashboard: React.FC = () => {
     const [filterDirectoryYear, setFilterDirectoryYear] = useState<string>('All');
     const [filterStatus, setFilterStatus] = useState<'All' | 'Grouped' | 'Available'>('All');
     const [filterBranch, setFilterBranch] = useState<string>('All');
+    const [sortOption, setSortOption] = useState<string>('Default'); // Added sort state
 
     // Group Details View State (integrated to fix sidebar issues)
     const [viewGroup, setViewGroup] = useState<any>(null);
@@ -358,7 +359,7 @@ const FacultyDashboard: React.FC = () => {
     };
 
     const getFilteredMentees = () => {
-        const filtered = mentees.filter(g => {
+        return mentees.filter(g => {
             const matchesSearch =
                 g.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                 g.project?.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -370,10 +371,12 @@ const FacultyDashboard: React.FC = () => {
             })();
 
             return matchesSearch && matchesBatch;
-        });
+        }).sort((a, b) => {
+            if (sortOption === 'Name (A-Z)') return a.name.localeCompare(b.name);
+            if (sortOption === 'Name (Z-A)') return b.name.localeCompare(a.name);
+            if (sortOption === 'Project (A-Z)') return (a.project?.title || '').localeCompare(b.project?.title || '');
 
-        // Sort: Has Update First
-        return filtered.sort((a, b) => {
+            // Default sort: Has Update First
             const aUpdate = a.project?.hasNewUpdate ? 1 : 0;
             const bUpdate = b.project?.hasNewUpdate ? 1 : 0;
             return bUpdate - aUpdate;
@@ -398,8 +401,10 @@ const FacultyDashboard: React.FC = () => {
         return isApproved && matchesBatch;
     });
 
-    const currentTeamsCount = approvedInView.length;
-    const currentStudentsCount = approvedInView.reduce((acc, p) => acc + (p.group?.members?.length || 0), 0);
+    const currentTeamsCount = activeTab === 'mentees' ? filteredMentees.length : approvedInView.length;
+    const currentStudentsCount = activeTab === 'mentees'
+        ? filteredMentees.reduce((acc, m) => acc + (m.members?.length || 0), 0)
+        : approvedInView.reduce((acc, p) => acc + (p.group?.members?.length || 0), 0);
 
     return (
         <div className="flex h-screen bg-neutral-50 font-jakarta text-neutral-900 overflow-hidden">
@@ -604,16 +609,31 @@ const FacultyDashboard: React.FC = () => {
                                                     </select>
                                                 </>
                                             ) : (
-                                                <select
-                                                    className="px-3 py-2 bg-white rounded-xl border border-neutral-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer hover:border-indigo-300 transition-colors"
-                                                    value={filterBatch}
-                                                    onChange={(e) => setFilterBatch(e.target.value)}
-                                                >
-                                                    <option value="All">Batch: All</option>
-                                                    {Array.from({ length: 10 }, (_, i) => 2020 + i).map(year => (
-                                                        <option key={year} value={year.toString()}>{year}</option>
-                                                    ))}
-                                                </select>
+                                                <>
+                                                    {activeTab === 'mentees' && (
+                                                        <select
+                                                            className="px-3 py-2 bg-white rounded-xl border border-neutral-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer hover:border-indigo-300 transition-colors"
+                                                            value={sortOption}
+                                                            onChange={(e) => setSortOption(e.target.value)}
+                                                        >
+                                                            <option value="Default">Sort By: Updated</option>
+                                                            <option value="Name (A-Z)">Group Name (A-Z)</option>
+                                                            <option value="Name (Z-A)">Group Name (Z-A)</option>
+                                                            <option value="Project (A-Z)">Project Title (A-Z)</option>
+                                                        </select>
+                                                    )}
+
+                                                    <select
+                                                        className="px-3 py-2 bg-white rounded-xl border border-neutral-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer hover:border-indigo-300 transition-colors"
+                                                        value={filterBatch}
+                                                        onChange={(e) => setFilterBatch(e.target.value)}
+                                                    >
+                                                        <option value="All">Batch: All</option>
+                                                        {Array.from({ length: 7 }, (_, i) => (new Date().getFullYear() - 7) + i).map(year => (
+                                                            <option key={year} value={year.toString()}>{year}-{year + 4}</option>
+                                                        ))}
+                                                    </select>
+                                                </>
                                             )}
                                         </div>
 
@@ -754,7 +774,7 @@ const FacultyDashboard: React.FC = () => {
                                                     onUpdateSuccess={fetchMentees}
                                                 />
                                             ) : (
-                                                (filterBatch === 'All' ? Array.from({ length: 10 }, (_, i) => 2020 + i).reverse() : [parseInt(filterBatch || '0')]).map(batchYear => {
+                                                (filterBatch === 'All' ? Array.from({ length: 7 }, (_, i) => (new Date().getFullYear() - 7) + i).reverse() : [parseInt(filterBatch || '0')]).map(batchYear => {
                                                     if (filterBatch !== 'All' && batchYear === 0) return null; // Safe guard
 
                                                     const batchSuffix = batchYear.toString().slice(2);
@@ -775,7 +795,7 @@ const FacultyDashboard: React.FC = () => {
                                                             {filterBatch === 'All' && (
                                                                 <div className="flex items-center gap-6">
                                                                     <div className="flex items-baseline gap-3">
-                                                                        <h3 className="text-2xl font-bold text-neutral-900">Batch {batchYear}</h3>
+                                                                        <h3 className="text-2xl font-bold text-neutral-900">Batch {batchYear}-{batchYear + 4}</h3>
                                                                         <span className="text-sm font-medium text-neutral-400">{batchMentees.length} Active Projects</span>
                                                                     </div>
                                                                     <div className="h-px bg-neutral-100 flex-1"></div>

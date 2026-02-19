@@ -1,109 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
-import { Search, ChevronDown, Users, Clock, CheckCircle, XCircle, FileText, LayoutGrid, LayoutList, X, LogOut, ChevronRight, Layout, Settings, Menu, Calendar, Download, AlertCircle, TrendingUp, Pencil, Save } from 'lucide-react';
+import { Search, Users, Clock, CheckCircle, FileText, LayoutGrid, X, LogOut, ChevronRight, Settings, Menu, Calendar, Download, AlertCircle, TrendingUp, Save } from 'lucide-react';
 import { motion } from 'framer-motion';
-import * as Dialog from '@radix-ui/react-dialog';
 import MenteeGroupDetails from '../components/MenteeGroupDetails';
-
-interface Project {
-    _id: string;
-    title: string;
-    description: string;
-    tags: string[];
-    status: 'Pending' | 'Approved' | 'Rejected';
-    semester?: number;
-    group: {
-        _id: string;
-        name: string;
-        members: {
-            _id: string;
-            name: string;
-            email: string;
-            rollNumber: string;
-            branch?: string;
-        }[];
-    };
-    attachments: string[];
-    createdAt: string;
-    feedback?: string;
-    hasNewUpdate?: boolean;
-    updates?: any[];
-    updatedAt?: string;
-}
-
-const MenteeCard = ({ item, navigate, setSelectedGroup }: any) => (
-    <motion.div
-        layout
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        onClick={() => setSelectedGroup(item)}
-        className={`bg-white rounded-2xl border border-neutral-200 shadow-sm overflow-hidden hover:shadow-xl hover:border-indigo-200 hover:-translate-y-1 transition-all group flex flex-col cursor-pointer relative`}
-    >
-        {/* Status Stripe */}
-        <div className={`h-1.5 w-full ${(item.status || item.project?.status) === 'Approved' ? 'bg-green-500' :
-            (item.status || item.project?.status) === 'Rejected' ? 'bg-red-500' :
-                'bg-indigo-500'
-            }`} />
-
-        <div className="p-6 flex-1 flex flex-col">
-            <div className="flex justify-between items-start mb-4">
-                <div className={`px-2.5 py-1 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 ${(item.status || item.project?.status) === 'Approved' ? 'bg-green-100 text-green-700' :
-                    (item.status || item.project?.status) === 'Rejected' ? 'bg-red-100 text-red-700' :
-                        'bg-indigo-100 text-indigo-700'
-                    }`}>
-                    {(item.status || item.project?.status) === 'Approved' ? <CheckCircle className="w-3 h-3" /> :
-                        (item.status || item.project?.status) === 'Rejected' ? <XCircle className="w-3 h-3" /> :
-                            <Clock className="w-3 h-3" />}
-                    {item.status || item.project?.status || 'Active'}
-                </div>
-
-                {(item.semester || item.project?.semester) && (
-                    <span className="text-xs font-medium text-neutral-500 bg-neutral-100 px-2 py-1 rounded-md">
-                        Sem {item.semester || item.project?.semester}
-                    </span>
-                )}
-            </div>
-
-            <h3 className="text-lg font-bold text-neutral-900 line-clamp-2 leading-tight mb-2 group-hover:text-indigo-600 transition-colors">
-                {item.title || item.project?.title || item.name}
-            </h3>
-
-            <div className="flex items-center gap-2 text-sm text-neutral-600 font-medium mb-4">
-                <Users className="w-4 h-4 text-neutral-400" />
-                {item.group?.name || item.name}
-            </div>
-
-            <p className="text-sm text-neutral-500 line-clamp-3 mb-4 leading-relaxed">
-                {item.item?.description || item.project?.description || "No description provided."}
-            </p>
-
-            {/* Tags */}
-            {((item.tags || item.project?.tags)?.length > 0) && (
-                <div className="flex flex-wrap gap-1.5 mb-4">
-                    {(item.tags || item.project?.tags).slice(0, 3).map((tag: string, i: number) => (
-                        <span key={i} className="px-2 py-0.5 bg-neutral-50 text-neutral-500 text-xs rounded-md border border-neutral-100">
-                            {tag}
-                        </span>
-                    ))}
-                    {(item.tags || item.project?.tags).length > 3 && <span className="text-xs text-neutral-400">+{item.tags.length - 3}</span>}
-                </div>
-            )}
-
-            <div className="mt-auto pt-4 border-t border-neutral-100 flex items-center justify-between text-xs text-neutral-500">
-                <span>{new Date(item.createdAt || Date.now()).toLocaleDateString()}</span>
-                <span className="group-hover:translate-x-1 transition-transform text-indigo-600 font-medium flex items-center gap-1">
-                    View Details <ChevronDown className="w-3 h-3 -rotate-90" />
-                </span>
-            </div>
-        </div>
-    </motion.div>
-);
 
 const AdminDashboard: React.FC = () => {
     const { user, logout } = useAuth();
-    const navigate = useNavigate();
     const [activeTab, setActiveTab] = useState<'students' | 'groups' | 'faculty' | 'events' | 'exports'>('students');
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
@@ -117,11 +20,19 @@ const AdminDashboard: React.FC = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [filterBatch, setFilterBatch] = useState<string>('All');
     const [filterBranch, setFilterBranch] = useState<string>('All');
+    const [filterGroupStatus, setFilterGroupStatus] = useState<string>('All'); // Added group status filter
     const [filterFaculty, setFilterFaculty] = useState<string>('All'); // Added faculty filter
     const [viewGroup, setViewGroup] = useState<any>(null); // Re-added viewGroup state
+    const [exportBatch, setExportBatch] = useState<string>('All'); // For export filtering
     const [editingFaculty, setEditingFaculty] = useState<any>(null);
-    const [editMaxStudents, setEditMaxStudents] = useState<number>(0);
-    const [editMaxGroups, setEditMaxGroups] = useState<number>(0);
+    const [showLimitSettings, setShowLimitSettings] = useState(false);
+    const [sortOption, setSortOption] = useState<string>('Default'); // Added sort state
+
+    // Limits State
+    const [globalMaxStudents, setGlobalMaxStudents] = useState<number>(21);
+    const [globalMaxGroups, setGlobalMaxGroups] = useState<number>(7);
+    const [batchLimits, setBatchLimits] = useState<Record<number, { maxStudents: number, maxGroups: number }>>({});
+
 
     useEffect(() => {
         const fetchData = async () => {
@@ -133,6 +44,10 @@ const AdminDashboard: React.FC = () => {
                 } else if (activeTab === 'faculty') {
                     const res = await api.get('/users/faculty');
                     setFaculty(Array.isArray(res.data) ? res.data : []);
+
+                    // Fetch groups to calculate load
+                    const groupsRes = await api.get('/groups');
+                    setGroups(Array.isArray(groupsRes.data) ? groupsRes.data : []);
                 } else if (activeTab === 'groups') {
                     // Assuming endpoint exists for admin to see all groups
                     // If this fails, we might need a different endpoint, e.g., /groups
@@ -158,6 +73,11 @@ const AdminDashboard: React.FC = () => {
         }
     }, [activeTab]);
 
+    // Reset sort when tab changes
+    useEffect(() => {
+        setSortOption('Default');
+    }, [activeTab]);
+
     const refreshGroups = async () => {
         try {
             const res = await api.get('/groups');
@@ -179,25 +99,62 @@ const AdminDashboard: React.FC = () => {
 
     const handleEditFaculty = (faculty: any) => {
         setEditingFaculty(faculty);
-        setEditMaxStudents(faculty.maxStudents || 21);
-        setEditMaxGroups(faculty.maxGroups || 7);
+        setShowLimitSettings(false);
+
+        // Initialize limits from faculty data
+        setGlobalMaxStudents(faculty.maxStudents || 21);
+        setGlobalMaxGroups(faculty.maxGroups || 7);
+
+        const initialBatchLimits: any = {};
+        // Initialize defaults for recent batches
+        const currentYear = new Date().getFullYear();
+        // Generate batches from currentYear - 7 to currentYear - 1
+        const batches = Array.from({ length: 7 }, (_, i) => (currentYear - 7) + i);
+        batches.forEach(year => {
+            const config = (faculty.batchConfigs || []).find((c: any) => c.batchYear === year);
+            if (config) {
+                initialBatchLimits[year] = { maxStudents: config.maxStudents, maxGroups: config.maxGroups };
+            } else {
+                initialBatchLimits[year] = { maxStudents: faculty.maxStudents || 21, maxGroups: faculty.maxGroups || 7 };
+            }
+        });
+        setBatchLimits(initialBatchLimits);
     };
 
-    const handleSaveFaculty = async () => {
+    const handleSaveLimits = async () => {
         if (!editingFaculty) return;
         try {
+            const batchConfigs = Object.entries(batchLimits).map(([year, limits]: any) => ({
+                batchYear: parseInt(year),
+                maxStudents: limits.maxStudents,
+                maxGroups: limits.maxGroups
+            }));
+
             await api.put(`/users/${editingFaculty._id}`, {
-                maxStudents: editMaxStudents,
-                maxGroups: editMaxGroups
+                maxStudents: globalMaxStudents,
+                maxGroups: globalMaxGroups,
+                batchConfigs
             });
+
             // Refresh faculty list
             const res = await api.get('/users/faculty');
             setFaculty(Array.isArray(res.data) ? res.data : []);
             setEditingFaculty(null);
+            setShowLimitSettings(false);
         } catch (e) {
-            console.error("Failed to update faculty", e);
-            alert("Failed to update faculty");
+            console.error("Failed to update faculty limits", e);
+            alert("Failed to update faculty limits");
         }
+    };
+
+    const updateBatchLimit = (year: number, field: 'maxStudents' | 'maxGroups', value: number) => {
+        setBatchLimits(prev => ({
+            ...prev,
+            [year]: {
+                ...prev[year],
+                [field]: value
+            }
+        }));
     };
 
     const getFilteredStudents = () => {
@@ -208,7 +165,16 @@ const AdminDashboard: React.FC = () => {
                 const batchSuffix = filterBatch.slice(2);
                 return s.rollNumber && s.rollNumber.startsWith(batchSuffix);
             })();
-            return matchesSearch && matchesBranch && matchesBatch;
+            const matchesGroupStatus = filterGroupStatus === 'All' ||
+                (filterGroupStatus === 'Grouped' ? s.isGrouped : !s.isGrouped);
+
+            return matchesSearch && matchesBranch && matchesBatch && matchesGroupStatus;
+        }).sort((a, b) => {
+            if (sortOption === 'Name (A-Z)') return a.name.localeCompare(b.name);
+            if (sortOption === 'Name (Z-A)') return b.name.localeCompare(a.name);
+            if (sortOption === 'Roll No (Asc)') return (a.rollNumber || '').localeCompare(b.rollNumber || '');
+            if (sortOption === 'Roll No (Desc)') return (b.rollNumber || '').localeCompare(a.rollNumber || '');
+            return 0;
         });
     };
 
@@ -216,8 +182,9 @@ const AdminDashboard: React.FC = () => {
     const getFilteredGroups = () => {
         if (!groups) return [];
         return groups.filter(g => {
-            // Only show Approved groups
-            if ((g.status !== 'Approved') && (g.project?.status !== 'Approved')) return false;
+            // Allow all groups to be visible, or filter based on a new status filter if needed.
+            // For now, removing the strict 'Approved' check so Admin can see all groups forming.
+            // if ((g.status !== 'Approved') && (g.project?.status !== 'Approved')) return false;
 
             const matchesSearch =
                 g.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -232,6 +199,11 @@ const AdminDashboard: React.FC = () => {
             const matchesFaculty = filterFaculty === 'All' || g.project?.faculty?._id === filterFaculty || g.project?.faculty === filterFaculty;
 
             return matchesSearch && matchesBatch && matchesFaculty;
+        }).sort((a, b) => {
+            if (sortOption === 'Name (A-Z)') return a.name.localeCompare(b.name);
+            if (sortOption === 'Name (Z-A)') return b.name.localeCompare(a.name);
+            if (sortOption === 'Project (A-Z)') return (a.project?.title || '').localeCompare(b.project?.title || '');
+            return 0;
         });
     };
 
@@ -263,6 +235,24 @@ const AdminDashboard: React.FC = () => {
         });
 
         return stats;
+    };
+
+    const handleExportStudents = async () => {
+        try {
+            const response = await api.get(`/users/students/export?batch=${exportBatch}`, {
+                responseType: 'blob',
+            });
+            const url = window.URL.createObjectURL(new Blob([response.data]));
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', `students_${exportBatch}.xlsx`);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+        } catch (error) {
+            console.error('Export failed', error);
+            alert('Failed to export students');
+        }
     };
 
 
@@ -379,23 +369,35 @@ const AdminDashboard: React.FC = () => {
                                             onChange={(e) => setFilterBatch(e.target.value)}
                                         >
                                             <option value="All">Batch: All</option>
-                                            {Array.from({ length: 10 }, (_, i) => 2020 + i).map(year => (
-                                                <option key={year} value={year.toString()}>{year}</option>
+                                            {Array.from({ length: 7 }, (_, i) => (new Date().getFullYear() - 7) + i).map(year => (
+                                                <option key={year} value={year.toString()}>{year}-{year + 4}</option>
                                             ))}
                                         </select>
                                     )}
 
                                     {activeTab === 'students' && (
-                                        <select
-                                            className="px-3 py-2 bg-white rounded-xl border border-neutral-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer hover:border-indigo-300 transition-colors"
-                                            value={filterBranch}
-                                            onChange={(e) => setFilterBranch(e.target.value)}
-                                        >
-                                            <option value="All">Branch: All</option>
-                                            <option value="CSE">CSE</option>
-                                            <option value="ECE">ECE</option>
-                                            <option value="DSAI">DSAI</option>
-                                        </select>
+                                        <>
+                                            <select
+                                                className="px-3 py-2 bg-white rounded-xl border border-neutral-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer hover:border-indigo-300 transition-colors"
+                                                value={filterGroupStatus}
+                                                onChange={(e) => setFilterGroupStatus(e.target.value as any)}
+                                            >
+                                                <option value="All">Status: All</option>
+                                                <option value="Grouped">Grouped</option>
+                                                <option value="Available">Available</option>
+                                            </select>
+
+                                            <select
+                                                className="px-3 py-2 bg-white rounded-xl border border-neutral-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer hover:border-indigo-300 transition-colors"
+                                                value={filterBranch}
+                                                onChange={(e) => setFilterBranch(e.target.value)}
+                                            >
+                                                <option value="All">Branch: All</option>
+                                                <option value="CSE">CSE</option>
+                                                <option value="ECE">ECE</option>
+                                                <option value="DSAI">DSAI</option>
+                                            </select>
+                                        </>
                                     )}
 
                                     {activeTab === 'groups' && (
@@ -415,6 +417,37 @@ const AdminDashboard: React.FC = () => {
                                             </select>
                                         </>
                                     )}
+                                    {/* Sort Dropdown */}
+                                    <select
+                                        className="px-3 py-2 bg-white rounded-xl border border-neutral-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer hover:border-indigo-300 transition-colors"
+                                        value={sortOption}
+                                        onChange={(e) => setSortOption(e.target.value)}
+                                    >
+                                        <option value="Default">Sort By: Default</option>
+                                        {activeTab === 'students' && (
+                                            <>
+                                                <option value="Name (A-Z)">Name (A-Z)</option>
+                                                <option value="Name (Z-A)">Name (Z-A)</option>
+                                                <option value="Roll No (Asc)">Roll No (Asc)</option>
+                                                <option value="Roll No (Desc)">Roll No (Desc)</option>
+                                            </>
+                                        )}
+                                        {activeTab === 'faculty' && (
+                                            <>
+                                                <option value="Name (A-Z)">Name (A-Z)</option>
+                                                <option value="Name (Z-A)">Name (Z-A)</option>
+                                                <option value="Load (High-Low)">Load (High-Low)</option>
+                                                <option value="Load (Low-High)">Load (Low-High)</option>
+                                            </>
+                                        )}
+                                        {activeTab === 'groups' && (
+                                            <>
+                                                <option value="Name (A-Z)">Group Name (A-Z)</option>
+                                                <option value="Name (Z-A)">Group Name (Z-A)</option>
+                                                <option value="Project (A-Z)">Project Title (A-Z)</option>
+                                            </>
+                                        )}
+                                    </select>
                                 </div>
                             </div>
                         )}
@@ -473,28 +506,62 @@ const AdminDashboard: React.FC = () => {
                                                 <tr>
                                                     <th className="px-6 py-3 font-semibold text-neutral-500">Name</th>
                                                     <th className="px-6 py-3 font-semibold text-neutral-500">Email</th>
-                                                    <th className="px-6 py-3 font-semibold text-neutral-500">Designation</th>
-                                                    <th className="px-6 py-3 font-semibold text-neutral-500">Max Students</th>
+
+                                                    <th className="px-6 py-3 font-semibold text-neutral-500">Current Load</th>
                                                     <th className="px-6 py-3 font-semibold text-neutral-500 text-right">Action</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-neutral-100">
-                                                {faculty.filter(f => f.name?.toLowerCase().includes(searchTerm.toLowerCase()) || f.email?.toLowerCase().includes(searchTerm.toLowerCase())).map((f) => (
-                                                    <tr key={f._id} className="hover:bg-neutral-50">
-                                                        <td className="px-6 py-4 font-medium text-neutral-900">{f.name}</td>
-                                                        <td className="px-6 py-4 text-neutral-500">{f.email}</td>
-                                                        <td className="px-6 py-4 text-neutral-500">{f.designation || '-'}</td>
-                                                        <td className="px-6 py-4 text-neutral-500">{f.maxStudents || 21}</td>
-                                                        <td className="px-6 py-4 text-right">
-                                                            <button
-                                                                onClick={() => handleEditFaculty(f)}
-                                                                className="text-indigo-600 hover:text-indigo-800 p-2 hover:bg-indigo-50 rounded-lg transition-colors flex items-center gap-1 ml-auto"
-                                                            >
-                                                                <Users className="w-4 h-4" /> View Profile
-                                                            </button>
-                                                        </td>
-                                                    </tr>
-                                                ))}
+                                                {faculty
+                                                    .map((f: any) => {
+                                                        const load = groups.filter((g: any) => {
+                                                            if (!g.project) return false;
+
+                                                            // Handle faculty reference (id string or object)
+                                                            let facultyId = null;
+                                                            if (typeof g.project.faculty === 'string') {
+                                                                facultyId = g.project.faculty;
+                                                            } else if (g.project.faculty && g.project.faculty._id) {
+                                                                facultyId = g.project.faculty._id;
+                                                            }
+
+                                                            // Ensure ids are strings for comparison
+                                                            const isAssigned = facultyId && String(facultyId) === String(f._id);
+
+                                                            // Count approved groups/projects
+                                                            const isApproved = g.status === 'Approved' || g.project?.status === 'Approved';
+                                                            return isAssigned && isApproved;
+                                                        }).length;
+                                                        return { ...f, calculatedLoad: load };
+                                                    })
+                                                    .filter((f: any) => f.name?.toLowerCase().includes(searchTerm.toLowerCase()) || f.email?.toLowerCase().includes(searchTerm.toLowerCase()))
+                                                    .sort((a: any, b: any) => {
+                                                        if (sortOption === 'Name (A-Z)') return a.name.localeCompare(b.name);
+                                                        if (sortOption === 'Name (Z-A)') return b.name.localeCompare(a.name);
+                                                        if (sortOption === 'Load (High-Low)') return b.calculatedLoad - a.calculatedLoad;
+                                                        if (sortOption === 'Load (Low-High)') return a.calculatedLoad - b.calculatedLoad;
+                                                        return 0;
+                                                    })
+                                                    .map((f: any) => (
+                                                        <tr key={f._id} className="hover:bg-neutral-50 px-6 py-4">
+                                                            <td className="px-6 py-4 font-medium text-neutral-900">{f.name}</td>
+                                                            <td className="px-6 py-4 text-neutral-500">{f.email}</td>
+
+                                                            <td className="px-6 py-4 text-neutral-500">
+                                                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${f.calculatedLoad > 0 ? 'bg-indigo-50 text-indigo-700 border-indigo-100' : 'bg-neutral-100 text-neutral-500 border-neutral-200'}`}>
+                                                                    {f.calculatedLoad} Groups
+                                                                </span>
+                                                            </td>
+                                                            <td className="px-6 py-4 text-right">
+                                                                <button
+                                                                    onClick={() => handleEditFaculty(f)}
+                                                                    className="text-indigo-600 hover:text-indigo-800 p-2 hover:bg-indigo-50 rounded-lg transition-colors flex items-center gap-1 ml-auto"
+                                                                >
+                                                                    <Settings className="w-4 h-4" /> Configure Profile
+                                                                </button>
+                                                            </td>
+                                                        </tr>
+                                                    ))}
                                                 {faculty.length === 0 && (
                                                     <tr><td colSpan={3} className="px-6 py-8 text-center text-neutral-400">No faculty found.</td></tr>
                                                 )}
@@ -514,7 +581,7 @@ const AdminDashboard: React.FC = () => {
                                             />
                                         ) : (
                                             <div className="pb-20">
-                                                {(filterBatch === 'All' ? Array.from({ length: 10 }, (_, i) => 2020 + i).reverse() : [parseInt(filterBatch)]).map(batchYear => {
+                                                {(filterBatch === 'All' ? Array.from({ length: 7 }, (_, i) => (new Date().getFullYear() - 7) + i).reverse() : [parseInt(filterBatch)]).map(batchYear => {
                                                     const batchSuffix = batchYear.toString().slice(2);
                                                     const batchGroups = displayGroups.filter((g: any) => {
                                                         const members = g.members || [];
@@ -529,7 +596,7 @@ const AdminDashboard: React.FC = () => {
                                                             {filterBatch === 'All' && (
                                                                 <div className="sticky top-0 z-20 bg-neutral-50/95 backdrop-blur py-3 -mx-6 px-6 md:-mx-8 md:px-8 border-b border-neutral-200/50 flex items-center gap-6 mb-4">
                                                                     <div className="flex items-baseline gap-3">
-                                                                        <h3 className="text-xl font-bold text-neutral-900">Batch {batchYear}</h3>
+                                                                        <h3 className="text-xl font-bold text-neutral-900">Batch {batchYear}-{batchYear + 4}</h3>
                                                                         <span className="text-sm font-medium text-neutral-400">{batchGroups.length} Groups</span>
                                                                     </div>
                                                                     <div className="h-px bg-neutral-100 flex-1 opacity-0"></div>
@@ -655,13 +722,28 @@ const AdminDashboard: React.FC = () => {
                                                     <FileText className="w-6 h-6" />
                                                 </div>
                                                 <div>
-                                                    <h3 className="text-lg font-bold text-neutral-900">Student Data CSV</h3>
-                                                    <p className="text-sm text-neutral-500">Export all student details and status.</p>
+                                                    <h3 className="text-lg font-bold text-neutral-900">Student Data Export</h3>
+                                                    <p className="text-sm text-neutral-500">Export student details filtered by batch.</p>
                                                 </div>
                                             </div>
-                                            <button className="px-6 py-2 bg-neutral-900 text-white rounded-lg font-medium hover:bg-neutral-800 transition-colors flex items-center gap-2">
-                                                <Download className="w-4 h-4" /> Export
-                                            </button>
+                                            <div className="flex items-center gap-3">
+                                                <select
+                                                    value={exportBatch}
+                                                    onChange={(e) => setExportBatch(e.target.value)}
+                                                    className="px-3 py-2 bg-neutral-50 rounded-lg border border-neutral-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-green-500/20"
+                                                >
+                                                    <option value="All">All Batches</option>
+                                                    {Array.from({ length: 7 }, (_, i) => (new Date().getFullYear() - 7) + i).map(year => (
+                                                        <option key={year} value={year.toString()}>{year}-{year + 4}</option>
+                                                    ))}
+                                                </select>
+                                                <button
+                                                    onClick={handleExportStudents}
+                                                    className="px-6 py-2 bg-neutral-900 text-white rounded-lg font-medium hover:bg-neutral-800 transition-colors flex items-center gap-2"
+                                                >
+                                                    <Download className="w-4 h-4" /> Export Excel
+                                                </button>
+                                            </div>
                                         </div>
 
                                         <div className="bg-white rounded-2xl border border-neutral-200 p-6 flex items-center justify-between shadow-sm">
@@ -723,7 +805,7 @@ const AdminDashboard: React.FC = () => {
                                     </div>
                                     <div>
                                         <h2 className="text-2xl font-bold text-gray-900">{editingFaculty.name}</h2>
-                                        <p className="text-neutral-500 font-medium mb-1">{editingFaculty.designation || 'Faculty Member'}</p>
+
                                         <p className="text-neutral-400 text-sm flex items-center gap-2">
                                             <span className="bg-neutral-100 px-2 py-0.5 rounded text-neutral-600 font-mono">{editingFaculty.email}</span>
                                             <span className="bg-neutral-100 px-2 py-0.5 rounded text-neutral-600">{editingFaculty.department || 'Dept N/A'}</span>
@@ -731,37 +813,20 @@ const AdminDashboard: React.FC = () => {
                                     </div>
                                 </div>
 
-                                {/* Global Limits Edit Section */}
-                                <div className="bg-neutral-50 rounded-2xl p-6 mb-8 border border-neutral-200">
-                                    <h4 className="text-sm font-bold text-neutral-900 uppercase tracking-wider mb-4 flex items-center gap-2">
-                                        <Settings className="w-4 h-4 text-indigo-600" /> Mentorship Limits
-                                    </h4>
-                                    <div className="grid grid-cols-2 gap-6">
-                                        <div className="bg-white p-4 rounded-xl border border-neutral-200 shadow-sm">
-                                            <label className="block text-xs font-semibold text-neutral-500 mb-2">MAX STUDENT LIMIT</label>
-                                            <div className="flex items-center gap-3">
-                                                <input
-                                                    type="number"
-                                                    value={editMaxStudents}
-                                                    onChange={(e) => setEditMaxStudents(parseInt(e.target.value))}
-                                                    className="w-full text-lg font-bold text-gray-900 border-none focus:ring-0 p-0"
-                                                />
-                                                <span className="text-sm text-neutral-400">students</span>
-                                            </div>
-                                        </div>
-                                        <div className="bg-white p-4 rounded-xl border border-neutral-200 shadow-sm">
-                                            <label className="block text-xs font-semibold text-neutral-500 mb-2">MAX GROUP LIMIT</label>
-                                            <div className="flex items-center gap-3">
-                                                <input
-                                                    type="number"
-                                                    value={editMaxGroups}
-                                                    onChange={(e) => setEditMaxGroups(parseInt(e.target.value))}
-                                                    className="w-full text-lg font-bold text-gray-900 border-none focus:ring-0 p-0"
-                                                />
-                                                <span className="text-sm text-neutral-400">groups</span>
-                                            </div>
-                                        </div>
+                                {/* Global Limits Edit Section (Replaced by Button) */}
+                                <div className="bg-neutral-50 rounded-2xl p-6 mb-8 border border-neutral-200 flex items-center justify-between">
+                                    <div>
+                                        <h4 className="text-sm font-bold text-neutral-900 uppercase tracking-wider mb-1 flex items-center gap-2">
+                                            <Settings className="w-4 h-4 text-indigo-600" /> Mentorship Limits
+                                        </h4>
+                                        <p className="text-sm text-neutral-500">Configure global and batch-specific capacity.</p>
                                     </div>
+                                    <button
+                                        onClick={() => setShowLimitSettings(true)}
+                                        className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-bold shadow-md shadow-indigo-200 hover:bg-indigo-700 hover:shadow-lg transition-all flex items-center gap-2"
+                                    >
+                                        <Settings className="w-4 h-4" /> Set Mentorship Limits
+                                    </button>
                                 </div>
 
                                 {/* Batch-wise Stats */}
@@ -789,7 +854,7 @@ const AdminDashboard: React.FC = () => {
                                                                 '{batch.slice(2)}
                                                             </div>
                                                             <div>
-                                                                <h5 className="font-bold text-gray-900 group-hover:text-indigo-600 transition-colors">Batch {batch}</h5>
+                                                                <h5 className="font-bold text-gray-900 group-hover:text-indigo-600 transition-colors">Batch {parseInt(batch)}-{parseInt(batch) + 4}</h5>
                                                                 <p className="text-xs text-neutral-500">Active Mentorship</p>
                                                             </div>
                                                         </div>
@@ -819,13 +884,122 @@ const AdminDashboard: React.FC = () => {
                                     onClick={() => setEditingFaculty(null)}
                                     className="px-6 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 shadow-sm"
                                 >
+                                    Close
+                                </button>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+
+                {/* Limit Settings Modal */}
+                {showLimitSettings && editingFaculty && (
+                    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm">
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden max-h-[90vh] flex flex-col"
+                        >
+                            <div className="px-8 py-6 border-b border-gray-100 flex items-center justify-between bg-neutral-50">
+                                <div>
+                                    <h3 className="text-xl font-bold text-gray-900">Configure Mentorship Limits</h3>
+                                    <p className="text-sm text-neutral-500">Set global and batch-specific limits for {editingFaculty.name}</p>
+                                </div>
+                                <button onClick={() => setShowLimitSettings(false)} className="text-gray-400 hover:text-gray-600">
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+
+                            <div className="p-8 overflow-y-auto space-y-8">
+                                {/* Global Settings */}
+                                <div className="bg-indigo-50/50 rounded-2xl p-6 border border-indigo-100">
+                                    <h4 className="text-sm font-bold text-indigo-900 uppercase tracking-wider mb-4 flex items-center gap-2">
+                                        <Settings className="w-4 h-4" /> Global Defaults
+                                    </h4>
+                                    <div className="grid grid-cols-2 gap-6">
+                                        <div className="bg-white p-4 rounded-xl border border-indigo-100 shadow-sm">
+                                            <label className="block text-xs font-semibold text-indigo-500 mb-2">MAX STUDENT LIMIT</label>
+                                            <div className="flex items-center gap-3">
+                                                <input
+                                                    type="number"
+                                                    value={globalMaxStudents}
+                                                    onChange={(e) => {
+                                                        const val = parseInt(e.target.value);
+                                                        setGlobalMaxStudents(val);
+                                                        // Update batch limits that match old global? No, keep explicit.
+                                                    }}
+                                                    className="w-full text-lg font-bold text-gray-900 border-none focus:ring-0 p-0"
+                                                />
+                                                <span className="text-sm text-neutral-400">students</span>
+                                            </div>
+                                        </div>
+                                        <div className="bg-white p-4 rounded-xl border border-indigo-100 shadow-sm">
+                                            <label className="block text-xs font-semibold text-indigo-500 mb-2">MAX GROUP LIMIT</label>
+                                            <div className="flex items-center gap-3">
+                                                <input
+                                                    type="number"
+                                                    value={globalMaxGroups}
+                                                    onChange={(e) => setGlobalMaxGroups(parseInt(e.target.value))}
+                                                    className="w-full text-lg font-bold text-gray-900 border-none focus:ring-0 p-0"
+                                                />
+                                                <span className="text-sm text-neutral-400">groups</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Batch Specific Settings */}
+                                <div>
+                                    <h4 className="text-sm font-bold text-neutral-900 uppercase tracking-wider mb-4 flex items-center gap-2">
+                                        <LayoutGrid className="w-4 h-4 text-neutral-500" /> Batch-Specific Overrides
+                                    </h4>
+                                    <div className="space-y-4">
+                                        {Object.entries(batchLimits).sort((a, b) => parseInt(b[0]) - parseInt(a[0])).map(([year, limits]: any) => (
+                                            <div key={year} className="flex items-center justify-between bg-white border border-neutral-200 p-4 rounded-xl hover:border-neutral-300 transition-colors">
+                                                <div className="flex items-center gap-4 w-1/3">
+                                                    <div className="h-10 w-10 bg-neutral-100 text-neutral-600 rounded-lg flex items-center justify-center font-bold text-sm">
+                                                        '{year.slice(2)}
+                                                    </div>
+                                                    <span className="font-bold text-gray-900">Batch {year}-{parseInt(year) + 4}</span>
+                                                </div>
+
+                                                <div className="flex gap-4 flex-1">
+                                                    <div className="flex-1">
+                                                        <label className="block text-[10px] font-bold text-neutral-400 uppercase mb-1">Max Students</label>
+                                                        <input
+                                                            type="number"
+                                                            className="w-full bg-neutral-50 border border-neutral-200 rounded-lg px-3 py-1.5 text-sm font-medium focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all"
+                                                            value={limits.maxStudents}
+                                                            onChange={(e) => updateBatchLimit(parseInt(year), 'maxStudents', parseInt(e.target.value))}
+                                                        />
+                                                    </div>
+                                                    <div className="flex-1">
+                                                        <label className="block text-[10px] font-bold text-neutral-400 uppercase mb-1">Max Groups</label>
+                                                        <input
+                                                            type="number"
+                                                            className="w-full bg-neutral-50 border border-neutral-200 rounded-lg px-3 py-1.5 text-sm font-medium focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all"
+                                                            value={limits.maxGroups}
+                                                            onChange={(e) => updateBatchLimit(parseInt(year), 'maxGroups', parseInt(e.target.value))}
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="p-6 border-t border-gray-100 bg-neutral-50 flex justify-end gap-3 mt-auto">
+                                <button
+                                    onClick={() => setShowLimitSettings(false)}
+                                    className="px-6 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 shadow-sm"
+                                >
                                     Cancel
                                 </button>
                                 <button
-                                    onClick={handleSaveFaculty}
+                                    onClick={handleSaveLimits}
                                     className="px-6 py-2.5 text-sm font-bold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 shadow-md flex items-center gap-2"
                                 >
-                                    <Save className="w-4 h-4" /> Save Changes
+                                    <Save className="w-4 h-4" /> Save Configuration
                                 </button>
                             </div>
                         </motion.div>

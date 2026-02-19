@@ -1,6 +1,6 @@
 
 import express from 'express';
-import { getFaculty, getAllStudents, updateUser } from '../controllers/userController';
+import { getFaculty, getAllStudents, updateUser, exportStudents } from '../controllers/userController';
 import { auth } from '../middleware/authMiddleware';
 
 const router = express.Router();
@@ -23,6 +23,7 @@ router.use((req, res, next) => {
 router.use(auth);
 
 router.get('/faculty', getFaculty);
+router.get('/students/export', exportStudents);
 router.get('/students', getAllStudents);
 router.put('/:id', updateUser);
 

@@ -137,14 +137,7 @@ async function main() {
             department: 'Administration'
         });
 
-        const defaultFaculty = await User.create({
-            name: 'HOD CSE',
-            email: 'hod.cse@iiitnr.edu.in',
-            password: defaultHash,
-            role: 'Faculty',
-            department: 'CSE',
-            isVerified: true
-        });
+
 
         // 3. READ EXCEL & GROUP
         console.log('Reading Excel...');
@@ -208,7 +201,7 @@ async function main() {
 
         for (const [gId, gData] of groupsMap) {
             // A. Resolve Mentor
-            let mentor = defaultFaculty;
+            let mentor = await User.findOne({ email: 'admin@iiitnr.edu.in' });
             let mName = gData.mentorName;
 
             if (mName && mName !== 'Unknown Faculty' && mName !== 'TBD') {

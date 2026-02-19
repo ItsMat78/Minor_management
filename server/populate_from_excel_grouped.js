@@ -138,17 +138,20 @@ async function main() {
         // Second Pass: Database Population
 
         // Ensure Default Faculty
-        let defaultFaculty = await User.findOneAndUpdate(
-            { email: 'hod.cse@iiitnr.edu.in' },
-            {
-                name: 'HOD CSE',
-                password: 'password123',
-                role: 'Faculty',
-                department: 'CSE',
+        // Ensure Default Admin/Faculty Fallback
+        let defaultFaculty = await User.findOne({ email: 'admin@iiitnr.edu.in' });
+        if (!defaultFaculty) {
+            const salt = await require('bcryptjs').genSalt(10);
+            const adminHash = await require('bcryptjs').hash('adminpassword', salt);
+            defaultFaculty = await User.create({
+                name: 'System Administrator',
+                email: 'admin@iiitnr.edu.in',
+                password: adminHash,
+                role: 'Admin',
+                department: 'Administration',
                 isVerified: true
-            },
-            { upsert: true, new: true }
-        );
+            });
+        }
 
         const facultyCache = new Map(); // Name -> User
 

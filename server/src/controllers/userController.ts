@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import User, { UserRole } from '../models/User';
 import Group from '../models/Group';
+import * as XLSX from 'xlsx';
 
 export const getFaculty = async (req: Request, res: Response) => {
     try {
@@ -79,6 +80,67 @@ export const updateUser = async (req: Request, res: Response) => {
         res.json(user);
     } catch (error) {
         console.error("Error updating user:", error);
+        res.status(500).json({ message: 'Server error', error });
+    }
+};
+
+export const exportStudents = async (req: Request, res: Response) => {
+    try {
+        const { batch } = req.query;
+        let query: any = { role: UserRole.STUDENT };
+
+        if (batch && typeof batch === 'string' && batch !== 'All') {
+            const batchSuffix = batch.slice(2); // e.g., "2024" -> "24"
+            query.rollNumber = { $regex: `^${batchSuffix}` };
+        }
+
+        const students = await User.find(query)
+            .select('name email rollNumber branch semester role isVerified')
+            .sort({ rollNumber: 1 });
+
+        // Get group status
+        const groups = await Group.find({}, 'members name project');
+        const studentGroupMap = new Map();
+
+        groups.forEach(g => {
+            g.members.forEach(m => {
+                studentGroupMap.set(m.toString(), {
+                    groupName: g.name,
+                    status: g.status
+                });
+            });
+        });
+
+        const data = students.map(s => {
+            const groupInfo = studentGroupMap.get(s._id.toString());
+            return {
+                "Roll Number": s.rollNumber || 'N/A',
+                "Name": s.name,
+                "Email": s.email,
+                "Branch": s.branch || 'N/A',
+                "Semester": s.semester || 'N/A',
+                "Group Status": groupInfo ? 'In Group' : 'Unassigned',
+                "Group Name": groupInfo ? groupInfo.groupName : '',
+                "Project Status": groupInfo ? groupInfo.status : ''
+            };
+        });
+
+        // Create Worksheet
+        const ws = XLSX.utils.json_to_sheet(data);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Students");
+
+        // Generate Buffer
+        const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+
+        // Set Headers
+        res.setHeader('Content-Disposition', `attachment; filename="students_${batch || 'all'}.xlsx"`);
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+
+        res.send(buf);
+
+    } catch (error) {
+        console.error("Error exporting students:", error);
         res.status(500).json({ message: 'Server error', error });
     }
 };

@@ -21,6 +21,11 @@ export interface IUser extends Document {
     maxGroups?: number; // For faculty, default 7
     currentStudents: number;
     currentGroups: number;
+    batchConfigs?: {
+        batchYear: number;
+        maxStudents: number;
+        maxGroups: number;
+    }[];
     createdAt: Date;
 }
 
@@ -38,7 +43,12 @@ const UserSchema: Schema = new Schema({
     maxStudents: { type: Number, default: 21 },
     maxGroups: { type: Number, default: 7 },
     currentStudents: { type: Number, default: 0 },
-    currentGroups: { type: Number, default: 0 }
+    currentGroups: { type: Number, default: 0 },
+    batchConfigs: [{
+        batchYear: Number,
+        maxStudents: Number,
+        maxGroups: Number
+    }]
 }, {
     timestamps: true
 });

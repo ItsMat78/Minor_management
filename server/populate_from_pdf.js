@@ -181,17 +181,20 @@ async function main() {
         // 5. Populate DB
 
         // Create Default Faculty
-        const defaultFaculty = await User.findOneAndUpdate(
-            { email: 'hod@iiitnr.edu.in' },
-            {
-                name: 'HOD',
-                password: 'password123',
-                role: 'Faculty',
-                department: 'CSE',
+        // Ensure Default Admin/Faculty Fallback
+        let defaultFaculty = await User.findOne({ email: 'admin@iiitnr.edu.in' });
+        if (!defaultFaculty) {
+            const salt = await require('bcryptjs').genSalt(10);
+            const adminHash = await require('bcryptjs').hash('adminpassword', salt);
+            defaultFaculty = await User.create({
+                name: 'System Administrator',
+                email: 'admin@iiitnr.edu.in',
+                password: adminHash,
+                role: 'Admin',
+                department: 'Administration',
                 isVerified: true
-            },
-            { upsert: true, new: true }
-        );
+            });
+        }
 
         const mentorMap = new Map(); // Name -> User
 
