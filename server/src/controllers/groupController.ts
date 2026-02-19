@@ -143,7 +143,10 @@ export const getMyMentees = async (req: Request, res: Response) => {
                 tags: p.tags,
                 attachments: p.attachments,
                 feedback: p.feedback,
-                faculty: p.faculty
+                faculty: p.faculty,
+                midTermEvaluation: p.midTermEvaluation,
+                endTermEvaluation: p.endTermEvaluation,
+                finalReportEvaluation: p.finalReportEvaluation
             }
         }));
 
@@ -161,7 +164,7 @@ export const getAllGroups = async (req: Request, res: Response) => {
             .populate({
                 path: 'project',
                 populate: { path: 'faculty', select: 'name email department' },
-                select: 'title description status tags semester attachments feedback hasNewUpdate updates faculty'
+                select: 'title description status tags semester attachments feedback hasNewUpdate updates faculty midTermEvaluation endTermEvaluation finalReportEvaluation'
             })
             .sort({ createdAt: -1 });
 

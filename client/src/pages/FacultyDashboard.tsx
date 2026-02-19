@@ -32,11 +32,130 @@ interface Project {
     hasNewUpdate?: boolean;
     updates?: any[];
     updatedAt?: string; // Added for field
-    midTermEvaluation?: { marks: number, remarks: string, date: string };
-    endTermEvaluation?: { marks: number, remarks: string, date: string };
+    midTermEvaluation?: {
+        marks: number;
+        remarks: string;
+        date: string;
+        guide: {
+            dataElicitation: number;
+            problemDefinition: number;
+            planning: number;
+        };
+        panel: {
+            literatureSurvey: number;
+            presentationSkills: number;
+            technicalUnderstanding: number;
+        };
+    };
+    endTermEvaluation?: {
+        marks: number;
+        remarks: string;
+        date: string;
+        guide: {
+            requirementSpecification: number;
+            systemDesign: number;
+            implementation: number;
+            projectManagement: number;
+            planningVsExecution: number;
+        };
+        panel: {
+            testingAndResults: number;
+            innovationAndRelevance: number;
+            presentationAndViva: number;
+            conceptualDepth: number;
+        };
+    };
+    finalReportEvaluation?: {
+        marks: number;
+        remarks: string;
+        date: string;
+        guide: {
+            reportWriting: number;
+        };
+        panel: {
+            finalReport: number;
+        };
+    };
 }
 
-const getProjectColor = (id: string) => {
+const RUBRIC_CONFIG: any = {
+    'mid-term': {
+        maxMarks: 30,
+        sections: [
+            {
+                title: 'Guide Evaluation',
+                maxMarks: 15,
+                fields: [
+                    { key: 'dataElicitation', label: 'Data Elicitation', max: 5, description: 'Identifies topic, explores basic trends' },
+                    { key: 'problemDefinition', label: 'Problem Definition', max: 5, description: 'Simple and well-scoped' },
+                    { key: 'planning', label: 'Planning', max: 5, description: 'Basic timeline, effort distribution' },
+                ],
+                key: 'guide'
+            },
+            {
+                title: 'Panel Evaluation',
+                maxMarks: 15,
+                fields: [
+                    { key: 'literatureSurvey', label: 'Literature Survey', max: 5, description: '4-6 generic online sources' },
+                    { key: 'presentationSkills', label: 'Presentation Skills', max: 5, description: 'Basic slide design, clarity in speech' },
+                    { key: 'technicalUnderstanding', label: 'Technical Understanding', max: 5, description: 'Working knowledge of tools' },
+                ],
+                key: 'panel'
+            }
+        ]
+    },
+    'end-term': {
+        maxMarks: 50,
+        sections: [
+            {
+                title: 'Guide Evaluation',
+                maxMarks: 25,
+                fields: [
+                    { key: 'requirementSpecification', label: 'Requirement Specification', max: 5, description: 'Functional needs outlined' },
+                    { key: 'systemDesign', label: 'System Design', max: 5, description: 'Block diagram or flowchart' },
+                    { key: 'implementation', label: 'Implementation', max: 5, description: 'Working model with basic coding' },
+                    { key: 'projectManagement', label: 'Project Management', max: 5, description: 'Manual task tracking, logbook' },
+                    { key: 'planningVsExecution', label: 'Planning vs Execution', max: 5, description: 'Deviations noted casually' },
+                ],
+                key: 'guide'
+            },
+            {
+                title: 'Panel Evaluation',
+                maxMarks: 25,
+                fields: [
+                    { key: 'testingAndResults', label: 'Testing & Results', max: 5, description: 'Functional testing with screenshots' },
+                    { key: 'innovationAndRelevance', label: 'Innovation & Relevance', max: 5, description: 'Minor creative aspect' },
+                    { key: 'presentationAndViva', label: 'Presentation & Viva', max: 10, description: 'Clear explanation, guided answers' },
+                    { key: 'conceptualDepth', label: 'Conceptual Depth', max: 5, description: 'Understanding basic tools and outcomes' },
+                ],
+                key: 'panel'
+            }
+        ]
+    },
+    'final-report': {
+        maxMarks: 20,
+        sections: [
+            {
+                title: 'Guide Evaluation',
+                maxMarks: 10,
+                fields: [
+                    { key: 'reportWriting', label: 'Report Writing', max: 10, description: 'Acceptable grammar, informal formatting' },
+                ],
+                key: 'guide'
+            },
+            {
+                title: 'Panel Evaluation',
+                maxMarks: 10,
+                fields: [
+                    { key: 'finalReport', label: 'Final Report Quality', max: 10, description: 'Acceptable report' },
+                ],
+                key: 'panel'
+            }
+        ]
+    }
+};
+
+const getProjectColor = (id: string) => { // Existing function kept
     const colors = [
         'bg-blue-500', 'bg-indigo-500', 'bg-violet-500',
         'bg-purple-500', 'bg-fuchsia-500', 'bg-pink-500',
@@ -168,7 +287,7 @@ const FacultyDashboard: React.FC = () => {
     const [feedback, setFeedback] = useState('');
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-    const [activeTab, setActiveTab] = useState<'proposals' | 'mentees' | 'profile' | 'directory' | 'mid-term' | 'end-term'>(initialTab || 'mentees');
+    const [activeTab, setActiveTab] = useState<'proposals' | 'mentees' | 'profile' | 'directory' | 'mid-term' | 'end-term' | 'final-report'>(initialTab || 'mentees');
     const [mentees, setMentees] = useState<any[]>([]);
     const [students, setStudents] = useState<any[]>([]);
     const [loadingStudents, setLoadingStudents] = useState(false);
@@ -178,7 +297,8 @@ const FacultyDashboard: React.FC = () => {
     const [evaluatingProject, setEvaluatingProject] = useState<any>(null);
     const [evaluationMarks, setEvaluationMarks] = useState<number>(0);
     const [evaluationRemarks, setEvaluationRemarks] = useState<string>('');
-    const [evaluationType, setEvaluationType] = useState<'mid-term' | 'end-term' | null>(null);
+    const [evaluationDetails, setEvaluationDetails] = useState<any>({});
+    const [evaluationType, setEvaluationType] = useState<'mid-term' | 'end-term' | 'final-report' | null>(null);
 
     // Filters & Search
     const [searchTerm, setSearchTerm] = useState('');
@@ -205,7 +325,7 @@ const FacultyDashboard: React.FC = () => {
     useEffect(() => {
         if (activeTab === 'proposals') {
             fetchProjects();
-        } else if (activeTab === 'mentees' || activeTab === 'mid-term' || activeTab === 'end-term') {
+        } else if (['mentees', 'mid-term', 'end-term', 'final-report'].includes(activeTab)) {
             fetchMentees();
         } else if (activeTab === 'directory') {
             fetchStudents();
@@ -286,33 +406,98 @@ const FacultyDashboard: React.FC = () => {
         }
     };
 
-    const handleOpenEvaluation = (project: any, type: 'mid-term' | 'end-term') => {
-        setEvaluatingProject(project);
+    const handleOpenEvaluation = (item: any, type: 'mid-term' | 'end-term' | 'final-report') => {
+        setEvaluatingProject(item);
         setEvaluationType(type);
-        const existingEval = type === 'mid-term' ? project.project?.midTermEvaluation : project.project?.endTermEvaluation;
-        setEvaluationMarks(existingEval?.marks || 0);
+
+        // Determine existing evaluation data
+        // item can be a Group (with item.project) or a Project (direct)
+        const projectData = item.project || item;
+        let existingEval: any;
+        if (type === 'mid-term') existingEval = projectData.midTermEvaluation;
+        else if (type === 'end-term') existingEval = projectData.endTermEvaluation;
+        else if (type === 'final-report') existingEval = projectData.finalReportEvaluation;
+
+        // Initialize details from rubric config
+        const config = RUBRIC_CONFIG[type];
+        const initialDetails: any = { guide: {}, panel: {} };
+
+        if (config) {
+            config.sections.forEach((section: any) => {
+                section.fields.forEach((field: any) => {
+                    const sectionKey = section.key; // 'guide' or 'panel'
+                    // Safely access existing value or default to 0
+                    const val = existingEval?.[sectionKey]?.[field.key] || 0;
+                    initialDetails[sectionKey][field.key] = val;
+                });
+            });
+        }
+
+        setEvaluationDetails(initialDetails);
+        setEvaluationMarks(existingEval?.marks || 0); // Total marks
         setEvaluationRemarks(existingEval?.remarks || '');
     };
+
+    const handleDetailChange = (section: string, field: string, value: number | string) => {
+        setEvaluationDetails((prev: any) => ({
+            ...prev,
+            [section]: {
+                ...prev[section],
+                [field]: value
+            }
+        }));
+    };
+
+    // Auto-calculate marks when details change
+    useEffect(() => {
+        let total = 0;
+        if (evaluationType && RUBRIC_CONFIG[evaluationType]) {
+            RUBRIC_CONFIG[evaluationType].sections.forEach((sect: any) => {
+                sect.fields.forEach((f: any) => {
+                    const val = evaluationDetails[sect.key]?.[f.key];
+                    total += Number(val || 0);
+                });
+            });
+            setEvaluationMarks(total);
+        }
+    }, [evaluationDetails, evaluationType]);
 
     const handleSubmitEvaluation = async () => {
         if (!evaluatingProject || !evaluationType) return;
         try {
-            const projectId = evaluatingProject.project?._id || evaluatingProject._id; // Handle if passing mentee group or raw project
-            await api.put(`/projects/${projectId}/evaluation`, {
+            const projectData = evaluatingProject.project || evaluatingProject;
+            const projectId = projectData._id;
+
+            // Sanitize guide and panel to ensure no empty strings are sent
+            const sanitize = (obj: any) => {
+                const clean: any = {};
+                Object.keys(obj || {}).forEach(k => {
+                    clean[k] = obj[k] === '' ? 0 : Number(obj[k]);
+                });
+                return clean;
+            };
+
+            // Construct payload
+            const payload = {
                 type: evaluationType,
                 marks: evaluationMarks,
-                remarks: evaluationRemarks
-            });
+                remarks: evaluationRemarks,
+                guide: sanitize(evaluationDetails.guide),
+                panel: sanitize(evaluationDetails.panel)
+            };
+
+            await api.put(`/projects/${projectId}/evaluation`, payload);
 
             // Refresh Data
             await fetchMentees();
             setEvaluatingProject(null);
             setEvaluationType(null);
+            setEvaluationDetails({});
             setEvaluationMarks(0);
             setEvaluationRemarks('');
         } catch (error) {
             console.error("Failed to submit evaluation", error);
-            alert("Failed to submit evaluation");
+            alert("Failed to submit evaluation. Check console for details.");
         }
     };
 
@@ -465,6 +650,12 @@ const FacultyDashboard: React.FC = () => {
                             active={activeTab === 'end-term'}
                             onClick={() => { setActiveTab('end-term'); setViewGroup(null); }}
                         />
+                        <SidebarItem
+                            icon={<FileText className="w-5 h-5" />}
+                            label="Final Report"
+                            active={activeTab === 'final-report'}
+                            onClick={() => { setActiveTab('final-report'); setViewGroup(null); }}
+                        />
                     </div>
                 </nav>
                 <div className="p-4 border-t border-neutral-100">
@@ -508,7 +699,8 @@ const FacultyDashboard: React.FC = () => {
                                         activeTab === 'directory' ? 'Student Directory' :
                                             activeTab === 'mid-term' ? 'Mid-Term Evaluation' :
                                                 activeTab === 'end-term' ? 'End-Term Evaluation' :
-                                                    'My Profile'
+                                                    activeTab === 'final-report' ? 'Final Report Evaluation' :
+                                                        'My Profile'
                             )}
                         </h1>
                     </div>
@@ -917,7 +1109,7 @@ const FacultyDashboard: React.FC = () => {
                                                     );
                                                 }))}
                                         </div>
-                                    ) : activeTab === 'mid-term' || activeTab === 'end-term' ? (
+                                    ) : activeTab === 'mid-term' || activeTab === 'end-term' || activeTab === 'final-report' ? (
                                         /* EVALUATION VIEW - Grouped by Semester */
                                         <div className="space-y-12 pb-20">
                                             {Array.from({ length: 10 }, (_, i) => 2020 + i).reverse().map(batchYear => {
@@ -946,8 +1138,10 @@ const FacultyDashboard: React.FC = () => {
 
                                                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                                                             {batchProjects.map((item: any) => {
-                                                                const projectData = item.project;
-                                                                const evalData = activeTab === 'mid-term' ? projectData?.midTermEvaluation : projectData?.endTermEvaluation;
+                                                                const projectData = item.project || item;
+                                                                const evalData = activeTab === 'mid-term' ? projectData?.midTermEvaluation :
+                                                                    activeTab === 'end-term' ? projectData?.endTermEvaluation :
+                                                                        projectData?.finalReportEvaluation;
                                                                 const isEvaluated = !!evalData;
 
                                                                 return (
@@ -964,6 +1158,27 @@ const FacultyDashboard: React.FC = () => {
                                                                                 <Users className="w-4 h-4" /> {item.name}
                                                                             </p>
                                                                         </div>
+
+                                                                        {/* Attachments / Report Link */}
+                                                                        {projectData?.attachments && projectData.attachments.length > 0 && (
+                                                                            <div className="mb-4">
+                                                                                <div className="flex flex-wrap gap-2">
+                                                                                    {projectData.attachments.slice(0, 2).map((url: string, idx: number) => (
+                                                                                        <a
+                                                                                            key={idx}
+                                                                                            href={url}
+                                                                                            target="_blank"
+                                                                                            rel="noopener noreferrer"
+                                                                                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-neutral-50 text-indigo-600 rounded-lg text-xs font-bold border border-neutral-200 hover:bg-neutral-100 hover:border-indigo-200 transition-colors"
+                                                                                            onClick={(e) => e.stopPropagation()}
+                                                                                        >
+                                                                                            <FileText className="w-3 h-3" />
+                                                                                            {activeTab === 'final-report' ? 'View Report' : `File ${idx + 1}`}
+                                                                                        </a>
+                                                                                    ))}
+                                                                                </div>
+                                                                            </div>
+                                                                        )}
 
                                                                         <div className="mb-6">
                                                                             <div className="flex -space-x-2 mb-2 pl-1">
@@ -984,11 +1199,11 @@ const FacultyDashboard: React.FC = () => {
                                                                             <div className="flex justify-between items-center">
                                                                                 <span className="text-xs font-bold text-neutral-400 uppercase tracking-wider">Score</span>
                                                                                 <span className={`text-xl font-bold ${isEvaluated ? 'text-indigo-600' : 'text-neutral-300'}`}>
-                                                                                    {isEvaluated ? evalData.marks : '--'} <span className="text-sm text-neutral-400 font-medium">/ 100</span>
+                                                                                    {isEvaluated ? evalData.marks : '--'} <span className="text-sm text-neutral-400 font-medium">/ {RUBRIC_CONFIG[activeTab]?.maxMarks || 100}</span>
                                                                                 </span>
                                                                             </div>
                                                                             <button
-                                                                                onClick={() => handleOpenEvaluation(item, activeTab as 'mid-term' | 'end-term')}
+                                                                                onClick={() => handleOpenEvaluation(item, activeTab as 'mid-term' | 'end-term' | 'final-report')}
                                                                                 className={`w-full py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-all ${isEvaluated
                                                                                     ? 'bg-white border border-neutral-200 text-neutral-600 hover:bg-neutral-50 hover:text-indigo-600 hover:border-indigo-200'
                                                                                     : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-md shadow-indigo-200 hover:shadow-lg hover:-translate-y-0.5'
@@ -1239,91 +1454,104 @@ const FacultyDashboard: React.FC = () => {
             <Dialog.Root open={!!evaluatingProject} onOpenChange={(open) => !open && setEvaluatingProject(null)}>
                 <Dialog.Portal>
                     <Dialog.Overlay className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 transition-opacity" />
-                    <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-2xl bg-white rounded-3xl shadow-2xl z-50 overflow-hidden flex flex-col focus:outline-none max-h-[90vh]">
-                        <div className="flex items-center justify-between p-6 border-b border-neutral-100">
-                            <Dialog.Title className="text-xl font-bold text-neutral-900">
-                                {evaluationType === 'mid-term' ? 'Mid-Term Evaluation' : 'End-Term Evaluation'}
-                            </Dialog.Title>
+                    <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-3xl bg-white rounded-3xl shadow-2xl z-50 overflow-hidden flex flex-col focus:outline-none max-h-[90vh]">
+                        <div className="flex items-center justify-between p-6 border-b border-neutral-100 bg-neutral-50/50">
+                            <div>
+                                <Dialog.Title className="text-xl font-bold text-neutral-900">
+                                    {evaluationType === 'mid-term' ? 'Mid-Term Evaluation' :
+                                        evaluationType === 'end-term' ? 'End-Term Evaluation' : 'Final Report Evaluation'}
+                                </Dialog.Title>
+                                <p className="text-sm text-neutral-500 font-medium mt-1">
+                                    {evaluatingProject?.project?.title || evaluatingProject?.title}
+                                </p>
+                            </div>
                             <Dialog.Close className="p-2 rounded-full hover:bg-neutral-100 transition-colors">
                                 <X className="w-5 h-5 text-neutral-500" />
                             </Dialog.Close>
                         </div>
-                        <div className="p-6 space-y-6 overflow-y-auto">
-                            {/* Project Info Section */}
-                            <div className="bg-neutral-50 rounded-2xl p-5 border border-neutral-100 space-y-4">
+
+                        <div className="p-6 space-y-8 overflow-y-auto flex-1">
+                            {/* Score Display */}
+                            <div className="flex items-center justify-between bg-indigo-600 text-white p-6 rounded-2xl shadow-lg shadow-indigo-200">
                                 <div>
-                                    <div className="flex items-start justify-between gap-4 mb-2">
-                                        <h4 className="text-lg font-bold text-neutral-900">{evaluatingProject?.project?.title || evaluatingProject?.title}</h4>
-                                        <span className="px-3 py-1 bg-white border border-neutral-200 rounded-lg text-xs font-bold text-neutral-500 uppercase tracking-wider whitespace-nowrap">
-                                            {evaluatingProject?.group?.name || evaluatingProject?.name}
-                                        </span>
+                                    <h4 className="font-bold text-indigo-100 text-sm uppercase tracking-wider mb-1">Total Score</h4>
+                                    <div className="flex items-baseline gap-2">
+                                        <span className="text-4xl font-bold">{evaluationMarks}</span>
+                                        <span className="text-indigo-200 font-medium">/ {evaluationType ? RUBRIC_CONFIG[evaluationType]?.maxMarks : 100}</span>
                                     </div>
-                                    <p className="text-neutral-600 text-sm leading-relaxed">
-                                        {evaluatingProject?.project?.description || "No description provided."}
-                                    </p>
                                 </div>
-
-                                {evaluatingProject?.project?.tags && evaluatingProject.project.tags.length > 0 && (
-                                    <div className="flex flex-wrap gap-2">
-                                        {evaluatingProject.project.tags.map((tag: string, i: number) => (
-                                            <span key={i} className="px-2 py-1 bg-white border border-neutral-200 text-neutral-500 rounded text-xs">
-                                                {tag}
-                                            </span>
-                                        ))}
+                                <div className="text-right">
+                                    <div className="text-xs font-medium text-indigo-200 uppercase tracking-wider mb-1">Grade Estimate</div>
+                                    <div className="text-2xl font-bold">
+                                        {evaluationMarks >= 90 ? 'A+' :
+                                            evaluationMarks >= 80 ? 'A' :
+                                                evaluationMarks >= 70 ? 'B+' :
+                                                    evaluationMarks >= 60 ? 'B' : 'F'}
                                     </div>
-                                )}
+                                </div>
+                            </div>
 
-                                {/* Team Members */}
-                                <div>
-                                    <h5 className="text-xs font-bold text-neutral-500 uppercase tracking-wider mb-3 flex items-center gap-2">
-                                        <Users className="w-3 h-3" /> Team Members
-                                    </h5>
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                        {evaluatingProject?.members?.map((member: any) => (
-                                            <div key={member._id} className="flex items-center gap-3 bg-white p-2 rounded-xl border border-neutral-100">
-                                                <div className="h-8 w-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-xs border border-indigo-200">
-                                                    {member.name.charAt(0)}
+                            {/* Rubric Sections */}
+                            {evaluationType && RUBRIC_CONFIG[evaluationType]?.sections.map((section: any, idx: number) => (
+                                <div key={idx} className="space-y-4">
+                                    <div className="flex items-center justify-between border-b border-neutral-100 pb-2">
+                                        <h4 className="text-lg font-bold text-neutral-900 flex items-center gap-2">
+                                            {section.title}
+                                            <span className="text-xs font-normal text-neutral-500 bg-neutral-100 px-2 py-0.5 rounded-full">
+                                                Max {section.maxMarks}
+                                            </span>
+                                        </h4>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                        {section.fields.map((field: any) => (
+                                            <div key={field.key} className="bg-neutral-50 p-4 rounded-xl border border-neutral-100 hover:border-indigo-100 transition-colors">
+                                                <div className="flex justify-between items-start mb-2">
+                                                    <label className="text-sm font-bold text-neutral-700 block mb-1">
+                                                        {field.label}
+                                                    </label>
+                                                    <span className="text-xs font-bold text-neutral-400 bg-white px-1.5 py-0.5 rounded border border-neutral-100">
+                                                        /{field.max}
+                                                    </span>
                                                 </div>
-                                                <div className="overflow-hidden">
-                                                    <p className="text-sm font-bold text-neutral-900 truncate">{member.name}</p>
-                                                    <p className="text-xs text-neutral-500 truncate font-mono">{member.rollNumber}</p>
-                                                </div>
+                                                <p className="text-xs text-neutral-500 mb-3 h-8 line-clamp-2" title={field.description}>
+                                                    {field.description}
+                                                </p>
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    max={field.max}
+                                                    value={evaluationDetails[section.key]?.[field.key] ?? ''}
+                                                    onChange={(e) => {
+                                                        const rawVal = e.target.value;
+                                                        if (rawVal === '') {
+                                                            handleDetailChange(section.key, field.key, '');
+                                                        } else {
+                                                            const val = Math.min(Number(rawVal), field.max);
+                                                            handleDetailChange(section.key, field.key, val);
+                                                        }
+                                                    }}
+                                                    className="w-full px-3 py-2 rounded-lg border border-neutral-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold text-neutral-900 bg-white"
+                                                />
                                             </div>
                                         ))}
                                     </div>
                                 </div>
-                            </div>
+                            ))}
 
                             <div className="h-px bg-neutral-100 w-full"></div>
 
-                            {/* Evaluation Inputs */}
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                <div className="md:col-span-1">
-                                    <label className="block text-sm font-bold text-neutral-700 mb-2">Marks (0-100)</label>
-                                    <div className="relative">
-                                        <input
-                                            type="number"
-                                            min="0"
-                                            max="100"
-                                            value={evaluationMarks}
-                                            onChange={(e) => setEvaluationMarks(Number(e.target.value))}
-                                            className="w-full px-4 py-3 rounded-xl border border-neutral-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-2xl font-bold font-mono text-center"
-                                        />
-                                        <div className="absolute right-4 top-1/2 -translate-y-1/2 text-neutral-400 font-bold text-sm">/ 100</div>
-                                    </div>
-                                </div>
-
-                                <div className="md:col-span-2">
-                                    <label className="block text-sm font-bold text-neutral-700 mb-2">Remarks & Feedback</label>
-                                    <textarea
-                                        value={evaluationRemarks}
-                                        onChange={(e) => setEvaluationRemarks(e.target.value)}
-                                        placeholder="Enter detailed feedback for the team..."
-                                        className="w-full px-4 py-3 rounded-xl border border-neutral-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-sm h-[120px] resize-none"
-                                    />
-                                </div>
+                            <div className="space-y-2">
+                                <label className="block text-sm font-bold text-neutral-700">Remarks & Feedback</label>
+                                <textarea
+                                    value={evaluationRemarks}
+                                    onChange={(e) => setEvaluationRemarks(e.target.value)}
+                                    placeholder="Enter detailed feedback for the team..."
+                                    className="w-full px-4 py-3 rounded-xl border border-neutral-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-sm h-[100px] resize-none"
+                                />
                             </div>
                         </div>
+
                         <div className="p-6 border-t border-neutral-100 bg-neutral-50 flex gap-3">
                             <button
                                 onClick={() => setEvaluatingProject(null)}

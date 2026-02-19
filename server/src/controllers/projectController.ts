@@ -424,34 +424,43 @@ export const deleteProject = async (req: Request, res: Response) => {
 export const submitEvaluation = async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
-        const { type, marks, remarks } = req.body;
+        const { type, marks, remarks, guide, panel } = req.body;
         const userId = (req as any).user.id;
 
         const project = await Project.findById(id);
         if (!project) return res.status(404).json({ message: 'Project not found' });
 
         // Authorization: Only assigned faculty or Admin
-        if (project.faculty?.toString() !== userId && (req as any).user.role !== 'Admin') {
+        if (String(project.faculty) !== userId && (req as any).user.role !== 'Admin') {
             return res.status(403).json({ message: 'Not authorized to evaluate this project' });
         }
 
-        const evaluationData = {
+        const evaluationData: any = {
             marks,
             remarks,
             gradedBy: userId,
-            date: new Date()
+            date: new Date(),
+            guide,
+            panel
         };
 
         if (type === 'mid-term') {
             project.midTermEvaluation = evaluationData;
         } else if (type === 'end-term') {
             project.endTermEvaluation = evaluationData;
+        } else if (type === 'final-report') {
+            project.finalReportEvaluation = evaluationData;
         } else {
             return res.status(400).json({ message: 'Invalid evaluation type' });
         }
 
-        await project.save();
-        res.json(project);
+        // Mark as modified if necessary
+        project.markModified('midTermEvaluation');
+        project.markModified('endTermEvaluation');
+        project.markModified('finalReportEvaluation');
+
+        const savedProject = await project.save();
+        res.json(savedProject);
     } catch (error) {
         console.error("Evaluation error:", error);
         res.status(500).json({ message: 'Server error', error });

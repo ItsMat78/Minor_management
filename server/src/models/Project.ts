@@ -24,12 +24,47 @@ export interface IProject extends Document {
         remarks: string;
         gradedBy: mongoose.Types.ObjectId;
         date: Date;
+        guide: {
+            dataElicitation: number;
+            problemDefinition: number;
+            planning: number;
+        };
+        panel: {
+            literatureSurvey: number;
+            presentationSkills: number;
+            technicalUnderstanding: number;
+        };
     };
     endTermEvaluation?: {
         marks: number;
         remarks: string;
         gradedBy: mongoose.Types.ObjectId;
         date: Date;
+        guide: {
+            requirementSpecification: number;
+            systemDesign: number;
+            implementation: number;
+            projectManagement: number;
+            planningVsExecution: number;
+        };
+        panel: {
+            testingAndResults: number;
+            innovationAndRelevance: number;
+            presentationAndViva: number;
+            conceptualDepth: number;
+        };
+    };
+    finalReportEvaluation?: {
+        marks: number;
+        remarks: string;
+        gradedBy: mongoose.Types.ObjectId;
+        date: Date;
+        guide: {
+            reportWriting: number;
+        };
+        panel: {
+            finalReport: number;
+        };
     };
 }
 
@@ -51,18 +86,9 @@ const ProjectSchema: Schema = new Schema({
         links: [{ type: String }]
     }],
     hasNewUpdate: { type: Boolean, default: false }, // Flag for faculty notification
-    midTermEvaluation: {
-        marks: { type: Number },
-        remarks: { type: String },
-        gradedBy: { type: Schema.Types.ObjectId, ref: 'User' },
-        date: { type: Date }
-    },
-    endTermEvaluation: {
-        marks: { type: Number },
-        remarks: { type: String },
-        gradedBy: { type: Schema.Types.ObjectId, ref: 'User' },
-        date: { type: Date }
-    }
+    midTermEvaluation: { type: Schema.Types.Mixed },
+    endTermEvaluation: { type: Schema.Types.Mixed },
+    finalReportEvaluation: { type: Schema.Types.Mixed }
 }, {
     timestamps: true
 });
