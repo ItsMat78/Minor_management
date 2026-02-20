@@ -2,7 +2,7 @@
 const xlsx = require('xlsx');
 const path = require('path');
 
-const FILE_PATH = path.resolve(__dirname, '../MINOR Project-II (IV Semester)_2025-2026.xlsx');
+const FILE_PATH = path.resolve(__dirname, '../UG Research Work-I (VI Semester)_2025-2026.xlsx');
 
 function inspectExcel() {
     const workbook = xlsx.readFile(FILE_PATH);
