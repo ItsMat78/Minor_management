@@ -309,6 +309,15 @@ const FacultyDashboard: React.FC = () => {
     const [filterBranch, setFilterBranch] = useState<string>('All');
     const [sortOption, setSortOption] = useState<string>('Default'); // Added sort state
 
+    const [expandedBatches, setExpandedBatches] = useState<Record<string, boolean>>({});
+    const toggleBatch = (year: string) => {
+        setExpandedBatches(prev => ({
+            ...prev,
+            [year]: !prev[year]
+        }));
+    };
+    const isBatchExpanded = (year: string) => expandedBatches[year] === true;
+
     // Group Details View State (integrated to fix sidebar issues)
     const [viewGroup, setViewGroup] = useState<any>(null);
 
@@ -985,25 +994,33 @@ const FacultyDashboard: React.FC = () => {
                                                     return (
                                                         <div key={batchYear} className="space-y-6">
                                                             {filterBatch === 'All' && (
-                                                                <div className="flex items-center gap-6">
-                                                                    <div className="flex items-baseline gap-3">
-                                                                        <h3 className="text-2xl font-bold text-neutral-900">Batch {batchYear}-{batchYear + 4}</h3>
-                                                                        <span className="text-sm font-medium text-neutral-400">{batchMentees.length} Active Projects</span>
+                                                                <div
+                                                                    className={`flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-2xl border shadow-sm cursor-pointer transition-all group select-none relative overflow-hidden ${isBatchExpanded(batchYear.toString()) ? 'bg-indigo-50/50 border-indigo-200' : 'bg-white border-neutral-200 hover:border-indigo-300 hover:bg-neutral-50'}`}
+                                                                    onClick={() => toggleBatch(batchYear.toString())}
+                                                                >
+                                                                    {isBatchExpanded(batchYear.toString()) && <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-indigo-500"></div>}
+                                                                    <div className="flex items-center gap-4 pl-2">
+                                                                        <div className={`p-2 rounded-xl transition-colors ${isBatchExpanded(batchYear.toString()) ? 'bg-indigo-100 text-indigo-700' : 'bg-neutral-100 text-neutral-500 group-hover:bg-indigo-50 group-hover:text-indigo-600'}`}>
+                                                                            <ChevronDown className={`w-5 h-5 transition-transform duration-300 ${!isBatchExpanded(batchYear.toString()) ? '-rotate-90' : ''}`} />
+                                                                        </div>
+                                                                        <div>
+                                                                            <h3 className="text-xl font-bold text-neutral-900">Batch {batchYear}-{batchYear + 4}</h3>
+                                                                            <p className="text-sm font-medium text-neutral-500 mt-0.5">{batchMentees.length} Active Projects</p>
+                                                                        </div>
                                                                     </div>
-                                                                    <div className="h-px bg-neutral-100 flex-1"></div>
-                                                                    <div className="flex gap-4">
-                                                                        <div className="px-4 py-2 bg-white text-indigo-600 rounded-xl border border-indigo-100 flex items-center gap-2 shadow-sm">
-                                                                            <div className="p-1 bg-indigo-50 rounded-lg">
-                                                                                <Users className="w-3 h-3" />
+                                                                    <div className="flex gap-3 pr-2" onClick={(e) => e.stopPropagation()}>
+                                                                        <div className="px-4 py-2 bg-white text-indigo-700 rounded-xl border border-indigo-100/50 flex items-center gap-3 shadow-sm">
+                                                                            <div className="p-1.5 bg-indigo-50 rounded-lg">
+                                                                                <Users className="w-4 h-4 text-indigo-600" />
                                                                             </div>
                                                                             <div className="flex flex-col">
                                                                                 <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-400">Teams</span>
                                                                                 <span className="text-sm font-bold leading-none">{teamsCount}</span>
                                                                             </div>
                                                                         </div>
-                                                                        <div className="px-4 py-2 bg-white text-emerald-600 rounded-xl border border-emerald-100 flex items-center gap-2 shadow-sm">
-                                                                            <div className="p-1 bg-emerald-50 rounded-lg">
-                                                                                <Users className="w-3 h-3" />
+                                                                        <div className="px-4 py-2 bg-white text-emerald-700 rounded-xl border border-emerald-100/50 flex items-center gap-3 shadow-sm">
+                                                                            <div className="p-1.5 bg-emerald-50 rounded-lg">
+                                                                                <Users className="w-4 h-4 text-emerald-600" />
                                                                             </div>
                                                                             <div className="flex flex-col">
                                                                                 <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">Students</span>
@@ -1014,97 +1031,99 @@ const FacultyDashboard: React.FC = () => {
                                                                 </div>
                                                             )}
 
-                                                            <div className="bg-white rounded-2xl border border-neutral-200 shadow-sm overflow-hidden">
-                                                                <div className="overflow-x-auto">
-                                                                    <table className="w-full text-left">
-                                                                        <thead className="bg-neutral-50 border-b border-neutral-100">
-                                                                            <tr>
-                                                                                <th className="px-6 py-4 text-xs font-bold text-neutral-400 uppercase tracking-wider w-1/3">Project Details</th>
-                                                                                <th className="px-6 py-4 text-xs font-bold text-neutral-400 uppercase tracking-wider">Members</th>
-                                                                                <th className="px-6 py-4 text-xs font-bold text-neutral-400 uppercase tracking-wider">Status</th>
-                                                                                <th className="px-6 py-4 text-xs font-bold text-neutral-400 uppercase tracking-wider">Last Update</th>
-                                                                                <th className="px-6 py-4 text-xs font-bold text-neutral-400 uppercase tracking-wider text-right">Action</th>
-                                                                            </tr>
-                                                                        </thead>
-                                                                        <tbody className="divide-y divide-neutral-100">
-                                                                            {batchMentees.map((item: any) => (
-                                                                                <tr
-                                                                                    key={item._id}
-                                                                                    onClick={() => handleGroupClick(item)}
-                                                                                    className={`cursor-pointer transition-all group ${item.project?.hasNewUpdate
-                                                                                        ? 'bg-amber-50/50 hover:bg-amber-50 relative'
-                                                                                        : 'hover:bg-neutral-50'}`}
-                                                                                >
-                                                                                    {item.project?.hasNewUpdate && (
-                                                                                        <td className="absolute left-0 top-0 bottom-0 w-1 bg-amber-400 animate-pulse"></td>
-                                                                                    )}
-                                                                                    <td className="px-6 py-4">
-                                                                                        <div className="flex flex-col gap-1">
-                                                                                            <div className="flex items-start justify-between gap-2">
-                                                                                                <span className="font-bold text-neutral-900 group-hover:text-indigo-600 transition-colors line-clamp-1 text-base">
-                                                                                                    {item.project?.title || item.name}
-                                                                                                </span>
-                                                                                                {item.project?.hasNewUpdate && (
-                                                                                                    <span className="px-2 py-0.5 bg-amber-100 text-amber-700 border border-amber-200 text-[10px] font-bold uppercase rounded-md shadow-sm whitespace-nowrap">
-                                                                                                        New Update
+                                                            {(isBatchExpanded(batchYear.toString()) || filterBatch !== 'All') && (
+                                                                <div className="bg-white rounded-2xl border border-neutral-200 shadow-sm overflow-hidden">
+                                                                    <div className="overflow-x-auto">
+                                                                        <table className="w-full text-left">
+                                                                            <thead className="bg-neutral-50 border-b border-neutral-100">
+                                                                                <tr>
+                                                                                    <th className="px-6 py-4 text-xs font-bold text-neutral-400 uppercase tracking-wider w-1/3">Project Details</th>
+                                                                                    <th className="px-6 py-4 text-xs font-bold text-neutral-400 uppercase tracking-wider">Members</th>
+                                                                                    <th className="px-6 py-4 text-xs font-bold text-neutral-400 uppercase tracking-wider">Status</th>
+                                                                                    <th className="px-6 py-4 text-xs font-bold text-neutral-400 uppercase tracking-wider">Last Update</th>
+                                                                                    <th className="px-6 py-4 text-xs font-bold text-neutral-400 uppercase tracking-wider text-right">Action</th>
+                                                                                </tr>
+                                                                            </thead>
+                                                                            <tbody className="divide-y divide-neutral-100">
+                                                                                {batchMentees.map((item: any) => (
+                                                                                    <tr
+                                                                                        key={item._id}
+                                                                                        onClick={() => handleGroupClick(item)}
+                                                                                        className={`cursor-pointer transition-all group ${item.project?.hasNewUpdate
+                                                                                            ? 'bg-amber-50/50 hover:bg-amber-50 relative'
+                                                                                            : 'hover:bg-neutral-50'}`}
+                                                                                    >
+                                                                                        {item.project?.hasNewUpdate && (
+                                                                                            <td className="absolute left-0 top-0 bottom-0 w-1 bg-amber-400 animate-pulse"></td>
+                                                                                        )}
+                                                                                        <td className="px-6 py-4">
+                                                                                            <div className="flex flex-col gap-1">
+                                                                                                <div className="flex items-start justify-between gap-2">
+                                                                                                    <span className="font-bold text-neutral-900 group-hover:text-indigo-600 transition-colors line-clamp-1 text-base">
+                                                                                                        {item.project?.title || item.name}
                                                                                                     </span>
+                                                                                                    {item.project?.hasNewUpdate && (
+                                                                                                        <span className="px-2 py-0.5 bg-amber-100 text-amber-700 border border-amber-200 text-[10px] font-bold uppercase rounded-md shadow-sm whitespace-nowrap">
+                                                                                                            New Update
+                                                                                                        </span>
+                                                                                                    )}
+                                                                                                </div>
+                                                                                                <span className="text-xs font-medium text-neutral-500 uppercase tracking-wider flex items-center gap-1.5">
+                                                                                                    <Users className="w-3 h-3" />
+                                                                                                    {item.name}
+                                                                                                </span>
+                                                                                                {item.project?.tags && item.project.tags.length > 0 && (
+                                                                                                    <div className="flex flex-wrap gap-1 mt-1">
+                                                                                                        {item.project.tags.slice(0, 3).map((tag: string, i: number) => (
+                                                                                                            <span key={i} className="px-1.5 py-0.5 bg-neutral-100 text-neutral-500 text-[10px] rounded border border-neutral-200">
+                                                                                                                {tag}
+                                                                                                            </span>
+                                                                                                        ))}
+                                                                                                    </div>
                                                                                                 )}
                                                                                             </div>
-                                                                                            <span className="text-xs font-medium text-neutral-500 uppercase tracking-wider flex items-center gap-1.5">
-                                                                                                <Users className="w-3 h-3" />
-                                                                                                {item.name}
+                                                                                        </td>
+                                                                                        <td className="px-6 py-4">
+                                                                                            <div className="flex -space-x-2">
+                                                                                                {item.members.slice(0, 3).map((m: any, idx: number) => (
+                                                                                                    <div key={idx} className="h-8 w-8 rounded-full bg-indigo-100 border-2 border-white flex items-center justify-center text-xs font-bold text-indigo-600 hover:z-10 transition-transform hover:scale-110" title={m.name}>
+                                                                                                        {m.name.charAt(0)}
+                                                                                                    </div>
+                                                                                                ))}
+                                                                                                {item.members.length > 3 && (
+                                                                                                    <div className="h-8 w-8 rounded-full bg-neutral-100 border-2 border-white flex items-center justify-center text-xs font-bold text-neutral-500">
+                                                                                                        +{item.members.length - 3}
+                                                                                                    </div>
+                                                                                                )}
+                                                                                            </div>
+                                                                                        </td>
+                                                                                        <td className="px-6 py-4">
+                                                                                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${(item.status || item.project?.status) === 'Approved' ? 'bg-green-100 text-green-700' :
+                                                                                                (item.status || item.project?.status) === 'Rejected' ? 'bg-red-100 text-red-700' :
+                                                                                                    'bg-indigo-100 text-indigo-700'
+                                                                                                }`}>
+                                                                                                <div className={`w-1.5 h-1.5 rounded-full ${(item.status || item.project?.status) === 'Approved' ? 'bg-green-500' :
+                                                                                                    (item.status || item.project?.status) === 'Rejected' ? 'bg-red-500' :
+                                                                                                        'bg-indigo-500'
+                                                                                                    }`} />
+                                                                                                {item.status || item.project?.status || 'Active'}
                                                                                             </span>
-                                                                                            {item.project?.tags && item.project.tags.length > 0 && (
-                                                                                                <div className="flex flex-wrap gap-1 mt-1">
-                                                                                                    {item.project.tags.slice(0, 3).map((tag: string, i: number) => (
-                                                                                                        <span key={i} className="px-1.5 py-0.5 bg-neutral-100 text-neutral-500 text-[10px] rounded border border-neutral-200">
-                                                                                                            {tag}
-                                                                                                        </span>
-                                                                                                    ))}
-                                                                                                </div>
-                                                                                            )}
-                                                                                        </div>
-                                                                                    </td>
-                                                                                    <td className="px-6 py-4">
-                                                                                        <div className="flex -space-x-2">
-                                                                                            {item.members.slice(0, 3).map((m: any, idx: number) => (
-                                                                                                <div key={idx} className="h-8 w-8 rounded-full bg-indigo-100 border-2 border-white flex items-center justify-center text-xs font-bold text-indigo-600 hover:z-10 transition-transform hover:scale-110" title={m.name}>
-                                                                                                    {m.name.charAt(0)}
-                                                                                                </div>
-                                                                                            ))}
-                                                                                            {item.members.length > 3 && (
-                                                                                                <div className="h-8 w-8 rounded-full bg-neutral-100 border-2 border-white flex items-center justify-center text-xs font-bold text-neutral-500">
-                                                                                                    +{item.members.length - 3}
-                                                                                                </div>
-                                                                                            )}
-                                                                                        </div>
-                                                                                    </td>
-                                                                                    <td className="px-6 py-4">
-                                                                                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${(item.status || item.project?.status) === 'Approved' ? 'bg-green-100 text-green-700' :
-                                                                                            (item.status || item.project?.status) === 'Rejected' ? 'bg-red-100 text-red-700' :
-                                                                                                'bg-indigo-100 text-indigo-700'
-                                                                                            }`}>
-                                                                                            <div className={`w-1.5 h-1.5 rounded-full ${(item.status || item.project?.status) === 'Approved' ? 'bg-green-500' :
-                                                                                                (item.status || item.project?.status) === 'Rejected' ? 'bg-red-500' :
-                                                                                                    'bg-indigo-500'
-                                                                                                }`} />
-                                                                                            {item.status || item.project?.status || 'Active'}
-                                                                                        </span>
-                                                                                    </td>
-                                                                                    <td className="px-6 py-4 text-sm text-neutral-500 font-mono text-xs">
-                                                                                        {new Date(item.project?.updatedAt || item.createdAt).toLocaleDateString()}
-                                                                                    </td>
-                                                                                    <td className="px-6 py-4 text-right">
-                                                                                        <div className="inline-flex items-center gap-1 text-indigo-600 font-bold text-xs opacity-0 group-hover:opacity-100 transition-opacity">
-                                                                                            View <ChevronRight className="w-3 h-3" />
-                                                                                        </div>
-                                                                                    </td>
-                                                                                </tr>
-                                                                            ))}
-                                                                        </tbody>
-                                                                    </table>
+                                                                                        </td>
+                                                                                        <td className="px-6 py-4 text-sm text-neutral-500 font-mono text-xs">
+                                                                                            {new Date(item.project?.updatedAt || item.createdAt).toLocaleDateString()}
+                                                                                        </td>
+                                                                                        <td className="px-6 py-4 text-right">
+                                                                                            <div className="inline-flex items-center gap-1 text-indigo-600 font-bold text-xs opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                                                View <ChevronRight className="w-3 h-3" />
+                                                                                            </div>
+                                                                                        </td>
+                                                                                    </tr>
+                                                                                ))}
+                                                                            </tbody>
+                                                                        </table>
+                                                                    </div>
                                                                 </div>
-                                                            </div>
+                                                            )}
                                                         </div>
                                                     );
                                                 }))}
@@ -1123,99 +1142,109 @@ const FacultyDashboard: React.FC = () => {
 
                                                 return (
                                                     <div key={batchYear} className="space-y-4">
-                                                        <div className="flex items-center gap-4">
-                                                            <h3 className="text-xl font-bold text-neutral-800 flex items-center gap-2">
-                                                                <span className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center text-sm font-bold border-2 border-white shadow-sm">
-                                                                    {batchSuffix}
-                                                                </span>
-                                                                Batch {batchYear}
-                                                            </h3>
-                                                            <div className="h-px bg-neutral-200 flex-1"></div>
-                                                            <span className="text-sm font-medium text-neutral-400 bg-white px-3 py-1 rounded-full border border-neutral-100 shadow-sm">
+                                                        <div
+                                                            className={`flex items-center justify-between p-4 rounded-2xl border shadow-sm cursor-pointer transition-all group select-none relative overflow-hidden ${isBatchExpanded(batchYear.toString()) ? 'bg-indigo-50/50 border-indigo-200' : 'bg-white border-neutral-200 hover:border-indigo-300 hover:bg-neutral-50'}`}
+                                                            onClick={() => toggleBatch(batchYear.toString())}
+                                                        >
+                                                            {isBatchExpanded(batchYear.toString()) && <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-indigo-500"></div>}
+                                                            <div className="flex items-center gap-4 pl-2">
+                                                                <div className={`p-2 rounded-xl transition-colors ${isBatchExpanded(batchYear.toString()) ? 'bg-indigo-100 text-indigo-700' : 'bg-neutral-100 text-neutral-500 group-hover:bg-indigo-50 group-hover:text-indigo-600'}`}>
+                                                                    <ChevronDown className={`w-5 h-5 transition-transform duration-300 ${!isBatchExpanded(batchYear.toString()) ? '-rotate-90' : ''}`} />
+                                                                </div>
+                                                                <h3 className="text-xl font-bold text-neutral-900 flex items-center gap-3">
+                                                                    <span className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-700 flex items-center justify-center text-base font-bold border border-indigo-100/50 shadow-sm">
+                                                                        {batchSuffix}
+                                                                    </span>
+                                                                    Batch {batchYear}
+                                                                </h3>
+                                                            </div>
+                                                            <span className="text-sm font-bold text-neutral-600 bg-white px-4 py-2 rounded-xl border border-neutral-200 mr-2 shadow-sm">
                                                                 {batchProjects.length} Projects
                                                             </span>
                                                         </div>
 
-                                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                                            {batchProjects.map((item: any) => {
-                                                                const projectData = item.project || item;
-                                                                const evalData = activeTab === 'mid-term' ? projectData?.midTermEvaluation :
-                                                                    activeTab === 'end-term' ? projectData?.endTermEvaluation :
-                                                                        projectData?.finalReportEvaluation;
-                                                                const isEvaluated = !!evalData;
+                                                        {isBatchExpanded(batchYear.toString()) && (
+                                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                                                {batchProjects.map((item: any) => {
+                                                                    const projectData = item.project || item;
+                                                                    const evalData = activeTab === 'mid-term' ? projectData?.midTermEvaluation :
+                                                                        activeTab === 'end-term' ? projectData?.endTermEvaluation :
+                                                                            projectData?.finalReportEvaluation;
+                                                                    const isEvaluated = !!evalData;
 
-                                                                return (
-                                                                    <div key={item._id} className="bg-white rounded-2xl border border-neutral-200 p-6 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden group">
-                                                                        {isEvaluated && (
-                                                                            <div className="absolute top-0 right-0 p-3 bg-green-50 rounded-bl-2xl border-l border-b border-green-100 text-green-700 flex items-center gap-1.5 font-bold text-xs z-10">
-                                                                                <CheckCircle className="w-4 h-4" /> Evaluated
-                                                                            </div>
-                                                                        )}
+                                                                    return (
+                                                                        <div key={item._id} className="bg-white rounded-2xl border border-neutral-200 p-6 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden group">
+                                                                            {isEvaluated && (
+                                                                                <div className="absolute top-0 right-0 p-3 bg-green-50 rounded-bl-2xl border-l border-b border-green-100 text-green-700 flex items-center gap-1.5 font-bold text-xs z-10">
+                                                                                    <CheckCircle className="w-4 h-4" /> Evaluated
+                                                                                </div>
+                                                                            )}
 
-                                                                        <div className="mb-4">
-                                                                            <h3 className="text-lg font-bold text-gray-900 mb-1 line-clamp-1 pr-8" title={projectData?.title}>{projectData?.title || 'Untitled Project'}</h3>
-                                                                            <p className="text-sm text-neutral-500 font-medium flex items-center gap-1.5 align-middle">
-                                                                                <Users className="w-4 h-4" /> {item.name}
-                                                                            </p>
-                                                                        </div>
-
-                                                                        {/* Attachments / Report Link */}
-                                                                        {projectData?.attachments && projectData.attachments.length > 0 && (
                                                                             <div className="mb-4">
-                                                                                <div className="flex flex-wrap gap-2">
-                                                                                    {projectData.attachments.slice(0, 2).map((url: string, idx: number) => (
-                                                                                        <a
-                                                                                            key={idx}
-                                                                                            href={url}
-                                                                                            target="_blank"
-                                                                                            rel="noopener noreferrer"
-                                                                                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-neutral-50 text-indigo-600 rounded-lg text-xs font-bold border border-neutral-200 hover:bg-neutral-100 hover:border-indigo-200 transition-colors"
-                                                                                            onClick={(e) => e.stopPropagation()}
-                                                                                        >
-                                                                                            <FileText className="w-3 h-3" />
-                                                                                            {activeTab === 'final-report' ? 'View Report' : `File ${idx + 1}`}
-                                                                                        </a>
+                                                                                <h3 className="text-lg font-bold text-gray-900 mb-1 line-clamp-1 pr-8" title={projectData?.title}>{projectData?.title || 'Untitled Project'}</h3>
+                                                                                <p className="text-sm text-neutral-500 font-medium flex items-center gap-1.5 align-middle">
+                                                                                    <Users className="w-4 h-4" /> {item.name}
+                                                                                </p>
+                                                                            </div>
+
+                                                                            {/* Attachments / Report Link */}
+                                                                            {projectData?.attachments && projectData.attachments.length > 0 && (
+                                                                                <div className="mb-4">
+                                                                                    <div className="flex flex-wrap gap-2">
+                                                                                        {projectData.attachments.slice(0, 2).map((url: string, idx: number) => (
+                                                                                            <a
+                                                                                                key={idx}
+                                                                                                href={url}
+                                                                                                target="_blank"
+                                                                                                rel="noopener noreferrer"
+                                                                                                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-neutral-50 text-indigo-600 rounded-lg text-xs font-bold border border-neutral-200 hover:bg-neutral-100 hover:border-indigo-200 transition-colors"
+                                                                                                onClick={(e) => e.stopPropagation()}
+                                                                                            >
+                                                                                                <FileText className="w-3 h-3" />
+                                                                                                {activeTab === 'final-report' ? 'View Report' : `File ${idx + 1}`}
+                                                                                            </a>
+                                                                                        ))}
+                                                                                    </div>
+                                                                                </div>
+                                                                            )}
+
+                                                                            <div className="mb-6">
+                                                                                <div className="flex -space-x-2 mb-2 pl-1">
+                                                                                    {item.members.slice(0, 4).map((m: any, idx: number) => (
+                                                                                        <div key={idx} className="h-8 w-8 rounded-full bg-indigo-50 border-2 border-white flex items-center justify-center text-xs font-bold text-indigo-600 shadow-sm tooltip-trigger" title={m.name}>
+                                                                                            {m.name.charAt(0)}
+                                                                                        </div>
                                                                                     ))}
+                                                                                    {item.members.length > 4 && (
+                                                                                        <div className="h-8 w-8 rounded-full bg-neutral-100 border-2 border-white flex items-center justify-center text-xs font-bold text-neutral-500 shadow-sm">
+                                                                                            +{item.members.length - 4}
+                                                                                        </div>
+                                                                                    )}
                                                                                 </div>
                                                                             </div>
-                                                                        )}
 
-                                                                        <div className="mb-6">
-                                                                            <div className="flex -space-x-2 mb-2 pl-1">
-                                                                                {item.members.slice(0, 4).map((m: any, idx: number) => (
-                                                                                    <div key={idx} className="h-8 w-8 rounded-full bg-indigo-50 border-2 border-white flex items-center justify-center text-xs font-bold text-indigo-600 shadow-sm tooltip-trigger" title={m.name}>
-                                                                                        {m.name.charAt(0)}
-                                                                                    </div>
-                                                                                ))}
-                                                                                {item.members.length > 4 && (
-                                                                                    <div className="h-8 w-8 rounded-full bg-neutral-100 border-2 border-white flex items-center justify-center text-xs font-bold text-neutral-500 shadow-sm">
-                                                                                        +{item.members.length - 4}
-                                                                                    </div>
-                                                                                )}
+                                                                            <div className="bg-neutral-50 rounded-xl p-4 border border-neutral-100 flex flex-col gap-3 group-hover:border-indigo-100 transition-colors">
+                                                                                <div className="flex justify-between items-center">
+                                                                                    <span className="text-xs font-bold text-neutral-400 uppercase tracking-wider">Score</span>
+                                                                                    <span className={`text-xl font-bold ${isEvaluated ? 'text-indigo-600' : 'text-neutral-300'}`}>
+                                                                                        {isEvaluated ? evalData.marks : '--'} <span className="text-sm text-neutral-400 font-medium">/ {RUBRIC_CONFIG[activeTab]?.maxMarks || 100}</span>
+                                                                                    </span>
+                                                                                </div>
+                                                                                <button
+                                                                                    onClick={() => handleOpenEvaluation(item, activeTab as 'mid-term' | 'end-term' | 'final-report')}
+                                                                                    className={`w-full py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-all ${isEvaluated
+                                                                                        ? 'bg-white border border-neutral-200 text-neutral-600 hover:bg-neutral-50 hover:text-indigo-600 hover:border-indigo-200'
+                                                                                        : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-md shadow-indigo-200 hover:shadow-lg hover:-translate-y-0.5'
+                                                                                        }`}
+                                                                                >
+                                                                                    {isEvaluated ? 'Edit Evaluation' : 'Evaluate Now'}
+                                                                                </button>
                                                                             </div>
                                                                         </div>
-
-                                                                        <div className="bg-neutral-50 rounded-xl p-4 border border-neutral-100 flex flex-col gap-3 group-hover:border-indigo-100 transition-colors">
-                                                                            <div className="flex justify-between items-center">
-                                                                                <span className="text-xs font-bold text-neutral-400 uppercase tracking-wider">Score</span>
-                                                                                <span className={`text-xl font-bold ${isEvaluated ? 'text-indigo-600' : 'text-neutral-300'}`}>
-                                                                                    {isEvaluated ? evalData.marks : '--'} <span className="text-sm text-neutral-400 font-medium">/ {RUBRIC_CONFIG[activeTab]?.maxMarks || 100}</span>
-                                                                                </span>
-                                                                            </div>
-                                                                            <button
-                                                                                onClick={() => handleOpenEvaluation(item, activeTab as 'mid-term' | 'end-term' | 'final-report')}
-                                                                                className={`w-full py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-all ${isEvaluated
-                                                                                    ? 'bg-white border border-neutral-200 text-neutral-600 hover:bg-neutral-50 hover:text-indigo-600 hover:border-indigo-200'
-                                                                                    : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-md shadow-indigo-200 hover:shadow-lg hover:-translate-y-0.5'
-                                                                                    }`}
-                                                                            >
-                                                                                {isEvaluated ? 'Edit Evaluation' : 'Evaluate Now'}
-                                                                            </button>
-                                                                        </div>
-                                                                    </div>
-                                                                );
-                                                            })}
-                                                        </div>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 );
                                             })}
@@ -1260,25 +1289,33 @@ const FacultyDashboard: React.FC = () => {
 
                                                         return (
                                                             <div key={batchYear} className="space-y-6">
-                                                                <div className="flex items-center gap-6">
-                                                                    <div className="flex items-baseline gap-3">
-                                                                        <h3 className="text-2xl font-bold text-neutral-900">Batch {batchYear}</h3>
-                                                                        <span className="text-sm font-medium text-neutral-400">{batchMentees.length} Active Projects</span>
+                                                                <div
+                                                                    className={`flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-2xl border shadow-sm cursor-pointer transition-all group select-none relative overflow-hidden ${isBatchExpanded(batchYear.toString()) ? 'bg-indigo-50/50 border-indigo-200' : 'bg-white border-neutral-200 hover:border-indigo-300 hover:bg-neutral-50'}`}
+                                                                    onClick={() => toggleBatch(batchYear.toString())}
+                                                                >
+                                                                    {isBatchExpanded(batchYear.toString()) && <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-indigo-500"></div>}
+                                                                    <div className="flex items-center gap-4 pl-2">
+                                                                        <div className={`p-2 rounded-xl transition-colors ${isBatchExpanded(batchYear.toString()) ? 'bg-indigo-100 text-indigo-700' : 'bg-neutral-100 text-neutral-500 group-hover:bg-indigo-50 group-hover:text-indigo-600'}`}>
+                                                                            <ChevronDown className={`w-5 h-5 transition-transform duration-300 ${!isBatchExpanded(batchYear.toString()) ? '-rotate-90' : ''}`} />
+                                                                        </div>
+                                                                        <div>
+                                                                            <h3 className="text-xl font-bold text-neutral-900">Batch {batchYear}</h3>
+                                                                            <p className="text-sm font-medium text-neutral-500 mt-0.5">{batchMentees.length} Active Projects</p>
+                                                                        </div>
                                                                     </div>
-                                                                    <div className="h-px bg-neutral-100 flex-1"></div>
-                                                                    <div className="flex gap-4">
-                                                                        <div className="px-4 py-2 bg-white text-indigo-600 rounded-xl border border-indigo-100 flex items-center gap-2 shadow-sm">
-                                                                            <div className="p-1 bg-indigo-50 rounded-lg">
-                                                                                <Users className="w-3 h-3" />
+                                                                    <div className="flex gap-3 pr-2" onClick={(e) => e.stopPropagation()}>
+                                                                        <div className="px-4 py-2 bg-white text-indigo-700 rounded-xl border border-indigo-100/50 flex items-center gap-3 shadow-sm">
+                                                                            <div className="p-1.5 bg-indigo-50 rounded-lg">
+                                                                                <Users className="w-4 h-4 text-indigo-600" />
                                                                             </div>
                                                                             <div className="flex flex-col">
                                                                                 <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-400">Teams</span>
                                                                                 <span className="text-sm font-bold leading-none">{teamsCount}</span>
                                                                             </div>
                                                                         </div>
-                                                                        <div className="px-4 py-2 bg-white text-emerald-600 rounded-xl border border-emerald-100 flex items-center gap-2 shadow-sm">
-                                                                            <div className="p-1 bg-emerald-50 rounded-lg">
-                                                                                <Users className="w-3 h-3" />
+                                                                        <div className="px-4 py-2 bg-white text-emerald-700 rounded-xl border border-emerald-100/50 flex items-center gap-3 shadow-sm">
+                                                                            <div className="p-1.5 bg-emerald-50 rounded-lg">
+                                                                                <Users className="w-4 h-4 text-emerald-600" />
                                                                             </div>
                                                                             <div className="flex flex-col">
                                                                                 <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">Students</span>
@@ -1287,17 +1324,19 @@ const FacultyDashboard: React.FC = () => {
                                                                         </div>
                                                                     </div>
                                                                 </div>
-                                                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-6">
-                                                                    {batchMentees.map((item: any) => (
-                                                                        <MenteeCard
-                                                                            key={item._id}
-                                                                            item={item}
-                                                                            activeTab={activeTab}
-                                                                            navigate={navigate}
-                                                                            setSelectedProject={activeTab === 'mentees' ? handleGroupClick : setSelectedProject}
-                                                                        />
-                                                                    ))}
-                                                                </div>
+                                                                {isBatchExpanded(batchYear.toString()) && (
+                                                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-6">
+                                                                        {batchMentees.map((item: any) => (
+                                                                            <MenteeCard
+                                                                                key={item._id}
+                                                                                item={item}
+                                                                                activeTab={activeTab}
+                                                                                navigate={navigate}
+                                                                                setSelectedProject={activeTab === 'mentees' ? handleGroupClick : setSelectedProject}
+                                                                            />
+                                                                        ))}
+                                                                    </div>
+                                                                )}
                                                             </div>
                                                         );
                                                     })}
