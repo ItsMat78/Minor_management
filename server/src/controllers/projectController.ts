@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import Project from '../models/Project';
 import Group from '../models/Group';
 import User, { UserRole } from '../models/User';
+import Panel from '../models/Panel';
 
 // ... (imports)
 
@@ -431,7 +432,14 @@ export const submitEvaluation = async (req: Request, res: Response) => {
         if (!project) return res.status(404).json({ message: 'Project not found' });
 
         // Authorization: Only assigned faculty or Admin
-        if (String(project.faculty) !== userId && (req as any).user.role !== 'Admin') {
+        let isAuthorized = String(project.faculty) === userId || (req as any).user.role === 'Admin';
+
+        if (!isAuthorized && project.faculty) {
+            const panel = await Panel.findOne({ faculty: { $all: [project.faculty, userId] } });
+            if (panel) isAuthorized = true;
+        }
+
+        if (!isAuthorized) {
             return res.status(403).json({ message: 'Not authorized to evaluate this project' });
         }
 

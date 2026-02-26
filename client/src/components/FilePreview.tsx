@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { FileText, Image, Video, Film, Download, ExternalLink } from 'lucide-react';
+import { FileText, Film, Download, ExternalLink } from 'lucide-react';
 
 interface FilePreviewProps {
     url: string;

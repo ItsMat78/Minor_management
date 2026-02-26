@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
-import { Search, Users, Clock, CheckCircle, FileText, LayoutGrid, X, LogOut, ChevronRight, Settings, Menu, Calendar, Download, AlertCircle, TrendingUp, Save } from 'lucide-react';
+import { Search, Users, Clock, CheckCircle, FileText, LayoutGrid, X, LogOut, ChevronRight, ChevronDown, ChevronUp, Settings, Menu, Calendar, Download, AlertCircle, TrendingUp, Save } from 'lucide-react';
 import { motion } from 'framer-motion';
 import MenteeGroupDetails from '../components/MenteeGroupDetails';
+import AutoCreatePanelsModal from '../components/AutoCreatePanelsModal';
 
 const AdminDashboard: React.FC = () => {
     const { user, logout } = useAuth();
-    const [activeTab, setActiveTab] = useState<'students' | 'groups' | 'faculty' | 'events' | 'exports'>('students');
+    const [activeTab, setActiveTab] = useState<'students' | 'groups' | 'faculty' | 'events' | 'exports' | 'panels'>('students');
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
     // Data State
@@ -15,6 +16,14 @@ const AdminDashboard: React.FC = () => {
     const [faculty, setFaculty] = useState<any[]>([]);
     const [groups, setGroups] = useState<any[]>([]);
     const [loading, setLoading] = useState(false);
+    const [panels, setPanels] = useState<any[]>([]);
+    const [showAutoCreateModal, setShowAutoCreateModal] = useState(false);
+    const [autoCreateFaculties, setAutoCreateFaculties] = useState<any[]>([]);
+    const [showAutoCreateBatchSelect, setShowAutoCreateBatchSelect] = useState(false);
+    const [autoCreateBatchYear, setAutoCreateBatchYear] = useState('');
+    const [showCreatePanel, setShowCreatePanel] = useState(false);
+    const [newPanelFaculty, setNewPanelFaculty] = useState<string[]>([]);
+    const [newPanelBatch, setNewPanelBatch] = useState<string>('');
 
     // Filter State
     const [searchTerm, setSearchTerm] = useState('');
@@ -27,6 +36,7 @@ const AdminDashboard: React.FC = () => {
     const [editingFaculty, setEditingFaculty] = useState<any>(null);
     const [showLimitSettings, setShowLimitSettings] = useState(false);
     const [sortOption, setSortOption] = useState<string>('Default'); // Added sort state
+    const [collapsedPanelsBatches, setCollapsedPanelsBatches] = useState<Record<string, boolean>>({});
 
     // Limits State
     const [globalMaxStudents, setGlobalMaxStudents] = useState<number>(21);
@@ -59,6 +69,9 @@ const AdminDashboard: React.FC = () => {
                         const facultyRes = await api.get('/users/faculty');
                         setFaculty(Array.isArray(facultyRes.data) ? facultyRes.data : []);
                     }
+                } else if (activeTab === 'panels') {
+                    const res = await api.get(`/panels?batchYear=${filterBatch}`);
+                    setPanels(Array.isArray(res.data) ? res.data : []);
                 }
             } catch (error) {
                 console.error(`Failed to fetch ${activeTab}`, error);
@@ -71,12 +84,96 @@ const AdminDashboard: React.FC = () => {
         if (activeTab === 'groups') {
             setViewGroup(null); // Reset detail view on tab change
         }
-    }, [activeTab]);
+    }, [activeTab, filterBatch]);
 
     // Reset sort when tab changes
     useEffect(() => {
         setSortOption('Default');
     }, [activeTab]);
+
+
+    const handleAutoCreateClick = () => {
+        setAutoCreateBatchYear(filterBatch !== 'All' ? filterBatch : new Date().getFullYear().toString());
+        setShowAutoCreateBatchSelect(true);
+    };
+
+    const processAutoCreate = async () => {
+        if (!autoCreateBatchYear) return;
+
+        const batchSuffix = autoCreateBatchYear.slice(2);
+
+        let currentFaculty = faculty;
+        let currentGroups = groups;
+
+        // Ensure we have loaded both faculties and groups to map workload accurately
+        if (currentFaculty.length === 0 || currentGroups.length === 0) {
+            try {
+                const [facultyRes, groupsRes] = await Promise.all([
+                    api.get('/users/faculty'),
+                    api.get('/groups')
+                ]);
+                currentFaculty = Array.isArray(facultyRes.data) ? facultyRes.data : [];
+                currentGroups = Array.isArray(groupsRes.data) ? groupsRes.data : [];
+                setFaculty(currentFaculty);
+                setGroups(currentGroups);
+            } catch (error) {
+                console.error("Failed to fetch data for auto creation", error);
+                alert("Failed to load required faculty or group data.");
+                return;
+            }
+        }
+
+        // Calculate workload for ALL faculties regarding this batch
+        const batchGroups = currentGroups.filter((g: any) => {
+            return g.members?.some((m: any) => m.rollNumber && m.rollNumber.startsWith(batchSuffix));
+        });
+
+        const facultiesWithWorkload = currentFaculty.map(f => {
+            let count = 0;
+            batchGroups.forEach(g => {
+                if (g.project && (g.project.faculty === f._id || g.project.faculty?._id === f._id)) {
+                    count++;
+                }
+            });
+            return { _id: f._id, name: f.name, email: f.email, groupCount: count };
+        });
+
+        if (facultiesWithWorkload.length === 0) {
+            alert("There are no faculties available to assign.");
+            return;
+        }
+
+        setAutoCreateFaculties(facultiesWithWorkload);
+        setShowAutoCreateBatchSelect(false);
+        setShowAutoCreateModal(true);
+    };
+
+    const confirmAutoCreatePanels = async (newPanels: any[]) => {
+        try {
+            // Fetch existing panels for this batch explicitly from DB before delete
+            const batchYearNum = parseInt(autoCreateBatchYear);
+            const resExisting = await api.get(`/panels?batchYear=${batchYearNum}`);
+            const existingPanelsForBatch = Array.isArray(resExisting.data) ? resExisting.data : [];
+
+            for (const p of existingPanelsForBatch) {
+                await api.delete(`/panels/${p._id}`);
+            }
+
+            // Create new panels
+            for (const p of newPanels) {
+                await api.post('/panels', p);
+            }
+
+            setShowAutoCreateModal(false);
+            const res = await api.get(`/panels?batchYear=${filterBatch}`);
+            setPanels(Array.isArray(res.data) ? res.data : []);
+            alert("Panels Auto-Created and Saved Successfully!");
+        } catch (e: any) {
+            alert("Error saving panels: " + (e.response?.data?.message || e.message));
+            console.error("Panel save error:", e.response?.data || e);
+            throw e;
+        }
+    };
 
     const refreshGroups = async () => {
         try {
@@ -295,6 +392,12 @@ const AdminDashboard: React.FC = () => {
                         onClick={() => setActiveTab('faculty')}
                     />
                     <SidebarItem
+                        icon={<Users className="w-5 h-5" />}
+                        label="Evaluation Panels"
+                        active={activeTab === 'panels'}
+                        onClick={() => setActiveTab('panels')}
+                    />
+                    <SidebarItem
                         icon={<Calendar className="w-5 h-5" />}
                         label="Setup Events"
                         active={activeTab === 'events'}
@@ -339,6 +442,7 @@ const AdminDashboard: React.FC = () => {
                             {activeTab === 'students' && 'Student Directory'}
                             {activeTab === 'groups' && 'Group Directory'}
                             {activeTab === 'faculty' && 'Faculty Directory'}
+                            {activeTab === 'panels' && 'Evaluation Panels'}
                             {activeTab === 'events' && 'Setup Events'}
                             {activeTab === 'exports' && 'Data Exports'}
                         </h1>
@@ -348,7 +452,7 @@ const AdminDashboard: React.FC = () => {
                 <main className="flex-1 overflow-auto p-6 md:p-8">
                     <div className="max-w-7xl mx-auto min-h-full flex flex-col">
                         {/* Common Toolbar for Directories */}
-                        {(activeTab === 'students' || activeTab === 'groups' || activeTab === 'faculty') && !viewGroup && (
+                        {(activeTab === 'students' || activeTab === 'groups' || activeTab === 'faculty' || activeTab === 'panels') && !viewGroup && (
                             <div className="flex flex-col md:flex-row gap-4 mb-8 justify-between items-start md:items-center">
                                 <div className="relative w-full md:w-96">
                                     <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400" />
@@ -362,7 +466,7 @@ const AdminDashboard: React.FC = () => {
                                 </div>
 
                                 <div className="flex gap-4">
-                                    {(activeTab === 'students' || activeTab === 'groups') && (
+                                    {(activeTab === 'students' || activeTab === 'groups' || activeTab === 'panels') && (
                                         <select
                                             className="px-3 py-2 bg-white rounded-xl border border-neutral-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer hover:border-indigo-300 transition-colors"
                                             value={filterBatch}
@@ -671,6 +775,86 @@ const AdminDashboard: React.FC = () => {
                                     </>
                                 )}
 
+
+                                {activeTab === 'panels' && (
+                                    <div className="space-y-6">
+                                        <div className="flex justify-end gap-3">
+                                            <button onClick={handleAutoCreateClick} className="px-4 py-2 bg-indigo-50 text-indigo-600 border border-indigo-200 rounded-lg font-bold hover:bg-indigo-100 transition">
+                                                Auto Create Panels
+                                            </button>
+                                            <button onClick={() => setShowCreatePanel(true)} className="px-4 py-2 bg-indigo-600 text-white rounded-lg font-bold hover:bg-indigo-700 transition">
+                                                Create New Panel
+                                            </button>
+                                        </div>
+                                        {Object.entries(
+                                            panels.reduce((acc: any, panel: any) => {
+                                                const year = panel.batchYear;
+                                                acc[year] = acc[year] || [];
+                                                acc[year].push(panel);
+                                                return acc;
+                                            }, {})
+                                        ).sort(([a]: any, [b]: any) => Number(b) - Number(a)).map(([year, yearPanels]: any) => {
+                                            const isCollapsed = collapsedPanelsBatches[year] || false;
+                                            return (
+                                                <div key={year} className="space-y-4 mb-8">
+                                                    {filterBatch === 'All' && (
+                                                        <div
+                                                            className="flex items-center gap-4 cursor-pointer group"
+                                                            onClick={() => setCollapsedPanelsBatches(prev => ({ ...prev, [year]: !prev[year] }))}
+                                                        >
+                                                            <div className="bg-indigo-100 text-indigo-700 px-3 py-1.5 rounded-full text-sm font-bold flex items-center gap-2 group-hover:bg-indigo-200 transition-colors">
+                                                                Batch {year}-{parseInt(year) + 4}
+                                                                {isCollapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
+                                                            </div>
+                                                            <div className="h-px bg-neutral-200 flex-1 group-hover:bg-indigo-200 transition-colors"></div>
+                                                        </div>
+                                                    )}
+                                                    {!isCollapsed && (
+                                                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                                            {yearPanels.map((panel: any, index: number) => (
+                                                                <div key={panel._id} className="bg-white rounded-xl border border-neutral-200 p-6 shadow-sm">
+                                                                    <div className="flex justify-between items-start mb-4">
+                                                                        <div>
+                                                                            <h3 className="text-lg font-bold text-neutral-900">Panel {index + 1}</h3>
+                                                                            <p className="text-sm text-neutral-500">Batch {panel.batchYear}-{parseInt(panel.batchYear) + 4}</p>
+                                                                        </div>
+                                                                        <button
+                                                                            onClick={async () => {
+                                                                                if (confirm('Delete panel?')) {
+                                                                                    await api.delete(`/panels/${panel._id}`);
+                                                                                    const res = await api.get(`/panels?batchYear=${filterBatch}`);
+                                                                                    setPanels(Array.isArray(res.data) ? res.data : []);
+                                                                                }
+                                                                            }}
+                                                                            className="text-red-500 hover:bg-red-50 p-2 rounded text-sm transition-colors"
+                                                                        >
+                                                                            Delete
+                                                                        </button>
+                                                                    </div>
+                                                                    <div className="space-y-2">
+                                                                        <h4 className="text-sm font-semibold text-neutral-700">Faculty Members:</h4>
+                                                                        {panel.faculty.map((f: any) => (
+                                                                            <div key={f._id} className="text-sm text-neutral-600 bg-neutral-50 p-2 rounded border border-neutral-100 flex items-center gap-2">
+                                                                                <div className="w-2 h-2 rounded-full bg-indigo-400"></div>
+                                                                                {f.name} ({f.email})
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )
+                                        })}
+                                        {panels.length === 0 && (
+                                            <div className="text-center text-neutral-500 py-10 bg-white rounded-xl border border-neutral-200">
+                                                No panels found.
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
                                 {activeTab === 'events' && (
                                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                                         {/* Event Card: Group Formation */}
@@ -783,6 +967,73 @@ const AdminDashboard: React.FC = () => {
                 </main>
                 {/* Edit Faculty Modal */}
                 {/* Faculty Profile Dialog */}
+
+                {showCreatePanel && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm">
+                        <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden flex flex-col">
+                            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+                                <h3 className="text-lg font-bold text-gray-900">Create Panel</h3>
+                                <button onClick={() => setShowCreatePanel(false)} className="text-gray-400 hover:text-gray-600">
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+                            <div className="p-6 space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Batch Year (Start Year)</label>
+                                    <select value={newPanelBatch} onChange={(e) => setNewPanelBatch(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                                        <option value="">Select Batch</option>
+                                        {Array.from({ length: 7 }, (_, i) => (new Date().getFullYear() - 7) + i).map(year => (
+                                            <option key={year} value={year.toString()}>{year}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Select Faculty Members (Max 3)</label>
+                                    <div className="max-h-48 overflow-y-auto border border-gray-200 rounded-lg p-2 space-y-1">
+                                        {faculty.map((f: any) => (
+                                            <label key={f._id} className="flex items-center gap-2 p-1 hover:bg-gray-50 rounded">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={newPanelFaculty.includes(f._id)}
+                                                    onChange={(e) => {
+                                                        if (e.target.checked) {
+                                                            if (newPanelFaculty.length >= 3) return;
+                                                            setNewPanelFaculty([...newPanelFaculty, f._id]);
+                                                        } else {
+                                                            setNewPanelFaculty(newPanelFaculty.filter(id => id !== f._id));
+                                                        }
+                                                    }}
+                                                />
+                                                <span className="text-sm">{f.name}</span>
+                                            </label>
+                                        ))}
+                                    </div>
+                                    <p className="text-xs text-gray-500 mt-1">{newPanelFaculty.length}/3 selected</p>
+                                </div>
+                            </div>
+                            <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-3">
+                                <button onClick={() => setShowCreatePanel(false)} className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition">Cancel</button>
+                                <button
+                                    onClick={async () => {
+                                        try {
+                                            await api.post('/panels', { faculty: newPanelFaculty, batchYear: parseInt(newPanelBatch) });
+                                            setShowCreatePanel(false);
+                                            setNewPanelFaculty([]);
+                                            setNewPanelBatch('');
+                                            const res = await api.get(`/panels?batchYear=${filterBatch}`);
+                                            setPanels(Array.isArray(res.data) ? res.data : []);
+                                        } catch (e: any) { alert(e.response?.data?.message || 'Error creating panel'); }
+                                    }}
+                                    disabled={!newPanelBatch || newPanelFaculty.length === 0}
+                                    className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition"
+                                >
+                                    Create Panel
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 {editingFaculty && (
                     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm">
                         <motion.div
@@ -1004,6 +1255,57 @@ const AdminDashboard: React.FC = () => {
                             </div>
                         </motion.div>
                     </div>
+                )}
+                {showAutoCreateBatchSelect && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm">
+                        <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden flex flex-col">
+                            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+                                <h3 className="text-lg font-bold text-gray-900">Select Batch for Auto-Create</h3>
+                                <button onClick={() => setShowAutoCreateBatchSelect(false)} className="text-gray-400 hover:text-gray-600">
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+                            <div className="p-6 space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Batch Year (Start Year)</label>
+                                    <select value={autoCreateBatchYear} onChange={(e) => setAutoCreateBatchYear(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                                        <option value="">Select Batch</option>
+                                        {Array.from({ length: 7 }, (_, i) => (new Date().getFullYear() - 7) + i).map(year => (
+                                            <option key={year} value={year.toString()}>{year}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                {autoCreateBatchYear && (
+                                    <div className="p-3 bg-red-50 border border-red-100 rounded-lg flex items-start gap-2.5">
+                                        <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+                                        <div>
+                                            <h4 className="text-sm font-bold text-red-800">Warning: Destructive Action</h4>
+                                            <p className="text-xs text-red-600 mt-0.5">Continuing will permanently delete and overwrite all existing panel data for this chosen batch.</p>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                            <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-3">
+                                <button onClick={() => setShowAutoCreateBatchSelect(false)} className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition">Cancel</button>
+                                <button
+                                    onClick={processAutoCreate}
+                                    disabled={!autoCreateBatchYear}
+                                    className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition"
+                                >
+                                    Proceed
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+                {showAutoCreateModal && (
+                    <AutoCreatePanelsModal
+                        faculties={autoCreateFaculties}
+                        batchYear={parseInt(autoCreateBatchYear)}
+                        onClose={() => setShowAutoCreateModal(false)}
+                        onConfirm={confirmAutoCreatePanels}
+                    />
                 )}
             </div>
         </div>

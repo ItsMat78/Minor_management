@@ -10,6 +10,7 @@ import groupRoutes from './routes/groupRoutes';
 import projectRoutes from './routes/projectRoutes';
 import userRoutes from './routes/userRoutes';
 import adminRoutes from './routes/adminRoutes';
+import panelRoutes from './routes/panelRoutes';
 
 dotenv.config();
 
@@ -36,6 +37,7 @@ app.use('/api/groups', groupRoutes);
 app.use('/api/projects', projectRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/panels', panelRoutes);
 
 app.get('/', (req, res) => {
     res.send('IIITNR Minor Project Portal API is running!');

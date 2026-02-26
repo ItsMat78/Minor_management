@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
-import { Search, ChevronDown, Users, Clock, CheckCircle, XCircle, FileText, LayoutGrid, LayoutList, X, LogOut, ChevronRight, Layout, Settings, Menu, GraduationCap, Medal, Save } from 'lucide-react';
+import { Search, ChevronDown, ChevronUp, Users, Clock, CheckCircle, XCircle, FileText, LayoutGrid, LayoutList, X, LogOut, ChevronRight, Layout, Settings, Menu, GraduationCap, Medal } from 'lucide-react';
 import FilePreview from '../components/FilePreview';
 import { motion } from 'framer-motion';
 import * as Dialog from '@radix-ui/react-dialog';
@@ -105,49 +105,28 @@ const RUBRIC_CONFIG: any = {
         ]
     },
     'end-term': {
-        maxMarks: 50,
+        maxMarks: 70,
         sections: [
             {
                 title: 'Guide Evaluation',
-                maxMarks: 25,
+                maxMarks: 35,
                 fields: [
-                    { key: 'requirementSpecification', label: 'Requirement Specification', max: 5, description: 'Functional needs outlined' },
-                    { key: 'systemDesign', label: 'System Design', max: 5, description: 'Block diagram or flowchart' },
-                    { key: 'implementation', label: 'Implementation', max: 5, description: 'Working model with basic coding' },
-                    { key: 'projectManagement', label: 'Project Management', max: 5, description: 'Manual task tracking, logbook' },
-                    { key: 'planningVsExecution', label: 'Planning vs Execution', max: 5, description: 'Deviations noted casually' },
+                    { key: 'requirementSpecification', label: 'Requirement Specification', max: 7, description: 'Functional needs outlined' },
+                    { key: 'systemDesign', label: 'System Design', max: 7, description: 'Block diagram or flowchart' },
+                    { key: 'implementation', label: 'Implementation', max: 7, description: 'Working model with basic coding' },
+                    { key: 'projectManagement', label: 'Project Management', max: 7, description: 'Manual task tracking, logbook' },
+                    { key: 'planningVsExecution', label: 'Planning vs Execution', max: 7, description: 'Deviations noted casually' },
                 ],
                 key: 'guide'
             },
             {
                 title: 'Panel Evaluation',
-                maxMarks: 25,
+                maxMarks: 35,
                 fields: [
-                    { key: 'testingAndResults', label: 'Testing & Results', max: 5, description: 'Functional testing with screenshots' },
+                    { key: 'testingAndResults', label: 'Testing & Results', max: 10, description: 'Functional testing with screenshots' },
                     { key: 'innovationAndRelevance', label: 'Innovation & Relevance', max: 5, description: 'Minor creative aspect' },
                     { key: 'presentationAndViva', label: 'Presentation & Viva', max: 10, description: 'Clear explanation, guided answers' },
-                    { key: 'conceptualDepth', label: 'Conceptual Depth', max: 5, description: 'Understanding basic tools and outcomes' },
-                ],
-                key: 'panel'
-            }
-        ]
-    },
-    'final-report': {
-        maxMarks: 20,
-        sections: [
-            {
-                title: 'Guide Evaluation',
-                maxMarks: 10,
-                fields: [
-                    { key: 'reportWriting', label: 'Report Writing', max: 10, description: 'Acceptable grammar, informal formatting' },
-                ],
-                key: 'guide'
-            },
-            {
-                title: 'Panel Evaluation',
-                maxMarks: 10,
-                fields: [
-                    { key: 'finalReport', label: 'Final Report Quality', max: 10, description: 'Acceptable report' },
+                    { key: 'conceptualDepth', label: 'Conceptual Depth', max: 10, description: 'Understanding basic tools and outcomes' },
                 ],
                 key: 'panel'
             }
@@ -275,6 +254,126 @@ const MenteeCard = ({ item, activeTab, navigate, setSelectedProject }: any) => {
     );
 };
 
+
+const renderEvalCard = (item: any, activeTab: string, handleOpenEvaluation: any, isPanel: boolean = false, viewMode: 'grid' | 'list' = 'grid') => {
+    const projectData = item.project || item;
+    const evalData = activeTab === 'mid-term' ? projectData?.midTermEvaluation :
+        projectData?.endTermEvaluation; // Removed finalReportEvaluation
+
+    const isEvaluated = !!evalData && !!evalData.marks;
+    const RUBRIC_CONFIG_LOCAL = { // Renamed to avoid conflict with global RUBRIC_CONFIG
+        'mid-term': { maxMarks: 30 },
+        'end-term': { maxMarks: 70 }, // Updated maxMarks for end-term
+    } as any;
+
+    if (viewMode === 'list') {
+        return (
+            <div key={item._id} className="bg-white rounded-2xl border border-neutral-200 p-4 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden group flex flex-col md:flex-row items-start md:items-center justify-between gap-4 px-6">
+                {isEvaluated && (
+                    <div className="absolute top-0 right-0 p-2 px-3 bg-green-50 rounded-bl-2xl border-l border-b border-green-100 text-green-700 flex items-center gap-1.5 font-bold text-[10px] z-10 hidden md:flex uppercase tracking-wider">
+                        <CheckCircle className="w-3 h-3" />
+                        Evaluated
+                    </div>
+                )}
+                {isPanel && (
+                    <div className="absolute top-0 left-0 p-2 px-3 bg-amber-50 rounded-br-2xl border-r border-b border-amber-100 text-amber-700 font-bold text-[10px] z-10 hidden md:flex uppercase tracking-wider">
+                        Panel Eval
+                    </div>
+                )}
+                <div className="flex-1 min-w-0 md:pr-4 pt-2 md:pt-0">
+                    <div className="flex items-center gap-2 mb-1">
+                        {isPanel && <span className="md:hidden px-2 py-0.5 bg-amber-50 text-amber-700 rounded text-[10px] font-bold uppercase tracking-wider">Panel Eval</span>}
+                        {isEvaluated && <span className="md:hidden px-2 py-0.5 bg-green-50 text-green-700 rounded text-[10px] font-bold flex items-center gap-1 uppercase tracking-wider"><CheckCircle className="w-3 h-3" /> Evaluated</span>}
+                    </div>
+                    <h3 className="text-xl font-bold text-gray-900 truncate" title={projectData?.title}>{projectData?.title || 'Untitled Project'}</h3>
+                    <p className="text-sm text-neutral-500 font-medium truncate flex items-center gap-1.5 align-middle mt-1 uppercase tracking-wider">
+                        {item.name || item.group?.name}
+                    </p>
+                    {projectData?.attachments && projectData.attachments.length > 0 && (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                            {projectData.attachments.slice(0, 2).map((url: string, idx: number) => (
+                                <a key={idx} href={url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 px-3 py-1 bg-neutral-50 text-indigo-600 rounded-lg text-xs font-bold border border-neutral-200 hover:bg-neutral-100 transition-colors" onClick={(e) => e.stopPropagation()}>
+                                    File {idx + 1}
+                                </a>
+                            ))}
+                        </div>
+                    )}
+                </div>
+
+                <div className="flex items-center gap-6 shrink-0 w-full md:w-auto bg-neutral-50 p-4 rounded-xl border border-neutral-100 group-hover:border-indigo-100 transition-colors">
+                    <div className="flex flex-col text-right">
+                        <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1 text-right">Score</span>
+                        <div className="flex items-end justify-end gap-1">
+                            <span className={`text-2xl leading-none font-bold ${isEvaluated ? 'text-indigo-600' : 'text-neutral-300'}`}>
+                                {isEvaluated ? evalData.marks : '--'}
+                            </span>
+                            <span className="text-sm font-medium text-neutral-400 leading-none pb-0.5">/ {RUBRIC_CONFIG_LOCAL[activeTab]?.maxMarks || 100}</span>
+                        </div>
+                    </div>
+                    <div className="w-px h-10 bg-neutral-200 hidden md:block"></div>
+                    <button
+                        onClick={() => handleOpenEvaluation(item, activeTab as 'mid-term' | 'end-term' | 'final-report', isPanel)}
+                        className={`px-6 py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-all whitespace-nowrap ${isEvaluated
+                            ? 'bg-white border text-neutral-600 hover:text-indigo-600 hover:bg-neutral-50 hover:border-indigo-200 shadow-sm'
+                            : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-md shadow-indigo-200 hover:shadow-lg hover:shadow-indigo-300 hover:-translate-y-0.5'
+                            }`}
+                    >
+                        {isEvaluated ? 'Edit Evaluation' : 'Evaluate Now'}
+                    </button>
+                </div>
+            </div>
+        );
+    }
+
+    return (
+        <div key={item._id} className="bg-white rounded-2xl border border-neutral-200 p-6 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden group flex flex-col h-full">
+            {isEvaluated && (
+                <div className="absolute top-0 right-0 p-3 bg-green-50 rounded-bl-2xl border-l border-b border-green-100 text-green-700 flex items-center gap-1.5 font-bold text-xs z-10">
+                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><path d="M22 4L12 14.01l-3-3"></path></svg>
+                    Evaluated
+                </div>
+            )}
+            {isPanel && (
+                <div className="absolute top-0 left-0 p-2 bg-amber-50 rounded-br-2xl border-r border-b border-amber-100 text-amber-700 font-bold text-[10px] z-10">
+                    Panel Eval
+                </div>
+            )}
+            <div className="mb-4 mt-2">
+                <h3 className="text-lg font-bold text-gray-900 mb-1 line-clamp-1 pr-8" title={projectData?.title}>{projectData?.title || 'Untitled Project'}</h3>
+                <p className="text-sm text-neutral-500 font-medium flex items-center gap-1.5 align-middle">
+                    {item.name || item.group?.name}
+                </p>
+            </div>
+            {projectData?.attachments && projectData.attachments.length > 0 && (
+                <div className="mb-4 flex flex-wrap gap-2">
+                    {projectData.attachments.slice(0, 2).map((url: string, idx: number) => (
+                        <a key={idx} href={url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 px-3 py-1.5 bg-neutral-50 text-indigo-600 rounded-lg text-xs font-bold border border-neutral-200 hover:bg-neutral-100" onClick={(e) => e.stopPropagation()}>
+                            File {idx + 1}
+                        </a>
+                    ))}
+                </div>
+            )}
+            <div className="bg-neutral-50 rounded-xl p-4 border border-neutral-100 flex flex-col gap-3 group-hover:border-indigo-100 transition-colors mt-auto">
+                <div className="flex justify-between items-center">
+                    <span className="text-xs font-bold text-neutral-400 uppercase tracking-wider">Score</span>
+                    <span className={`text-xl font-bold ${isEvaluated ? 'text-indigo-600' : 'text-neutral-300'}`}>
+                        {isEvaluated ? evalData.marks : '--'} <span className="text-sm text-neutral-400 font-medium">/ {RUBRIC_CONFIG_LOCAL[activeTab]?.maxMarks || 100}</span>
+                    </span>
+                </div>
+                <button
+                    onClick={() => handleOpenEvaluation(item, activeTab as 'mid-term' | 'end-term' | 'final-report', isPanel)}
+                    className={`w-full py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-all ${isEvaluated
+                        ? 'bg-white border text-neutral-600 hover:text-indigo-600 hover:bg-neutral-50 hover:border-indigo-200'
+                        : 'bg-indigo-600 text-white hover:bg-indigo-700'
+                        }`}
+                >
+                    {isEvaluated ? 'Edit Evaluation' : 'Evaluate Now'}
+                </button>
+            </div>
+        </div>
+    );
+};
+
 const FacultyDashboard: React.FC = () => {
     const { user, logout } = useAuth();
     const navigate = useNavigate();
@@ -287,18 +386,20 @@ const FacultyDashboard: React.FC = () => {
     const [feedback, setFeedback] = useState('');
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-    const [activeTab, setActiveTab] = useState<'proposals' | 'mentees' | 'profile' | 'directory' | 'mid-term' | 'end-term' | 'final-report'>(initialTab || 'mentees');
+    const [activeTab, setActiveTab] = useState<'proposals' | 'mentees' | 'profile' | 'directory' | 'mid-term' | 'end-term'>(initialTab || 'mentees'); // Removed 'final-report'
     const [mentees, setMentees] = useState<any[]>([]);
     const [students, setStudents] = useState<any[]>([]);
     const [loadingStudents, setLoadingStudents] = useState(false);
     const [loadingMentees, setLoadingMentees] = useState(false);
+    const [panelGroups, setPanelGroups] = useState<any[]>([]);
+    const [manualMarksMode, setManualMarksMode] = useState(false);
 
     // Evaluation State
     const [evaluatingProject, setEvaluatingProject] = useState<any>(null);
     const [evaluationMarks, setEvaluationMarks] = useState<number>(0);
     const [evaluationRemarks, setEvaluationRemarks] = useState<string>('');
     const [evaluationDetails, setEvaluationDetails] = useState<any>({});
-    const [evaluationType, setEvaluationType] = useState<'mid-term' | 'end-term' | 'final-report' | null>(null);
+    const [evaluationType, setEvaluationType] = useState<'mid-term' | 'end-term' | null>(null); // Removed 'final-report'
 
     // Filters & Search
     const [searchTerm, setSearchTerm] = useState('');
@@ -308,6 +409,36 @@ const FacultyDashboard: React.FC = () => {
     const [filterStatus, setFilterStatus] = useState<'All' | 'Grouped' | 'Available'>('All');
     const [filterBranch, setFilterBranch] = useState<string>('All');
     const [sortOption, setSortOption] = useState<string>('Default'); // Added sort state
+    const [collapsedEvalFaculties, setCollapsedEvalFaculties] = useState<Record<string, boolean>>({});
+
+    const projectGuideId = React.useMemo(() => {
+        if (!evaluatingProject) return null;
+        const project = evaluatingProject.project || evaluatingProject;
+        return typeof (project?.faculty) === 'string'
+            ? project?.faculty
+            : project?.faculty?._id;
+    }, [evaluatingProject]);
+
+    const panelMembers = React.useMemo(() => {
+        if (!evaluatingProject) return [];
+        const project = evaluatingProject.project || evaluatingProject;
+        const projectGroupId = evaluatingProject.group?._id || evaluatingProject._id;
+
+        const projectPanel = panelGroups.find((p: any) =>
+            p.groups.some((g: any) =>
+                g._id === projectGroupId ||
+                g.project?._id === project._id
+            )
+        );
+
+        // Ensure the guide is always included if they are not already in the panel members
+        const members = projectPanel?.panel?.faculty || [];
+        const guide = project?.faculty;
+        if (guide && typeof guide !== 'string' && !members.some((m: any) => m._id === guide._id)) {
+            return [...members, guide];
+        }
+        return members;
+    }, [evaluatingProject, panelGroups]);
 
     const [expandedBatches, setExpandedBatches] = useState<Record<string, boolean>>({});
     const toggleBatch = (year: string) => {
@@ -334,8 +465,9 @@ const FacultyDashboard: React.FC = () => {
     useEffect(() => {
         if (activeTab === 'proposals') {
             fetchProjects();
-        } else if (['mentees', 'mid-term', 'end-term', 'final-report'].includes(activeTab)) {
+        } else if (['mentees', 'mid-term', 'end-term'].includes(activeTab)) { // Removed 'final-report'
             fetchMentees();
+            fetchPanelGroups();
         } else if (activeTab === 'directory') {
             fetchStudents();
         }
@@ -349,6 +481,15 @@ const FacultyDashboard: React.FC = () => {
             console.error("Failed to fetch projects", error);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const fetchPanelGroups = async () => {
+        try {
+            const res = await api.get('/panels/my-panels');
+            setPanelGroups(res.data);
+        } catch (error) {
+            console.error("Failed to fetch panel groups", error);
         }
     };
 
@@ -415,7 +556,7 @@ const FacultyDashboard: React.FC = () => {
         }
     };
 
-    const handleOpenEvaluation = (item: any, type: 'mid-term' | 'end-term' | 'final-report') => {
+    const handleOpenEvaluation = (item: any, type: 'mid-term' | 'end-term') => { // Removed 'final-report'
         setEvaluatingProject(item);
         setEvaluationType(type);
 
@@ -425,18 +566,22 @@ const FacultyDashboard: React.FC = () => {
         let existingEval: any;
         if (type === 'mid-term') existingEval = projectData.midTermEvaluation;
         else if (type === 'end-term') existingEval = projectData.endTermEvaluation;
-        else if (type === 'final-report') existingEval = projectData.finalReportEvaluation;
 
         // Initialize details from rubric config
         const config = RUBRIC_CONFIG[type];
-        const initialDetails: any = { guide: {}, panel: {} };
+        const initialDetails: any = { guide: {}, panel: {}, facultyScores: {} };
 
+        // Initialize facultyScores for all panel members
+        panelMembers.forEach((fac: any) => {
+            initialDetails.facultyScores[fac._id] = existingEval?.facultyScores?.[fac._id] ?? '';
+        });
+
+        // Restore field-level scores if not in manual mode (or if manual mode was not used previously)
         if (config) {
             config.sections.forEach((section: any) => {
+                const sectionKey = section.key; // 'guide' or 'panel'
                 section.fields.forEach((field: any) => {
-                    const sectionKey = section.key; // 'guide' or 'panel'
-                    // Safely access existing value or default to 0
-                    const val = existingEval?.[sectionKey]?.[field.key] || 0;
+                    const val = existingEval?.[sectionKey]?.[field.key] || ''; // Use '' for empty input
                     initialDetails[sectionKey][field.key] = val;
                 });
             });
@@ -445,6 +590,8 @@ const FacultyDashboard: React.FC = () => {
         setEvaluationDetails(initialDetails);
         setEvaluationMarks(existingEval?.marks || 0); // Total marks
         setEvaluationRemarks(existingEval?.remarks || '');
+        // Always default to Direct Marks Entry
+        setManualMarksMode(true);
     };
 
     const handleDetailChange = (section: string, field: string, value: number | string) => {
@@ -459,8 +606,29 @@ const FacultyDashboard: React.FC = () => {
 
     // Auto-calculate marks when details change
     useEffect(() => {
-        let total = 0;
-        if (evaluationType && RUBRIC_CONFIG[evaluationType]) {
+        if (!evaluationType || !RUBRIC_CONFIG[evaluationType]) return;
+
+        if (manualMarksMode) {
+            let guideScore = 0;
+            let evaluatorScores: number[] = [];
+
+            panelMembers.forEach((fac: any) => {
+                const score = Number(evaluationDetails.facultyScores?.[fac._id] || 0);
+                if (fac._id === projectGuideId) {
+                    guideScore = score;
+                } else {
+                    evaluatorScores.push(score);
+                }
+            });
+
+            let totalMarks = guideScore;
+            if (evaluatorScores.length > 0) {
+                const avgEvaluatorScore = evaluatorScores.reduce((a, b) => a + b, 0) / evaluatorScores.length;
+                totalMarks += avgEvaluatorScore;
+            }
+            setEvaluationMarks(Math.round(totalMarks));
+        } else {
+            let total = 0;
             RUBRIC_CONFIG[evaluationType].sections.forEach((sect: any) => {
                 sect.fields.forEach((f: any) => {
                     const val = evaluationDetails[sect.key]?.[f.key];
@@ -469,7 +637,7 @@ const FacultyDashboard: React.FC = () => {
             });
             setEvaluationMarks(total);
         }
-    }, [evaluationDetails, evaluationType]);
+    }, [evaluationDetails, evaluationType, manualMarksMode, panelMembers, projectGuideId]);
 
     const handleSubmitEvaluation = async () => {
         if (!evaluatingProject || !evaluationType) return;
@@ -487,23 +655,33 @@ const FacultyDashboard: React.FC = () => {
             };
 
             // Construct payload
-            const payload = {
+            const payload: any = {
                 type: evaluationType,
                 marks: evaluationMarks,
                 remarks: evaluationRemarks,
-                guide: sanitize(evaluationDetails.guide),
-                panel: sanitize(evaluationDetails.panel)
             };
+
+            if (manualMarksMode) {
+                payload.facultyScores = sanitize(evaluationDetails.facultyScores);
+                payload.guide = {}; // Ensure guide/panel fields are empty if using facultyScores
+                payload.panel = {};
+            } else {
+                payload.guide = sanitize(evaluationDetails.guide);
+                payload.panel = sanitize(evaluationDetails.panel);
+                payload.facultyScores = {}; // Ensure facultyScores is empty if not using manual mode
+            }
 
             await api.put(`/projects/${projectId}/evaluation`, payload);
 
             // Refresh Data
             await fetchMentees();
+            await fetchPanelGroups();
             setEvaluatingProject(null);
             setEvaluationType(null);
             setEvaluationDetails({});
             setEvaluationMarks(0);
             setEvaluationRemarks('');
+            setManualMarksMode(false);
         } catch (error) {
             console.error("Failed to submit evaluation", error);
             alert("Failed to submit evaluation. Check console for details.");
@@ -659,12 +837,6 @@ const FacultyDashboard: React.FC = () => {
                             active={activeTab === 'end-term'}
                             onClick={() => { setActiveTab('end-term'); setViewGroup(null); }}
                         />
-                        <SidebarItem
-                            icon={<FileText className="w-5 h-5" />}
-                            label="Final Report"
-                            active={activeTab === 'final-report'}
-                            onClick={() => { setActiveTab('final-report'); setViewGroup(null); }}
-                        />
                     </div>
                 </nav>
                 <div className="p-4 border-t border-neutral-100">
@@ -708,8 +880,7 @@ const FacultyDashboard: React.FC = () => {
                                         activeTab === 'directory' ? 'Student Directory' :
                                             activeTab === 'mid-term' ? 'Mid-Term Evaluation' :
                                                 activeTab === 'end-term' ? 'End-Term Evaluation' :
-                                                    activeTab === 'final-report' ? 'Final Report Evaluation' :
-                                                        'My Profile'
+                                                    'My Profile'
                             )}
                         </h1>
                     </div>
@@ -869,7 +1040,7 @@ const FacultyDashboard: React.FC = () => {
                                             )}
 
                                             {/* View Toggle (Only for Mentees tab) */}
-                                            {activeTab === 'mentees' && (
+                                            {['mentees', 'mid-term', 'end-term'].includes(activeTab) && (
                                                 <div className="flex bg-neutral-100 p-1 rounded-xl border border-neutral-200">
                                                     <button
                                                         onClick={() => setViewMode('grid')}
@@ -1128,139 +1299,136 @@ const FacultyDashboard: React.FC = () => {
                                                     );
                                                 }))}
                                         </div>
-                                    ) : activeTab === 'mid-term' || activeTab === 'end-term' || activeTab === 'final-report' ? (
-                                        /* EVALUATION VIEW - Grouped by Semester */
+                                    ) : activeTab === 'mid-term' || activeTab === 'end-term' ? (
+                                        /* EVALUATION VIEW - Filter by Batch */
                                         <div className="space-y-12 pb-20">
-                                            {Array.from({ length: 10 }, (_, i) => 2020 + i).reverse().map(batchYear => {
-                                                const batchSuffix = batchYear.toString().slice(2);
-                                                const batchProjects = filteredMentees.filter((item: any) => {
-                                                    const members = item.members || item.group?.members || [];
-                                                    return members.some((m: any) => m.rollNumber && m.rollNumber.startsWith(batchSuffix));
-                                                });
 
-                                                if (batchProjects.length === 0) return null;
+                                            {filterBatch === 'All' ? (
+                                                <div className="text-center py-20 bg-white rounded-3xl border border-indigo-100 shadow-sm">
+                                                    <div className="w-16 h-16 bg-indigo-50 rounded-full flex items-center justify-center mx-auto mb-4 text-indigo-400">
+                                                        <Users className="w-8 h-8" />
+                                                    </div>
+                                                    <h3 className="text-xl font-black text-indigo-900 mb-2">Select a Batch Year</h3>
+                                                    <p className="text-neutral-500 max-w-md mx-auto text-sm">
+                                                        Please set the 'Filter by batch' dropdown above to view and evaluate panels for a specific year.
+                                                    </p>
+                                                </div>
+                                            ) : (
+                                                [parseInt(filterBatch)].map(batchYear => {
+                                                    const batchSuffix = batchYear.toString().slice(2);
 
-                                                return (
-                                                    <div key={batchYear} className="space-y-4">
-                                                        <div
-                                                            className={`flex items-center justify-between p-4 rounded-2xl border shadow-sm cursor-pointer transition-all group select-none relative overflow-hidden ${isBatchExpanded(batchYear.toString()) ? 'bg-indigo-50/50 border-indigo-200' : 'bg-white border-neutral-200 hover:border-indigo-300 hover:bg-neutral-50'}`}
-                                                            onClick={() => toggleBatch(batchYear.toString())}
-                                                        >
-                                                            {isBatchExpanded(batchYear.toString()) && <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-indigo-500"></div>}
-                                                            <div className="flex items-center gap-4 pl-2">
-                                                                <div className={`p-2 rounded-xl transition-colors ${isBatchExpanded(batchYear.toString()) ? 'bg-indigo-100 text-indigo-700' : 'bg-neutral-100 text-neutral-500 group-hover:bg-indigo-50 group-hover:text-indigo-600'}`}>
-                                                                    <ChevronDown className={`w-5 h-5 transition-transform duration-300 ${!isBatchExpanded(batchYear.toString()) ? '-rotate-90' : ''}`} />
-                                                                </div>
-                                                                <h3 className="text-xl font-bold text-neutral-900 flex items-center gap-3">
-                                                                    <span className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-700 flex items-center justify-center text-base font-bold border border-indigo-100/50 shadow-sm">
-                                                                        {batchSuffix}
-                                                                    </span>
-                                                                    Batch {batchYear}
-                                                                </h3>
+                                                    // My Mentees in this batch
+                                                    const batchProjects = filteredMentees.filter((item: any) => {
+                                                        const members = item.members || item.group?.members || [];
+                                                        return members.some((m: any) => m.rollNumber && m.rollNumber.startsWith(batchSuffix));
+                                                    });
+
+                                                    // Panel Groups in this batch
+                                                    const panelGroupsInBatch = panelGroups.filter((p: any) => p.panel.batchYear === batchYear);
+
+                                                    if (batchProjects.length === 0 && panelGroupsInBatch.length === 0) {
+                                                        return (
+                                                            <div className="text-center py-20 bg-white rounded-3xl border border-neutral-200">
+                                                                <FileText className="w-8 h-8 text-neutral-300 mx-auto mb-4" />
+                                                                <h3 className="text-lg font-bold text-neutral-900 mb-2">No Evaluation Room Configured</h3>
+                                                                <p className="text-sm text-neutral-500 max-w-sm mx-auto">There are currently no projects assigned to you or a panel you are part of for this batch.</p>
                                                             </div>
-                                                            <span className="text-sm font-bold text-neutral-600 bg-white px-4 py-2 rounded-xl border border-neutral-200 mr-2 shadow-sm">
-                                                                {batchProjects.length} Projects
-                                                            </span>
-                                                        </div>
+                                                        );
+                                                    }
 
-                                                        {isBatchExpanded(batchYear.toString()) && (
-                                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                                                {batchProjects.map((item: any) => {
-                                                                    const projectData = item.project || item;
-                                                                    const evalData = activeTab === 'mid-term' ? projectData?.midTermEvaluation :
-                                                                        activeTab === 'end-term' ? projectData?.endTermEvaluation :
-                                                                            projectData?.finalReportEvaluation;
-                                                                    const isEvaluated = !!evalData;
+                                                    return (
+                                                        <div key={batchYear} className="flex flex-col xl:flex-row gap-8 items-start">
+                                                            <div className="flex-1 space-y-10 min-w-0 w-full">
+                                                                {/* Panel Groups */}
+                                                                {panelGroupsInBatch.length > 0 && (
+                                                                    <div>
+                                                                        <h3 className="text-2xl font-black text-indigo-900 mb-6 flex items-center gap-3">
+                                                                            <Users className="w-6 h-6 text-indigo-500" />
+                                                                            Your Panel Area
+                                                                        </h3>
+                                                                        {panelGroupsInBatch.map((pData: any, idx: number) => {
+                                                                            if (pData.groups.length === 0) return null;
 
-                                                                    return (
-                                                                        <div key={item._id} className="bg-white rounded-2xl border border-neutral-200 p-6 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden group">
-                                                                            {isEvaluated && (
-                                                                                <div className="absolute top-0 right-0 p-3 bg-green-50 rounded-bl-2xl border-l border-b border-green-100 text-green-700 flex items-center gap-1.5 font-bold text-xs z-10">
-                                                                                    <CheckCircle className="w-4 h-4" /> Evaluated
+                                                                            // Group by faculty
+                                                                            const facultyGroups: Record<string, { name: string, groups: any[] }> = {};
+                                                                            pData.groups.forEach((g: any) => {
+                                                                                const facId = typeof g.project.faculty === 'string' ? g.project.faculty : g.project.faculty?._id;
+                                                                                const facName = typeof g.project.faculty === 'string' ? 'Unknown' : g.project.faculty?.name;
+                                                                                if (!facultyGroups[facId]) facultyGroups[facId] = { name: facName, groups: [] };
+                                                                                facultyGroups[facId].groups.push(g);
+                                                                            });
+
+                                                                            return (
+                                                                                <div key={idx} className="border-t border-indigo-100 pt-6 mt-6 first:mt-0 first:border-0 first:pt-0">
+                                                                                    {Object.values(facultyGroups).map((facInfo: any, fIdx: number) => {
+                                                                                        const sectionKey = `${batchYear}-${idx}-${fIdx}`;
+                                                                                        const isCollapsed = collapsedEvalFaculties[sectionKey] || false;
+                                                                                        return (
+                                                                                            <div key={fIdx} className="mb-10 last:mb-0 bg-white rounded-3xl overflow-hidden border border-neutral-200 shadow-sm">
+                                                                                                <div
+                                                                                                    className="bg-neutral-50 px-6 py-4 flex items-center justify-between border-b border-neutral-200 cursor-pointer hover:bg-neutral-100 transition-colors group"
+                                                                                                    onClick={() => setCollapsedEvalFaculties(prev => ({ ...prev, [sectionKey]: !prev[sectionKey] }))}
+                                                                                                >
+                                                                                                    <h5 className="font-black text-neutral-800 flex items-center gap-3 text-lg group-hover:text-indigo-700 transition-colors">
+                                                                                                        <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-sm">
+                                                                                                            {facInfo.name.charAt(0)}
+                                                                                                        </div>
+                                                                                                        {facInfo.name}'s Group
+                                                                                                        {isCollapsed ? <ChevronDown className="w-4 h-4 text-neutral-400" /> : <ChevronUp className="w-4 h-4 text-neutral-400" />}
+                                                                                                    </h5>
+                                                                                                    <span className="text-xs font-bold bg-neutral-200 text-neutral-600 px-3 py-1 rounded-full uppercase tracking-wider">{facInfo.groups.length} Teams</span>
+                                                                                                </div>
+                                                                                                {!isCollapsed && (
+                                                                                                    <div className={`p-6 ${viewMode === 'grid' ? 'grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-6 auto-rows-fr' : 'flex flex-col gap-4'}`}>
+                                                                                                        {facInfo.groups.map((item: any) => renderEvalCard(item, activeTab, handleOpenEvaluation, true, viewMode))}
+                                                                                                    </div>
+                                                                                                )}
+                                                                                            </div>
+                                                                                        )
+                                                                                    })}
                                                                                 </div>
-                                                                            )}
+                                                                            );
+                                                                        })}
+                                                                    </div>
+                                                                )}
+                                                            </div>
 
-                                                                            <div className="mb-4">
-                                                                                <h3 className="text-lg font-bold text-gray-900 mb-1 line-clamp-1 pr-8" title={projectData?.title}>{projectData?.title || 'Untitled Project'}</h3>
-                                                                                <p className="text-sm text-neutral-500 font-medium flex items-center gap-1.5 align-middle">
-                                                                                    <Users className="w-4 h-4" /> {item.name}
-                                                                                </p>
-                                                                            </div>
-
-                                                                            {/* Attachments / Report Link */}
-                                                                            {projectData?.attachments && projectData.attachments.length > 0 && (
-                                                                                <div className="mb-4">
-                                                                                    <div className="flex flex-wrap gap-2">
-                                                                                        {projectData.attachments.slice(0, 2).map((url: string, idx: number) => (
-                                                                                            <a
-                                                                                                key={idx}
-                                                                                                href={url}
-                                                                                                target="_blank"
-                                                                                                rel="noopener noreferrer"
-                                                                                                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-neutral-50 text-indigo-600 rounded-lg text-xs font-bold border border-neutral-200 hover:bg-neutral-100 hover:border-indigo-200 transition-colors"
-                                                                                                onClick={(e) => e.stopPropagation()}
-                                                                                            >
-                                                                                                <FileText className="w-3 h-3" />
-                                                                                                {activeTab === 'final-report' ? 'View Report' : `File ${idx + 1}`}
-                                                                                            </a>
+                                                            {/* Right Sidebar for Panel Information */}
+                                                            {panelGroupsInBatch.length > 0 && (
+                                                                <div className="w-full xl:w-64 shrink-0 sticky top-24">
+                                                                    <div className="bg-white rounded-3xl border border-neutral-200 shadow-sm overflow-hidden">
+                                                                        <div className="bg-indigo-600 px-6 py-5">
+                                                                            <h4 className="text-white font-bold flex items-center gap-2">
+                                                                                <Users className="w-5 h-5 text-indigo-200" />
+                                                                                Panel Information
+                                                                            </h4>
+                                                                        </div>
+                                                                        <div className="p-6">
+                                                                            {panelGroupsInBatch.map((pData: any, idx: number) => (
+                                                                                <div key={idx} className="mb-6 last:mb-0">
+                                                                                    <h5 className="text-xs font-bold text-neutral-400 uppercase tracking-wider mb-4">Panel Members</h5>
+                                                                                    <div className="space-y-4">
+                                                                                        {pData.panel.faculty?.map((fac: any, fIdx: number) => (
+                                                                                            <div key={fIdx} className="flex items-center gap-3">
+                                                                                                <div className="w-10 h-10 rounded-full bg-indigo-50 text-indigo-700 flex items-center justify-center font-bold text-sm border-2 border-white shadow-sm ring-1 ring-indigo-100">
+                                                                                                    {fac.name?.charAt(0) || '?'}
+                                                                                                </div>
+                                                                                                <div className="flex-1 min-w-0">
+                                                                                                    <p className="text-sm font-bold text-neutral-900 break-words line-clamp-2 leading-tight mb-0.5">{fac.name}</p>
+                                                                                                    <p className="text-xs text-neutral-500 truncate" title={fac.email}>{fac.email}</p>
+                                                                                                </div>
+                                                                                            </div>
                                                                                         ))}
                                                                                     </div>
                                                                                 </div>
-                                                                            )}
-
-                                                                            <div className="mb-6">
-                                                                                <div className="flex -space-x-2 mb-2 pl-1">
-                                                                                    {item.members.slice(0, 4).map((m: any, idx: number) => (
-                                                                                        <div key={idx} className="h-8 w-8 rounded-full bg-indigo-50 border-2 border-white flex items-center justify-center text-xs font-bold text-indigo-600 shadow-sm tooltip-trigger" title={m.name}>
-                                                                                            {m.name.charAt(0)}
-                                                                                        </div>
-                                                                                    ))}
-                                                                                    {item.members.length > 4 && (
-                                                                                        <div className="h-8 w-8 rounded-full bg-neutral-100 border-2 border-white flex items-center justify-center text-xs font-bold text-neutral-500 shadow-sm">
-                                                                                            +{item.members.length - 4}
-                                                                                        </div>
-                                                                                    )}
-                                                                                </div>
-                                                                            </div>
-
-                                                                            <div className="bg-neutral-50 rounded-xl p-4 border border-neutral-100 flex flex-col gap-3 group-hover:border-indigo-100 transition-colors">
-                                                                                <div className="flex justify-between items-center">
-                                                                                    <span className="text-xs font-bold text-neutral-400 uppercase tracking-wider">Score</span>
-                                                                                    <span className={`text-xl font-bold ${isEvaluated ? 'text-indigo-600' : 'text-neutral-300'}`}>
-                                                                                        {isEvaluated ? evalData.marks : '--'} <span className="text-sm text-neutral-400 font-medium">/ {RUBRIC_CONFIG[activeTab]?.maxMarks || 100}</span>
-                                                                                    </span>
-                                                                                </div>
-                                                                                <button
-                                                                                    onClick={() => handleOpenEvaluation(item, activeTab as 'mid-term' | 'end-term' | 'final-report')}
-                                                                                    className={`w-full py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-all ${isEvaluated
-                                                                                        ? 'bg-white border border-neutral-200 text-neutral-600 hover:bg-neutral-50 hover:text-indigo-600 hover:border-indigo-200'
-                                                                                        : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-md shadow-indigo-200 hover:shadow-lg hover:-translate-y-0.5'
-                                                                                        }`}
-                                                                                >
-                                                                                    {isEvaluated ? 'Edit Evaluation' : 'Evaluate Now'}
-                                                                                </button>
-                                                                            </div>
+                                                                            ))}
                                                                         </div>
-                                                                    );
-                                                                })}
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                );
-                                            })}
-
-                                            {/* Fallback if no projects found in semesters (e.g. data missing semester) */}
-                                            {/* Note: In a real app, handle unclassified projects. For now, assuming all have semester or we filter tightly. */}
-                                            {filteredMentees.length === 0 && (
-                                                <div className="text-center py-20">
-                                                    <div className="w-16 h-16 bg-neutral-100 rounded-full flex items-center justify-center mx-auto mb-4 text-neutral-400">
-                                                        <FileText className="w-8 h-8" />
-                                                    </div>
-                                                    <h3 className="text-lg font-bold text-neutral-900 mb-2">No Projects Found</h3>
-                                                    <p className="text-neutral-500 max-w-md mx-auto">
-                                                        There are no projects assigned for evaluation matching your filters.
-                                                    </p>
-                                                </div>
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })
                                             )}
                                         </div>
 
@@ -1493,117 +1661,255 @@ const FacultyDashboard: React.FC = () => {
             <Dialog.Root open={!!evaluatingProject} onOpenChange={(open) => !open && setEvaluatingProject(null)}>
                 <Dialog.Portal>
                     <Dialog.Overlay className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 transition-opacity" />
-                    <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-3xl bg-white rounded-3xl shadow-2xl z-50 overflow-hidden flex flex-col focus:outline-none max-h-[90vh]">
+                    <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-6xl bg-white rounded-3xl shadow-2xl z-50 overflow-hidden flex flex-col focus:outline-none max-h-[90vh]">
                         <div className="flex items-center justify-between p-6 border-b border-neutral-100 bg-neutral-50/50">
                             <div>
                                 <Dialog.Title className="text-xl font-bold text-neutral-900">
-                                    {evaluationType === 'mid-term' ? 'Mid-Term Evaluation' :
-                                        evaluationType === 'end-term' ? 'End-Term Evaluation' : 'Final Report Evaluation'}
+                                    {evaluationType === 'mid-term' ? 'Mid-Term Evaluation' : 'End-Term Evaluation'}
                                 </Dialog.Title>
-                                <p className="text-sm text-neutral-500 font-medium mt-1">
-                                    {evaluatingProject?.project?.title || evaluatingProject?.title}
-                                </p>
                             </div>
                             <Dialog.Close className="p-2 rounded-full hover:bg-neutral-100 transition-colors">
                                 <X className="w-5 h-5 text-neutral-500" />
                             </Dialog.Close>
                         </div>
 
-                        <div className="p-6 space-y-8 overflow-y-auto flex-1">
-                            {/* Score Display */}
-                            <div className="flex items-center justify-between bg-indigo-600 text-white p-6 rounded-2xl shadow-lg shadow-indigo-200">
-                                <div>
-                                    <h4 className="font-bold text-indigo-100 text-sm uppercase tracking-wider mb-1">Total Score</h4>
-                                    <div className="flex items-baseline gap-2">
-                                        <span className="text-4xl font-bold">{evaluationMarks}</span>
-                                        <span className="text-indigo-200 font-medium">/ {evaluationType ? RUBRIC_CONFIG[evaluationType]?.maxMarks : 100}</span>
+                        <div className="flex-1 overflow-hidden grid grid-cols-1 lg:grid-cols-3">
+                            {/* Left Column: Project Details */}
+                            <div className="col-span-1 border-r border-neutral-100 bg-white p-8 overflow-y-auto hidden lg:block">
+                                <div className="mb-8 flex items-start gap-3">
+                                    <div className="mt-1 shrink-0">
+                                        <FileText className="w-6 h-6 text-indigo-500" />
                                     </div>
+                                    <h3 className="text-2xl font-black text-indigo-900 leading-tight">
+                                        {evaluatingProject?.project?.title || evaluatingProject?.title || 'Project Details'}
+                                    </h3>
                                 </div>
-                                <div className="text-right">
-                                    <div className="text-xs font-medium text-indigo-200 uppercase tracking-wider mb-1">Grade Estimate</div>
-                                    <div className="text-2xl font-bold">
-                                        {evaluationMarks >= 90 ? 'A+' :
-                                            evaluationMarks >= 80 ? 'A' :
-                                                evaluationMarks >= 70 ? 'B+' :
-                                                    evaluationMarks >= 60 ? 'B' : 'F'}
-                                    </div>
-                                </div>
-                            </div>
 
-                            {/* Rubric Sections */}
-                            {evaluationType && RUBRIC_CONFIG[evaluationType]?.sections.map((section: any, idx: number) => (
-                                <div key={idx} className="space-y-4">
-                                    <div className="flex items-center justify-between border-b border-neutral-100 pb-2">
-                                        <h4 className="text-lg font-bold text-neutral-900 flex items-center gap-2">
-                                            {section.title}
-                                            <span className="text-xs font-normal text-neutral-500 bg-neutral-100 px-2 py-0.5 rounded-full">
-                                                Max {section.maxMarks}
-                                            </span>
+                                <div className="space-y-8">
+                                    {/* Abstract */}
+                                    <div>
+                                        <h4 className="flex items-center gap-2 text-sm font-bold text-neutral-900 mb-2">
+                                            <div className="w-1.5 h-1.5 rounded-full bg-indigo-500"></div>
+                                            Abstract & Description
                                         </h4>
+                                        <p className="text-sm text-neutral-600 leading-relaxed">
+                                            {evaluatingProject?.project?.description || evaluatingProject?.description || 'No description provided.'}
+                                        </p>
                                     </div>
 
-                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                        {section.fields.map((field: any) => (
-                                            <div key={field.key} className="bg-neutral-50 p-4 rounded-xl border border-neutral-100 hover:border-indigo-100 transition-colors">
-                                                <div className="flex justify-between items-start mb-2">
-                                                    <label className="text-sm font-bold text-neutral-700 block mb-1">
-                                                        {field.label}
-                                                    </label>
-                                                    <span className="text-xs font-bold text-neutral-400 bg-white px-1.5 py-0.5 rounded border border-neutral-100">
-                                                        /{field.max}
-                                                    </span>
-                                                </div>
-                                                <p className="text-xs text-neutral-500 mb-3 h-8 line-clamp-2" title={field.description}>
-                                                    {field.description}
-                                                </p>
-                                                <input
-                                                    type="number"
-                                                    min="0"
-                                                    max={field.max}
-                                                    value={evaluationDetails[section.key]?.[field.key] ?? ''}
-                                                    onChange={(e) => {
-                                                        const rawVal = e.target.value;
-                                                        if (rawVal === '') {
-                                                            handleDetailChange(section.key, field.key, '');
-                                                        } else {
-                                                            const val = Math.min(Number(rawVal), field.max);
-                                                            handleDetailChange(section.key, field.key, val);
-                                                        }
-                                                    }}
-                                                    className="w-full px-3 py-2 rounded-lg border border-neutral-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold text-neutral-900 bg-white"
-                                                />
+                                    {/* Team Members */}
+                                    {((evaluatingProject?.members) || (evaluatingProject?.group?.members))?.length > 0 && (
+                                        <div>
+                                            <h4 className="flex items-center gap-2 text-sm font-bold text-neutral-900 mb-3">
+                                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
+                                                Team Members
+                                            </h4>
+                                            <div className="space-y-2">
+                                                {(evaluatingProject?.members || evaluatingProject?.group?.members).map((member: any) => (
+                                                    <div key={member._id} className="flex items-center gap-3 p-2 rounded-xl hover:bg-neutral-50 transition-colors">
+                                                        <div className="w-8 h-8 rounded-full bg-indigo-50 text-indigo-700 flex items-center justify-center font-bold text-xs ring-1 ring-indigo-100">
+                                                            {member.name?.charAt(0) || '?'}
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-sm font-bold text-neutral-900">{member.name}</p>
+                                                            <p className="text-xs text-neutral-500 font-medium">{member.rollNumber}</p>
+                                                        </div>
+                                                    </div>
+                                                ))}
                                             </div>
-                                        ))}
+                                        </div>
+                                    )}
+
+                                    {(evaluatingProject?.project?.attachments?.length > 0 || evaluatingProject?.attachments?.length > 0) && (
+                                        <div>
+                                            <h4 className="flex items-center gap-2 text-sm font-bold text-neutral-900 mb-3">
+                                                <div className="w-1.5 h-1.5 rounded-full bg-amber-500"></div>
+                                                Resources & Links
+                                            </h4>
+                                            <div className="space-y-2">
+                                                {(evaluatingProject?.project?.attachments || evaluatingProject?.attachments).map((att: string, i: number) => {
+                                                    const isLink = att.startsWith('http') && !att.includes('/uploads/');
+
+                                                    return (
+                                                        <a
+                                                            key={i}
+                                                            href={att}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="flex items-center gap-3 p-2.5 bg-neutral-50 border border-neutral-100 rounded-xl hover:border-indigo-300 hover:bg-indigo-50/50 transition-colors group"
+                                                        >
+                                                            <div className="text-indigo-600">
+                                                                <FileText className="w-4 h-4" />
+                                                            </div>
+                                                            <div className="flex-1 min-w-0">
+                                                                <p className="text-sm font-bold text-neutral-800 truncate group-hover:text-indigo-700 transition-colors">
+                                                                    {isLink ? 'External Link' : att.split('/').pop()}
+                                                                </p>
+                                                            </div>
+                                                        </a>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Right Column: Evaluation Inputs */}
+                            <div className="col-span-1 lg:col-span-2 flex flex-col overflow-hidden h-full">
+                                <div className="p-6 space-y-8 overflow-y-auto flex-1">
+                                    {/* Sticky Score Display */}
+                                    <div className="sticky top-0 z-10 flex items-center justify-between bg-indigo-600 text-white p-6 rounded-2xl shadow-lg shadow-indigo-200 border border-indigo-500 backdrop-blur-md">
+                                        <div>
+                                            <h4 className="font-bold text-indigo-100 text-sm uppercase tracking-wider mb-1">Total Score</h4>
+                                            <div className="flex items-baseline gap-2">
+                                                <span className="text-4xl font-bold">{evaluationMarks}</span>
+                                                <span className="text-indigo-200 font-medium">/ {evaluationType ? RUBRIC_CONFIG[evaluationType]?.maxMarks : 100}</span>
+                                            </div>
+                                        </div>
+                                        <div className="text-right flex flex-col items-end">
+                                            <div className="flex items-center gap-3 mb-4">
+                                                <span className="text-xs font-medium text-indigo-200 uppercase tracking-wider">Direct Marks Entry</span>
+                                                <button
+                                                    onClick={() => setManualMarksMode(!manualMarksMode)}
+                                                    className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${manualMarksMode ? 'bg-emerald-400' : 'bg-indigo-400/50'}`}
+                                                >
+                                                    <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${manualMarksMode ? 'translate-x-4.5' : 'translate-x-1'}`} />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Rubric Sections OR Manual Mode */}
+                                    {manualMarksMode ? (
+                                        <div className="space-y-4">
+                                            <h4 className="text-lg font-bold text-neutral-900 border-b border-neutral-100 pb-2">Direct Faculty Marks Entry</h4>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                                                {panelMembers.map((fac: any) => {
+                                                    const isGuide = fac._id === projectGuideId;
+                                                    const maxMarks = evaluationType === 'mid-term' ? (isGuide ? RUBRIC_CONFIG['mid-term'].sections[0].maxMarks : RUBRIC_CONFIG['mid-term'].sections[1].maxMarks) : (isGuide ? RUBRIC_CONFIG['end-term'].sections[0].maxMarks : RUBRIC_CONFIG['end-term'].sections[1].maxMarks);
+                                                    const facScore = evaluationDetails.facultyScores?.[fac._id] ?? '';
+
+                                                    return (
+                                                        <div key={fac._id} className={`${isGuide ? 'bg-indigo-50/50 border-indigo-200 shadow-sm' : 'bg-white border-neutral-200'} p-5 rounded-2xl border flex flex-col justify-between`}>
+                                                            <div className="mb-4">
+                                                                <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                                                                    <label className="text-base font-bold text-neutral-800 break-words leading-tight">
+                                                                        {fac.name}
+                                                                    </label>
+                                                                    {isGuide ? (
+                                                                        <span className="inline-block px-2 py-0.5 bg-indigo-100 text-indigo-700 text-[10px] font-bold uppercase rounded-md shadow-sm border border-indigo-200">Guide</span>
+                                                                    ) : (
+                                                                        <span className="inline-block px-2 py-0.5 bg-neutral-100 text-neutral-500 text-[10px] font-bold uppercase rounded-md border border-neutral-200">Evaluator</span>
+                                                                    )}
+                                                                </div>
+                                                                <p className="text-xs text-neutral-500 truncate" title={fac.email}>{fac.email}</p>
+                                                            </div>
+                                                            <div className="flex items-center gap-3 bg-neutral-50 p-2 rounded-xl self-start w-full justify-between shadow-inner border border-neutral-100">
+                                                                <span className="text-xs font-bold text-neutral-400 uppercase tracking-wider ml-1">Score:</span>
+                                                                <div className="flex items-center gap-2 text-right">
+                                                                    <input
+                                                                        type="number"
+                                                                        min="0"
+                                                                        max={maxMarks}
+                                                                        value={facScore}
+                                                                        onChange={(e) => {
+                                                                            setEvaluationDetails((prev: any) => ({
+                                                                                ...prev,
+                                                                                facultyScores: {
+                                                                                    ...prev.facultyScores,
+                                                                                    [fac._id]: e.target.value
+                                                                                }
+                                                                            }));
+                                                                        }}
+                                                                        className="w-16 px-2 py-1.5 border border-neutral-300 rounded-lg text-lg font-bold text-center focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all bg-white shadow-sm"
+                                                                        placeholder="-"
+                                                                    />
+                                                                    <span className="text-sm font-bold text-neutral-400">/ {maxMarks}</span>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    )
+                                                })}
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        evaluationType && RUBRIC_CONFIG[evaluationType]?.sections.map((section: any, idx: number) => (
+                                            <div key={idx} className="space-y-4">
+                                                <div className="flex items-center justify-between border-b border-neutral-100 pb-2">
+                                                    <h4 className="text-lg font-bold text-neutral-900 flex items-center gap-2">
+                                                        {section.title}
+                                                        <span className="text-xs font-normal text-neutral-500 bg-neutral-100 px-2 py-0.5 rounded-full">
+                                                            Max {section.maxMarks}
+                                                        </span>
+                                                    </h4>
+                                                </div>
+
+                                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                                    {section.fields.map((field: any) => (
+                                                        <div key={field.key} className="bg-neutral-50 p-4 rounded-xl border border-neutral-100 hover:border-indigo-100 transition-colors">
+                                                            <div className="flex justify-between items-start mb-2">
+                                                                <label className="text-sm font-bold text-neutral-700 block mb-1">
+                                                                    {field.label}
+                                                                </label>
+                                                                <span className="text-xs font-bold text-neutral-400 bg-white px-1.5 py-0.5 rounded border border-neutral-100">
+                                                                    /{field.max}
+                                                                </span>
+                                                            </div>
+                                                            <p className="text-xs text-neutral-500 mb-3 h-8 line-clamp-2" title={field.description}>
+                                                                {field.description}
+                                                            </p>
+                                                            <input
+                                                                type="number"
+                                                                min="0"
+                                                                max={field.max}
+                                                                value={evaluationDetails[section.key]?.[field.key] ?? ''}
+                                                                onChange={(e) => {
+                                                                    const rawVal = e.target.value;
+                                                                    if (rawVal === '') {
+                                                                        handleDetailChange(section.key, field.key, '');
+                                                                    } else {
+                                                                        const val = Math.min(Number(rawVal), field.max);
+                                                                        handleDetailChange(section.key, field.key, val);
+                                                                    }
+                                                                }}
+                                                                className="w-full px-3 py-2 rounded-lg border border-neutral-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold text-neutral-900 bg-white"
+                                                            />
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        ))
+                                    )}
+
+                                    <div className="h-px bg-neutral-100 w-full"></div>
+
+                                    <div className="space-y-2">
+                                        <label className="block text-sm font-bold text-neutral-700">Remarks & Feedback</label>
+                                        <textarea
+                                            value={evaluationRemarks}
+                                            onChange={(e) => setEvaluationRemarks(e.target.value)}
+                                            placeholder="Enter detailed feedback for the team..."
+                                            className="w-full px-4 py-3 rounded-xl border border-neutral-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-sm h-[100px] resize-none"
+                                        />
                                     </div>
                                 </div>
-                            ))}
 
-                            <div className="h-px bg-neutral-100 w-full"></div>
-
-                            <div className="space-y-2">
-                                <label className="block text-sm font-bold text-neutral-700">Remarks & Feedback</label>
-                                <textarea
-                                    value={evaluationRemarks}
-                                    onChange={(e) => setEvaluationRemarks(e.target.value)}
-                                    placeholder="Enter detailed feedback for the team..."
-                                    className="w-full px-4 py-3 rounded-xl border border-neutral-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-sm h-[100px] resize-none"
-                                />
+                                <div className="p-6 border-t border-neutral-100 bg-neutral-50 flex gap-3">
+                                    <button
+                                        onClick={() => setEvaluatingProject(null)}
+                                        className="flex-1 py-3 bg-white border border-neutral-200 text-neutral-600 font-bold rounded-xl hover:bg-neutral-50 transition-colors"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        onClick={handleSubmitEvaluation}
+                                        className="flex-1 py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 shadow-sm shadow-indigo-200 transition-colors flex items-center justify-center gap-2"
+                                    >
+                                        <CheckCircle className="w-4 h-4" /> Submit Evaluation
+                                    </button>
+                                </div>
                             </div>
-                        </div>
-
-                        <div className="p-6 border-t border-neutral-100 bg-neutral-50 flex gap-3">
-                            <button
-                                onClick={() => setEvaluatingProject(null)}
-                                className="flex-1 py-3 bg-white border border-neutral-200 text-neutral-600 font-bold rounded-xl hover:bg-neutral-50 transition-colors"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                onClick={handleSubmitEvaluation}
-                                className="flex-1 py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 shadow-sm shadow-indigo-200 transition-colors flex items-center justify-center gap-2"
-                            >
-                                <CheckCircle className="w-4 h-4" /> Submit Evaluation
-                            </button>
                         </div>
                     </Dialog.Content>
                 </Dialog.Portal>
