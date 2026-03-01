@@ -130,7 +130,7 @@ export const getMyMentees = async (req: Request, res: Response) => {
                 populate: { path: 'members', select: 'name email rollNumber branch' }
             });
 
-        const groups = projects.map((p: any) => ({
+        const groups = projects.filter((p: any) => p.group).map((p: any) => ({
             ...p.group.toObject(),
             project: {
                 title: p.title,

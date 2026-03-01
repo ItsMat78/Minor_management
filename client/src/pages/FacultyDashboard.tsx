@@ -533,9 +533,9 @@ const FacultyDashboard: React.FC = () => {
             setFeedback('');
             // Optional: Close dialog on success? Or let user see result?
             // User might want to close manually.
-        } catch (error) {
+        } catch (error: any) {
             console.error(`Failed to ${status} project`, error);
-            alert(`Failed to ${status} project`);
+            alert(error.response?.data?.message || `Failed to ${status} project`);
         } finally {
             setActionLoading(null);
         }
@@ -705,10 +705,10 @@ const FacultyDashboard: React.FC = () => {
             let matches = true;
 
             const matchesSearch =
-                p.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                p.group.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                p.group.members.some(m => m.name.toLowerCase().includes(searchTerm.toLowerCase())) ||
-                p.tags?.some(t => t.toLowerCase().includes(searchTerm.toLowerCase()));
+                (p.title || '').toString().toLowerCase().includes(searchTerm.toLowerCase()) ||
+                (p.group?.name || '').toString().toLowerCase().includes(searchTerm.toLowerCase()) ||
+                (p.group?.members || []).some((m: any) => (m.name || '').toString().toLowerCase().includes(searchTerm.toLowerCase())) ||
+                (p.tags || []).some((t: any) => (t || '').toString().toLowerCase().includes(searchTerm.toLowerCase()));
 
             if (!matchesSearch) matches = false;
 
@@ -733,9 +733,9 @@ const FacultyDashboard: React.FC = () => {
     const getFilteredMentees = () => {
         return mentees.filter(g => {
             const matchesSearch =
-                g.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                g.project?.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                g.members.some((m: any) => m.name.toLowerCase().includes(searchTerm.toLowerCase()));
+                (g.name || '').toString().toLowerCase().includes(searchTerm.toLowerCase()) ||
+                (g.project?.title || '').toString().toLowerCase().includes(searchTerm.toLowerCase()) ||
+                (g.members || []).some((m: any) => (m.name || '').toString().toLowerCase().includes(searchTerm.toLowerCase()));
 
             const matchesBatch = filterBatch === 'All' || (() => {
                 const batchSuffix = filterBatch.slice(2);
@@ -744,9 +744,9 @@ const FacultyDashboard: React.FC = () => {
 
             return matchesSearch && matchesBatch;
         }).sort((a, b) => {
-            if (sortOption === 'Name (A-Z)') return a.name.localeCompare(b.name);
-            if (sortOption === 'Name (Z-A)') return b.name.localeCompare(a.name);
-            if (sortOption === 'Project (A-Z)') return (a.project?.title || '').localeCompare(b.project?.title || '');
+            if (sortOption === 'Name (A-Z)') return (a.name || '').toString().localeCompare((b.name || '').toString());
+            if (sortOption === 'Name (Z-A)') return (b.name || '').toString().localeCompare((a.name || '').toString());
+            if (sortOption === 'Project (A-Z)') return (a.project?.title || '').toString().localeCompare((b.project?.title || '').toString());
 
             // Default sort: Has Update First
             const aUpdate = a.project?.hasNewUpdate ? 1 : 0;
@@ -1146,158 +1146,178 @@ const FacultyDashboard: React.FC = () => {
                                                     onUpdateSuccess={fetchMentees}
                                                 />
                                             ) : (
-                                                (filterBatch === 'All' ? Array.from({ length: 7 }, (_, i) => (new Date().getFullYear() - 7) + i).reverse() : [parseInt(filterBatch || '0')]).map(batchYear => {
-                                                    if (filterBatch !== 'All' && batchYear === 0) return null; // Safe guard
-
-                                                    const batchSuffix = batchYear.toString().slice(2);
-                                                    const batchMentees = filterBatch === 'All'
-                                                        ? displayItems.filter((item: any) => {
+                                                (() => {
+                                                    // Dynamically groups them based on existing mentees
+                                                    let batchesToRender: string[] = [];
+                                                    if (filterBatch !== 'All') {
+                                                        batchesToRender = [filterBatch];
+                                                    } else {
+                                                        const batches = new Set<string>();
+                                                        displayItems.forEach((item: any) => {
                                                             const members = item.members || item.group?.members || [];
-                                                            return members.some((m: any) => m.rollNumber && m.rollNumber.startsWith(batchSuffix));
-                                                        })
-                                                        : displayItems; // If specific batch filter, displayItems is already filtered
+                                                            const hasRoll = members.find((m: any) => m.rollNumber);
+                                                            if (hasRoll) {
+                                                                const prefix = hasRoll.rollNumber.substring(0, 2);
+                                                                batches.add('20' + prefix);
+                                                            } else {
+                                                                batches.add('Unknown');
+                                                            }
+                                                        });
+                                                        batchesToRender = Array.from(batches).sort().reverse();
+                                                    }
 
-                                                    if (batchMentees.length === 0) return null;
+                                                    return batchesToRender.map(batchKey => {
+                                                        const batchMentees = filterBatch === 'All'
+                                                            ? displayItems.filter((item: any) => {
+                                                                const members = item.members || item.group?.members || [];
+                                                                const hasRoll = members.find((m: any) => m.rollNumber);
+                                                                if (batchKey === 'Unknown') return !hasRoll;
+                                                                return members.some((m: any) => m.rollNumber && m.rollNumber.startsWith(batchKey.slice(2)));
+                                                            })
+                                                            : displayItems;
 
-                                                    const teamsCount = batchMentees.length;
-                                                    const studentsCount = batchMentees.reduce((acc: number, item: any) => acc + (item.members?.length || item.group?.members?.length || 0), 0);
+                                                        if (batchMentees.length === 0) return null;
 
-                                                    return (
-                                                        <div key={batchYear} className="space-y-6">
-                                                            {filterBatch === 'All' && (
-                                                                <div
-                                                                    className={`flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-2xl border shadow-sm cursor-pointer transition-all group select-none relative overflow-hidden ${isBatchExpanded(batchYear.toString()) ? 'bg-indigo-50/50 border-indigo-200' : 'bg-white border-neutral-200 hover:border-indigo-300 hover:bg-neutral-50'}`}
-                                                                    onClick={() => toggleBatch(batchYear.toString())}
-                                                                >
-                                                                    {isBatchExpanded(batchYear.toString()) && <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-indigo-500"></div>}
-                                                                    <div className="flex items-center gap-4 pl-2">
-                                                                        <div className={`p-2 rounded-xl transition-colors ${isBatchExpanded(batchYear.toString()) ? 'bg-indigo-100 text-indigo-700' : 'bg-neutral-100 text-neutral-500 group-hover:bg-indigo-50 group-hover:text-indigo-600'}`}>
-                                                                            <ChevronDown className={`w-5 h-5 transition-transform duration-300 ${!isBatchExpanded(batchYear.toString()) ? '-rotate-90' : ''}`} />
+                                                        const teamsCount = batchMentees.length;
+                                                        const studentsCount = batchMentees.reduce((acc: number, item: any) => acc + (item.members?.length || item.group?.members?.length || 0), 0);
+
+                                                        return (
+                                                            <div key={batchKey} className="space-y-6">
+                                                                {(filterBatch === 'All' || batchKey === 'Unknown') && (
+                                                                    <div
+                                                                        className={`flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-2xl border shadow-sm cursor-pointer transition-all group select-none relative overflow-hidden ${isBatchExpanded(batchKey) ? 'bg-indigo-50/50 border-indigo-200' : 'bg-white border-neutral-200 hover:border-indigo-300 hover:bg-neutral-50'}`}
+                                                                        onClick={() => toggleBatch(batchKey)}
+                                                                    >
+                                                                        {isBatchExpanded(batchKey) && <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-indigo-500"></div>}
+                                                                        <div className="flex items-center gap-4 pl-2">
+                                                                            <div className={`p-2 rounded-xl transition-colors ${isBatchExpanded(batchKey) ? 'bg-indigo-100 text-indigo-700' : 'bg-neutral-100 text-neutral-500 group-hover:bg-indigo-50 group-hover:text-indigo-600'}`}>
+                                                                                <ChevronDown className={`w-5 h-5 transition-transform duration-300 ${!isBatchExpanded(batchKey) ? '-rotate-90' : ''}`} />
+                                                                            </div>
+                                                                            <div>
+                                                                                <h3 className="text-xl font-bold text-neutral-900">{batchKey === 'Unknown' ? 'Other/Uncategorized' : `Batch ${batchKey}-${parseInt(batchKey) + 4}`}</h3>
+                                                                                <p className="text-sm font-medium text-neutral-500 mt-0.5">{batchMentees.length} Active Projects</p>
+                                                                            </div>
                                                                         </div>
-                                                                        <div>
-                                                                            <h3 className="text-xl font-bold text-neutral-900">Batch {batchYear}-{batchYear + 4}</h3>
-                                                                            <p className="text-sm font-medium text-neutral-500 mt-0.5">{batchMentees.length} Active Projects</p>
+                                                                        <div className="flex gap-3 pr-2" onClick={(e) => e.stopPropagation()}>
+                                                                            <div className="px-4 py-2 bg-white text-indigo-700 rounded-xl border border-indigo-100/50 flex items-center gap-3 shadow-sm">
+                                                                                <div className="p-1.5 bg-indigo-50 rounded-lg">
+                                                                                    <Users className="w-4 h-4 text-indigo-600" />
+                                                                                </div>
+                                                                                <div className="flex flex-col">
+                                                                                    <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-400">Teams</span>
+                                                                                    <span className="text-sm font-bold leading-none">{teamsCount}</span>
+                                                                                </div>
+                                                                            </div>
+                                                                            <div className="px-4 py-2 bg-white text-emerald-700 rounded-xl border border-emerald-100/50 flex items-center gap-3 shadow-sm">
+                                                                                <div className="p-1.5 bg-emerald-50 rounded-lg">
+                                                                                    <Users className="w-4 h-4 text-emerald-600" />
+                                                                                </div>
+                                                                                <div className="flex flex-col">
+                                                                                    <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">Students</span>
+                                                                                    <span className="text-sm font-bold leading-none">{studentsCount}</span>
+                                                                                </div>
+                                                                            </div>
                                                                         </div>
                                                                     </div>
-                                                                    <div className="flex gap-3 pr-2" onClick={(e) => e.stopPropagation()}>
-                                                                        <div className="px-4 py-2 bg-white text-indigo-700 rounded-xl border border-indigo-100/50 flex items-center gap-3 shadow-sm">
-                                                                            <div className="p-1.5 bg-indigo-50 rounded-lg">
-                                                                                <Users className="w-4 h-4 text-indigo-600" />
-                                                                            </div>
-                                                                            <div className="flex flex-col">
-                                                                                <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-400">Teams</span>
-                                                                                <span className="text-sm font-bold leading-none">{teamsCount}</span>
-                                                                            </div>
-                                                                        </div>
-                                                                        <div className="px-4 py-2 bg-white text-emerald-700 rounded-xl border border-emerald-100/50 flex items-center gap-3 shadow-sm">
-                                                                            <div className="p-1.5 bg-emerald-50 rounded-lg">
-                                                                                <Users className="w-4 h-4 text-emerald-600" />
-                                                                            </div>
-                                                                            <div className="flex flex-col">
-                                                                                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">Students</span>
-                                                                                <span className="text-sm font-bold leading-none">{studentsCount}</span>
-                                                                            </div>
-                                                                        </div>
-                                                                    </div>
-                                                                </div>
-                                                            )}
+                                                                )}
 
-                                                            {(isBatchExpanded(batchYear.toString()) || filterBatch !== 'All') && (
-                                                                <div className="bg-white rounded-2xl border border-neutral-200 shadow-sm overflow-hidden">
-                                                                    <div className="overflow-x-auto">
-                                                                        <table className="w-full text-left">
-                                                                            <thead className="bg-neutral-50 border-b border-neutral-100">
-                                                                                <tr>
-                                                                                    <th className="px-6 py-4 text-xs font-bold text-neutral-400 uppercase tracking-wider w-1/3">Project Details</th>
-                                                                                    <th className="px-6 py-4 text-xs font-bold text-neutral-400 uppercase tracking-wider">Members</th>
-                                                                                    <th className="px-6 py-4 text-xs font-bold text-neutral-400 uppercase tracking-wider">Status</th>
-                                                                                    <th className="px-6 py-4 text-xs font-bold text-neutral-400 uppercase tracking-wider">Last Update</th>
-                                                                                    <th className="px-6 py-4 text-xs font-bold text-neutral-400 uppercase tracking-wider text-right">Action</th>
-                                                                                </tr>
-                                                                            </thead>
-                                                                            <tbody className="divide-y divide-neutral-100">
-                                                                                {batchMentees.map((item: any) => (
-                                                                                    <tr
-                                                                                        key={item._id}
-                                                                                        onClick={() => handleGroupClick(item)}
-                                                                                        className={`cursor-pointer transition-all group ${item.project?.hasNewUpdate
-                                                                                            ? 'bg-amber-50/50 hover:bg-amber-50 relative'
-                                                                                            : 'hover:bg-neutral-50'}`}
-                                                                                    >
-                                                                                        {item.project?.hasNewUpdate && (
-                                                                                            <td className="absolute left-0 top-0 bottom-0 w-1 bg-amber-400 animate-pulse"></td>
-                                                                                        )}
-                                                                                        <td className="px-6 py-4">
-                                                                                            <div className="flex flex-col gap-1">
-                                                                                                <div className="flex items-start justify-between gap-2">
-                                                                                                    <span className="font-bold text-neutral-900 group-hover:text-indigo-600 transition-colors line-clamp-1 text-base">
-                                                                                                        {item.project?.title || item.name}
-                                                                                                    </span>
-                                                                                                    {item.project?.hasNewUpdate && (
-                                                                                                        <span className="px-2 py-0.5 bg-amber-100 text-amber-700 border border-amber-200 text-[10px] font-bold uppercase rounded-md shadow-sm whitespace-nowrap">
-                                                                                                            New Update
+                                                                {(isBatchExpanded(batchKey) || filterBatch !== 'All') && (
+                                                                    <div className="bg-white rounded-2xl border border-neutral-200 shadow-sm overflow-hidden">
+                                                                        <div className="overflow-x-auto">
+                                                                            <table className="w-full text-left">
+                                                                                <thead className="bg-neutral-50 border-b border-neutral-100">
+                                                                                    <tr>
+                                                                                        <th className="px-6 py-4 text-xs font-bold text-neutral-400 uppercase tracking-wider w-1/3">Project Details</th>
+                                                                                        <th className="px-6 py-4 text-xs font-bold text-neutral-400 uppercase tracking-wider">Members</th>
+                                                                                        <th className="px-6 py-4 text-xs font-bold text-neutral-400 uppercase tracking-wider">Status</th>
+                                                                                        <th className="px-6 py-4 text-xs font-bold text-neutral-400 uppercase tracking-wider">Last Update</th>
+                                                                                        <th className="px-6 py-4 text-xs font-bold text-neutral-400 uppercase tracking-wider text-right">Action</th>
+                                                                                    </tr>
+                                                                                </thead>
+                                                                                <tbody className="divide-y divide-neutral-100">
+                                                                                    {batchMentees.map((item: any) => (
+                                                                                        <tr
+                                                                                            key={item._id}
+                                                                                            onClick={() => handleGroupClick(item)}
+                                                                                            className={`cursor-pointer transition-all group ${item.project?.hasNewUpdate
+                                                                                                ? 'bg-amber-50/50 hover:bg-amber-50 relative'
+                                                                                                : 'hover:bg-neutral-50'}`}
+                                                                                        >
+                                                                                            {item.project?.hasNewUpdate && (
+                                                                                                <td className="absolute left-0 top-0 bottom-0 w-1 bg-amber-400 animate-pulse"></td>
+                                                                                            )}
+                                                                                            <td className="px-6 py-4">
+                                                                                                <div className="flex flex-col gap-1">
+                                                                                                    <div className="flex items-start justify-between gap-2">
+                                                                                                        <span className="font-bold text-neutral-900 group-hover:text-indigo-600 transition-colors line-clamp-1 text-base">
+                                                                                                            {item.project?.title || item.name}
                                                                                                         </span>
+                                                                                                        {item.project?.hasNewUpdate && (
+                                                                                                            <span className="px-2 py-0.5 bg-amber-100 text-amber-700 border border-amber-200 text-[10px] font-bold uppercase rounded-md shadow-sm whitespace-nowrap">
+                                                                                                                New Update
+                                                                                                            </span>
+                                                                                                        )}
+                                                                                                    </div>
+                                                                                                    <span className="text-xs font-medium text-neutral-500 uppercase tracking-wider flex items-center gap-1.5">
+                                                                                                        <Users className="w-3 h-3" />
+                                                                                                        {item.name}
+                                                                                                    </span>
+                                                                                                    {item.project?.tags && item.project.tags.length > 0 && (
+                                                                                                        <div className="flex flex-wrap gap-1 mt-1">
+                                                                                                            {item.project.tags.slice(0, 3).map((tag: string, i: number) => (
+                                                                                                                <span key={i} className="px-1.5 py-0.5 bg-neutral-100 text-neutral-500 text-[10px] rounded border border-neutral-200">
+                                                                                                                    {tag}
+                                                                                                                </span>
+                                                                                                            ))}
+                                                                                                        </div>
                                                                                                     )}
                                                                                                 </div>
-                                                                                                <span className="text-xs font-medium text-neutral-500 uppercase tracking-wider flex items-center gap-1.5">
-                                                                                                    <Users className="w-3 h-3" />
-                                                                                                    {item.name}
+                                                                                            </td>
+                                                                                            <td className="px-6 py-4">
+                                                                                                <div className="flex -space-x-2">
+                                                                                                    {(item.members || item.group?.members || []).slice(0, 3).map((m: any, idx: number) => (
+                                                                                                        <div key={idx} className="h-8 w-8 rounded-full bg-indigo-100 border-2 border-white flex items-center justify-center text-xs font-bold text-indigo-600 hover:z-10 transition-transform hover:scale-110" title={m.name}>
+                                                                                                            {m.name ? m.name.charAt(0) : '?'}
+                                                                                                        </div>
+                                                                                                    ))}
+                                                                                                    {(item.members || item.group?.members || []).length > 3 && (
+                                                                                                        <div className="h-8 w-8 rounded-full bg-neutral-100 border-2 border-white flex items-center justify-center text-xs font-bold text-neutral-500">
+                                                                                                            +{(item.members || item.group?.members || []).length - 3}
+                                                                                                        </div>
+                                                                                                    )}
+                                                                                                </div>
+                                                                                            </td>
+                                                                                            <td className="px-6 py-4">
+                                                                                                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${(item.status || item.project?.status) === 'Approved' ? 'bg-green-100 text-green-700' :
+                                                                                                    (item.status || item.project?.status) === 'Rejected' ? 'bg-red-100 text-red-700' :
+                                                                                                        'bg-indigo-100 text-indigo-700'
+                                                                                                    }`}>
+                                                                                                    <div className={`w-1.5 h-1.5 rounded-full ${(item.status || item.project?.status) === 'Approved' ? 'bg-green-500' :
+                                                                                                        (item.status || item.project?.status) === 'Rejected' ? 'bg-red-500' :
+                                                                                                            'bg-indigo-500'
+                                                                                                        }`} />
+                                                                                                    {item.status || item.project?.status || 'Active'}
                                                                                                 </span>
-                                                                                                {item.project?.tags && item.project.tags.length > 0 && (
-                                                                                                    <div className="flex flex-wrap gap-1 mt-1">
-                                                                                                        {item.project.tags.slice(0, 3).map((tag: string, i: number) => (
-                                                                                                            <span key={i} className="px-1.5 py-0.5 bg-neutral-100 text-neutral-500 text-[10px] rounded border border-neutral-200">
-                                                                                                                {tag}
-                                                                                                            </span>
-                                                                                                        ))}
-                                                                                                    </div>
-                                                                                                )}
-                                                                                            </div>
-                                                                                        </td>
-                                                                                        <td className="px-6 py-4">
-                                                                                            <div className="flex -space-x-2">
-                                                                                                {item.members.slice(0, 3).map((m: any, idx: number) => (
-                                                                                                    <div key={idx} className="h-8 w-8 rounded-full bg-indigo-100 border-2 border-white flex items-center justify-center text-xs font-bold text-indigo-600 hover:z-10 transition-transform hover:scale-110" title={m.name}>
-                                                                                                        {m.name.charAt(0)}
-                                                                                                    </div>
-                                                                                                ))}
-                                                                                                {item.members.length > 3 && (
-                                                                                                    <div className="h-8 w-8 rounded-full bg-neutral-100 border-2 border-white flex items-center justify-center text-xs font-bold text-neutral-500">
-                                                                                                        +{item.members.length - 3}
-                                                                                                    </div>
-                                                                                                )}
-                                                                                            </div>
-                                                                                        </td>
-                                                                                        <td className="px-6 py-4">
-                                                                                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${(item.status || item.project?.status) === 'Approved' ? 'bg-green-100 text-green-700' :
-                                                                                                (item.status || item.project?.status) === 'Rejected' ? 'bg-red-100 text-red-700' :
-                                                                                                    'bg-indigo-100 text-indigo-700'
-                                                                                                }`}>
-                                                                                                <div className={`w-1.5 h-1.5 rounded-full ${(item.status || item.project?.status) === 'Approved' ? 'bg-green-500' :
-                                                                                                    (item.status || item.project?.status) === 'Rejected' ? 'bg-red-500' :
-                                                                                                        'bg-indigo-500'
-                                                                                                    }`} />
-                                                                                                {item.status || item.project?.status || 'Active'}
-                                                                                            </span>
-                                                                                        </td>
-                                                                                        <td className="px-6 py-4 text-sm text-neutral-500 font-mono text-xs">
-                                                                                            {new Date(item.project?.updatedAt || item.createdAt).toLocaleDateString()}
-                                                                                        </td>
-                                                                                        <td className="px-6 py-4 text-right">
-                                                                                            <div className="inline-flex items-center gap-1 text-indigo-600 font-bold text-xs opacity-0 group-hover:opacity-100 transition-opacity">
-                                                                                                View <ChevronRight className="w-3 h-3" />
-                                                                                            </div>
-                                                                                        </td>
-                                                                                    </tr>
-                                                                                ))}
-                                                                            </tbody>
-                                                                        </table>
+                                                                                            </td>
+                                                                                            <td className="px-6 py-4 text-sm text-neutral-500 font-mono text-xs">
+                                                                                                {new Date(item.project?.updatedAt || item.createdAt).toLocaleDateString()}
+                                                                                            </td>
+                                                                                            <td className="px-6 py-4 text-right">
+                                                                                                <div className="inline-flex items-center gap-1 text-indigo-600 font-bold text-xs opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                                                    View <ChevronRight className="w-3 h-3" />
+                                                                                                </div>
+                                                                                            </td>
+                                                                                        </tr>
+                                                                                    ))}
+                                                                                </tbody>
+                                                                            </table>
+                                                                        </div>
                                                                     </div>
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    );
-                                                }))}
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    });
+                                                })())}
                                         </div>
                                     ) : activeTab === 'mid-term' || activeTab === 'end-term' ? (
                                         /* EVALUATION VIEW - Filter by Batch */
@@ -1443,71 +1463,88 @@ const FacultyDashboard: React.FC = () => {
                                                 />
                                             ) : activeTab === 'mentees' && filterBatch === 'All' ? (
                                                 <div className="space-y-12">
-                                                    {Array.from({ length: 10 }, (_, i) => 2020 + i).reverse().map(batchYear => {
-                                                        const batchSuffix = batchYear.toString().slice(2);
-                                                        const batchMentees = displayItems.filter((item: any) => {
+                                                    {(() => {
+                                                        const batches = new Set<string>();
+                                                        displayItems.forEach((item: any) => {
                                                             const members = item.members || item.group?.members || [];
-                                                            return members.some((m: any) => m.rollNumber && m.rollNumber.startsWith(batchSuffix));
+                                                            const hasRoll = members.find((m: any) => m.rollNumber);
+                                                            if (hasRoll) {
+                                                                const prefix = hasRoll.rollNumber.substring(0, 2);
+                                                                batches.add('20' + prefix);
+                                                            } else {
+                                                                batches.add('Unknown');
+                                                            }
                                                         });
 
-                                                        if (batchMentees.length === 0) return null;
+                                                        const batchesToRender = Array.from(batches).sort().reverse();
 
-                                                        const teamsCount = batchMentees.length;
-                                                        const studentsCount = batchMentees.reduce((acc: number, item: any) => acc + (item.members?.length || item.group?.members?.length || 0), 0);
+                                                        return batchesToRender.map(batchKey => {
+                                                            const batchMentees = displayItems.filter((item: any) => {
+                                                                const members = item.members || item.group?.members || [];
+                                                                const hasRoll = members.find((m: any) => m.rollNumber);
+                                                                if (batchKey === 'Unknown') return !hasRoll;
+                                                                return members.some((m: any) => m.rollNumber && m.rollNumber.startsWith(batchKey.slice(2)));
+                                                            });
 
-                                                        return (
-                                                            <div key={batchYear} className="space-y-6">
-                                                                <div
-                                                                    className={`flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-2xl border shadow-sm cursor-pointer transition-all group select-none relative overflow-hidden ${isBatchExpanded(batchYear.toString()) ? 'bg-indigo-50/50 border-indigo-200' : 'bg-white border-neutral-200 hover:border-indigo-300 hover:bg-neutral-50'}`}
-                                                                    onClick={() => toggleBatch(batchYear.toString())}
-                                                                >
-                                                                    {isBatchExpanded(batchYear.toString()) && <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-indigo-500"></div>}
-                                                                    <div className="flex items-center gap-4 pl-2">
-                                                                        <div className={`p-2 rounded-xl transition-colors ${isBatchExpanded(batchYear.toString()) ? 'bg-indigo-100 text-indigo-700' : 'bg-neutral-100 text-neutral-500 group-hover:bg-indigo-50 group-hover:text-indigo-600'}`}>
-                                                                            <ChevronDown className={`w-5 h-5 transition-transform duration-300 ${!isBatchExpanded(batchYear.toString()) ? '-rotate-90' : ''}`} />
+                                                            if (batchMentees.length === 0) return null;
+
+                                                            const teamsCount = batchMentees.length;
+                                                            const studentsCount = batchMentees.reduce((acc: number, item: any) => acc + (item.members?.length || item.group?.members?.length || 0), 0);
+
+                                                            return (
+                                                                <div key={batchKey} className="space-y-6">
+                                                                    <div
+                                                                        className={`flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-2xl border shadow-sm cursor-pointer transition-all group select-none relative overflow-hidden ${isBatchExpanded(batchKey) ? 'bg-indigo-50/50 border-indigo-200' : 'bg-white border-neutral-200 hover:border-indigo-300 hover:bg-neutral-50'}`}
+                                                                        onClick={() => toggleBatch(batchKey)}
+                                                                    >
+                                                                        {isBatchExpanded(batchKey) && <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-indigo-500"></div>}
+                                                                        <div className="flex items-center gap-4 pl-2">
+                                                                            <div className={`p-2 rounded-xl transition-colors ${isBatchExpanded(batchKey) ? 'bg-indigo-100 text-indigo-700' : 'bg-neutral-100 text-neutral-500 group-hover:bg-indigo-50 group-hover:text-indigo-600'}`}>
+                                                                                <ChevronDown className={`w-5 h-5 transition-transform duration-300 ${!isBatchExpanded(batchKey) ? '-rotate-90' : ''}`} />
+                                                                            </div>
+                                                                            <div>
+                                                                                <h3 className="text-xl font-bold text-neutral-900">{batchKey === 'Unknown' ? 'Other/Uncategorized' : `Batch ${batchKey}`}</h3>
+                                                                                <p className="text-sm font-medium text-neutral-500 mt-0.5">{batchMentees.length} Active Projects</p>
+                                                                            </div>
                                                                         </div>
-                                                                        <div>
-                                                                            <h3 className="text-xl font-bold text-neutral-900">Batch {batchYear}</h3>
-                                                                            <p className="text-sm font-medium text-neutral-500 mt-0.5">{batchMentees.length} Active Projects</p>
+                                                                        <div className="flex gap-3 pr-2" onClick={(e) => e.stopPropagation()}>
+                                                                            <div className="px-4 py-2 bg-white text-indigo-700 rounded-xl border border-indigo-100/50 flex items-center gap-3 shadow-sm">
+                                                                                <div className="p-1.5 bg-indigo-50 rounded-lg">
+                                                                                    <Users className="w-4 h-4 text-indigo-600" />
+                                                                                </div>
+                                                                                <div className="flex flex-col">
+                                                                                    <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-400">Teams</span>
+                                                                                    <span className="text-sm font-bold leading-none">{teamsCount}</span>
+                                                                                </div>
+                                                                            </div>
+                                                                            <div className="px-4 py-2 bg-white text-emerald-700 rounded-xl border border-emerald-100/50 flex items-center gap-3 shadow-sm">
+                                                                                <div className="p-1.5 bg-emerald-50 rounded-lg">
+                                                                                    <Users className="w-4 h-4 text-emerald-600" />
+                                                                                </div>
+                                                                                <div className="flex flex-col">
+                                                                                    <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">Students</span>
+                                                                                    <span className="text-sm font-bold leading-none">{studentsCount}</span>
+                                                                                </div>
+                                                                            </div>
                                                                         </div>
                                                                     </div>
-                                                                    <div className="flex gap-3 pr-2" onClick={(e) => e.stopPropagation()}>
-                                                                        <div className="px-4 py-2 bg-white text-indigo-700 rounded-xl border border-indigo-100/50 flex items-center gap-3 shadow-sm">
-                                                                            <div className="p-1.5 bg-indigo-50 rounded-lg">
-                                                                                <Users className="w-4 h-4 text-indigo-600" />
-                                                                            </div>
-                                                                            <div className="flex flex-col">
-                                                                                <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-400">Teams</span>
-                                                                                <span className="text-sm font-bold leading-none">{teamsCount}</span>
-                                                                            </div>
+                                                                    {isBatchExpanded(batchKey) && (
+                                                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-6">
+                                                                            {batchMentees.map((item: any) => (
+                                                                                <MenteeCard
+                                                                                    key={item._id}
+                                                                                    item={item}
+                                                                                    activeTab={activeTab}
+                                                                                    navigate={navigate}
+                                                                                    setSelectedProject={activeTab === 'mentees' ? handleGroupClick : setSelectedProject}
+                                                                                />
+                                                                            ))}
                                                                         </div>
-                                                                        <div className="px-4 py-2 bg-white text-emerald-700 rounded-xl border border-emerald-100/50 flex items-center gap-3 shadow-sm">
-                                                                            <div className="p-1.5 bg-emerald-50 rounded-lg">
-                                                                                <Users className="w-4 h-4 text-emerald-600" />
-                                                                            </div>
-                                                                            <div className="flex flex-col">
-                                                                                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">Students</span>
-                                                                                <span className="text-sm font-bold leading-none">{studentsCount}</span>
-                                                                            </div>
-                                                                        </div>
-                                                                    </div>
+                                                                    )}
                                                                 </div>
-                                                                {isBatchExpanded(batchYear.toString()) && (
-                                                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-6">
-                                                                        {batchMentees.map((item: any) => (
-                                                                            <MenteeCard
-                                                                                key={item._id}
-                                                                                item={item}
-                                                                                activeTab={activeTab}
-                                                                                navigate={navigate}
-                                                                                setSelectedProject={activeTab === 'mentees' ? handleGroupClick : setSelectedProject}
-                                                                            />
-                                                                        ))}
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                        );
-                                                    })}
+                                                            );
+                                                        });
+                                                    })()}
                                                 </div>
                                             ) : (
                                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-6 auto-rows-fr">

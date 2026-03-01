@@ -304,6 +304,140 @@ export const exportPanels = async (req: any, res: Response) => {
             });
         }
 
+        // --- NEW: Add individual panel sheets ---
+        panels.forEach((p: any, pIndex: number) => {
+            const pSheet = workbook.addWorksheet(`Panel ${pIndex + 1}`);
+            const pGroups = panelGroupsArray[pIndex] || [];
+            const panelMembersString = `Panel Members -: ` + p.faculty.map((f: any) => f.name).join(', ');
+
+            // Setup Columns for individual panel sheet
+            pSheet.columns = [
+                { width: 3 }, // Spacer
+                { width: 10 }, // Group No.
+                { width: 25 }, // Student's name
+                { width: 15 }, // Roll no.
+                { width: 15 }, // Department
+                { width: 40 }, // Title of the Project
+                { width: 25 }, // Supervisor Name
+                { width: 10 }, { width: 10 }, { width: 10 }, { width: 20 }, // Mid term
+                { width: 10 }, { width: 10 }, { width: 10 }, { width: 20 }, // End term
+                { width: 10 }, // Total
+                { width: 10 }  // Grade
+            ];
+
+            // Rows 1-3 empty
+            pSheet.addRow([]);
+            pSheet.addRow([]);
+            pSheet.addRow([]);
+
+            // Row 4: Title
+            pSheet.addRow([
+                null,
+                `MINOR PROJECT EVALUATION- B.Tech. ${p.batchYear} BATCH`,
+                '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''
+            ]);
+            pSheet.mergeCells(`B4:Q4`);
+            pSheet.getCell('B4').font = { bold: true, size: 14 };
+            pSheet.getCell('B4').alignment = { horizontal: 'center', vertical: 'middle' };
+
+            pSheet.addRow([]);
+
+            // Row 6: Panel No & Members
+            pSheet.addRow([
+                null,
+                `Panel No.- ${pIndex + 1}`, '', '',
+                panelMembersString, '', '', '', '', '', '', '', '', '', '', '', ''
+            ]);
+            pSheet.mergeCells('B6:D6');
+            pSheet.mergeCells('E6:Q6');
+            pSheet.getCell('B6').font = { bold: true };
+            pSheet.getCell('E6').font = { bold: true };
+
+            // Row 7 & 8: Headers
+            const headerRow1 = pSheet.addRow([
+                null,
+                'Group No.', 'Student\'s name', 'Roll no.', 'Department', 'Title of the Project', 'Supervisor Name',
+                'MID-TERM (15+15)', '', '', 'Average Marks (30) Guide+(E1 +E2)/2',
+                'END-TERM (35+35)', '', '', 'Average Marks (70) Guide+(E1 +E2)/2',
+                'Total (100)', 'Grade'
+            ]);
+
+            const headerRow2 = pSheet.addRow([
+                null,
+                '', '', '', '', '', '',
+                'E1 (15)', 'E2 (15)', 'Guide (15)', '',
+                'E1 (35)', 'E2 (35)', 'Guide (35)', '',
+                '', ''
+            ]);
+
+            // Merge header rows
+            const commonFields = ['B', 'C', 'D', 'E', 'F', 'G', 'K', 'O', 'P', 'Q'];
+            commonFields.forEach(col => pSheet.mergeCells(`${col}7:${col}8`));
+            pSheet.mergeCells('H7:J7'); // Mid-Term
+            pSheet.mergeCells('L7:N7'); // End-Term
+
+            // Style headers
+            [headerRow1, headerRow2].forEach(row => {
+                row.font = { bold: true };
+                row.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+                row.eachCell((cell, colNumber) => {
+                    if (colNumber > 1) cell.border = borderStyle;
+                });
+            });
+
+            // Data Rows
+            pGroups.forEach((g: any) => {
+                const members = g.members || [];
+                const projTitle = g.project?.title || 'TBD';
+                const facName = typeof g.project?.faculty === 'string' ? 'Unknown' : g.project?.faculty?.name || 'Unknown';
+                const groupNo = g.name || '';
+
+                if (members.length === 0) {
+                    const row = pSheet.addRow([null, groupNo, '', '', '', projTitle, facName, '', '', '', '', '', '', '', '', '', '']);
+                    row.eachCell((cell, colNum) => { if (colNum > 1) cell.border = borderStyle; });
+                    return;
+                }
+
+                members.forEach((m: any, mIdx: number) => {
+                    const row = pSheet.addRow([
+                        null,
+                        mIdx === 0 ? groupNo : '',
+                        m.name || '',
+                        m.rollNumber || '',
+                        m.branch || m.department || '',
+                        mIdx === 0 ? projTitle : '',
+                        mIdx === 0 ? facName : '',
+                        '', '', '', '', '', '', '', '', '', ''
+                    ]);
+
+                    row.eachCell((cell, colNum) => {
+                        if (colNum > 1) cell.border = borderStyle;
+                    });
+                });
+            });
+
+            pSheet.addRow([]);
+
+            // Signatures
+            const sigLabelRow = pSheet.addRow([
+                null, null, null,
+                'Signatures of Evaluation Board members', '', '', '',
+                'Signature', 'Signature', 'Signature', 'Signature', 'Signature', 'Signature', 'Signature', 'Signature', 'Signature', 'Signature'
+            ]);
+            pSheet.mergeCells(`D${sigLabelRow.number}:G${sigLabelRow.number}`);
+            sigLabelRow.font = { bold: true };
+
+            p.faculty.forEach((fac: any) => {
+                const sigRow = pSheet.addRow([
+                    null, null, null,
+                    fac.name, '', '', '',
+                    '', '', '', '', '', '', '', '', '', ''
+                ]);
+                pSheet.mergeCells(`D${sigRow.number}:G${sigRow.number}`);
+            });
+        });
+        // --- END NEW ---
+
         const buffer = await workbook.xlsx.writeBuffer();
 
         res.set('Content-Disposition', `attachment; filename=panels_export_${batchYear || 'All'}.xlsx`);
