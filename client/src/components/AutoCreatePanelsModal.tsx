@@ -344,16 +344,14 @@ const AutoCreatePanelsModal: React.FC<AutoCreatePanelsModalProps> = ({ faculties
                             {draftPanels.map((p: any, i) => (
                                 <DroppablePanel key={p.id} panel={p} index={i} />
                             ))}
-                            {isEditingMode && (
-                                <div className="bg-neutral-50/50 rounded-2xl p-5 border-2 border-dashed border-neutral-300 flex items-center justify-center flex-col text-neutral-500 hover:bg-indigo-50/30 hover:border-indigo-300 hover:text-indigo-600 transition-all cursor-pointer group" onClick={() => {
-                                    setDraftPanels(prev => [...prev, { id: `new-panel-${Date.now()}`, faculties: [] }]);
-                                }}>
-                                    <div className="h-10 w-10 bg-white rounded-full flex items-center justify-center shadow-sm mb-3 group-hover:scale-110 transition-transform">
-                                        <Users className="w-5 h-5" />
-                                    </div>
-                                    <span className="font-bold text-sm">Add Empty Panel</span>
+                            <div className="bg-neutral-50/50 rounded-2xl p-5 border-2 border-dashed border-neutral-300 flex items-center justify-center flex-col text-neutral-500 hover:bg-indigo-50/30 hover:border-indigo-300 hover:text-indigo-600 transition-all cursor-pointer group" onClick={() => {
+                                setDraftPanels(prev => [...prev, { id: `new-panel-${Date.now()}`, faculties: [] }]);
+                            }}>
+                                <div className="h-10 w-10 bg-white rounded-full flex items-center justify-center shadow-sm mb-3 group-hover:scale-110 transition-transform">
+                                    <Users className="w-5 h-5" />
                                 </div>
-                            )}
+                                <span className="font-bold text-sm">Add Empty Panel</span>
+                            </div>
                         </div>
                         <DragOverlay>
                             {activeFaculty ? (
