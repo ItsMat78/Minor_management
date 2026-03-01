@@ -1,13 +1,11 @@
 import React, { useState } from 'react';
 import api from '../utils/api';
-import { useAuth } from '../context/AuthContext';
+
 import { useNavigate } from 'react-router-dom';
 import { Users, UserPlus, CheckCircle, AlertCircle } from 'lucide-react';
 
 const GroupFormation: React.FC = () => {
-    const { user } = useAuth();
     const navigate = useNavigate();
-    const [groupName, setGroupName] = useState('');
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
 
@@ -17,7 +15,7 @@ const GroupFormation: React.FC = () => {
         setError('');
 
         try {
-            await api.post('/groups', { name: groupName });
+            await api.post('/groups', {});
             navigate('/dashboard'); // Refresh or redirect to group view
         } catch (err: any) {
             setError(err.response?.data?.message || 'Failed to create group');
@@ -53,18 +51,8 @@ const GroupFormation: React.FC = () => {
             )}
 
             <form onSubmit={handleCreateGroup} className="space-y-6">
-                <div>
-                    <label htmlFor="groupName" className="block text-sm font-medium text-gray-700">
-                        Group Name (Optional)
-                    </label>
-                    <input
-                        type="text"
-                        id="groupName"
-                        value={groupName}
-                        onChange={(e) => setGroupName(e.target.value)}
-                        placeholder={`Group created by ${user?.name}`}
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border"
-                    />
+                <div className="text-sm text-gray-600 mb-6">
+                    By confirming below, you will create a new default group. The group number will be assigned automatically upon project submission.
                 </div>
 
                 <button

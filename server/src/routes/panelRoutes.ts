@@ -1,5 +1,5 @@
 import express from 'express';
-import { createPanel, getPanels, deletePanel, getMyPanelEvaluationGroups } from '../controllers/panelController';
+import { createPanel, getPanels, deletePanel, getMyPanelEvaluationGroups, exportPanels } from '../controllers/panelController';
 import { auth } from '../middleware/authMiddleware';
 import { UserRole } from '../models/User';
 
@@ -25,5 +25,6 @@ router.post('/', auth, adminAuth, createPanel);
 router.get('/', auth, adminAuth, getPanels);
 router.delete('/:id', auth, adminAuth, deletePanel);
 router.get('/my-panels', auth, facultyAuth, getMyPanelEvaluationGroups);
+router.get('/export', auth, adminAuth, exportPanels);
 
 export default router;

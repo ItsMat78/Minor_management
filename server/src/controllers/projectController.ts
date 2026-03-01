@@ -59,12 +59,23 @@ export const createProject = async (req: Request, res: Response) => {
         await newProject.save();
         console.log(`[createProject] Project saved: ${newProject._id}`);
 
+        // Auto decide group number upon project submission if it hasn't been assigned a numeric ID yet
+        if (!group.name || isNaN(parseInt(group.name)) || group.name.startsWith('Group-')) {
+            const allGroups = await Group.find({}, 'name').lean();
+            let maxNum = 0;
+            allGroups.forEach((g: any) => {
+                const num = parseInt(g.name);
+                if (!isNaN(num) && num > maxNum) maxNum = num;
+            });
+            group.name = String(maxNum + 1);
+        }
+
         // Update group status if submitting
         if (status === 'Pending') {
             group.status = 'ProposalPending';
             group.project = newProject._id;
-            await group.save();
         }
+        await group.save();
 
         res.status(201).json(newProject);
     } catch (error) {

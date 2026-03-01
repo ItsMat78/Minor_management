@@ -47,7 +47,6 @@ const Dashboard: React.FC = () => {
     // Dialog State
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [isProposalWarningOpen, setIsProposalWarningOpen] = useState(false);
-    const [groupName, setGroupName] = useState('');
     const [creatingGroup, setCreatingGroup] = useState(false);
 
     // Leave Group State
@@ -130,11 +129,9 @@ const Dashboard: React.FC = () => {
     };
 
     const handleCreateGroup = async () => {
-        if (!groupName.trim()) return;
         setCreatingGroup(true);
         try {
             await api.post('/groups', {
-                name: groupName,
                 members: Array.from(selectedStudents)
             });
             // Refresh state
@@ -373,15 +370,8 @@ const Dashboard: React.FC = () => {
                                             <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md bg-white p-6 rounded-2xl shadow-xl focus:outline-none data-[state=open]:animate-contentShow">
                                                 <Dialog.Title className="text-lg font-bold mb-4">Create New Group</Dialog.Title>
                                                 <div className="space-y-4">
-                                                    <div>
-                                                        <label className="block text-sm font-medium text-neutral-700 mb-1">Group Name</label>
-                                                        <input
-                                                            type="text"
-                                                            className="w-full px-3 py-2 rounded-lg border border-neutral-300 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                                                            placeholder="e.g. Phoenix Project"
-                                                            value={groupName}
-                                                            onChange={(e) => setGroupName(e.target.value)}
-                                                        />
+                                                    <div className="text-sm text-neutral-600 mb-4">
+                                                        You are about to create a group. Your group number will be generated later upon project submission.
                                                     </div>
                                                     <div>
                                                         <label className="block text-sm font-medium text-neutral-700 mb-1">Members ({selectedStudents.size + 1})</label>
@@ -401,7 +391,7 @@ const Dashboard: React.FC = () => {
                                                         </Dialog.Close>
                                                         <button
                                                             onClick={handleCreateGroup}
-                                                            disabled={!groupName.trim() || creatingGroup}
+                                                            disabled={creatingGroup}
                                                             className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg disabled:opacity-50"
                                                         >
                                                             {creatingGroup ? 'Creating...' : 'Create Group'}

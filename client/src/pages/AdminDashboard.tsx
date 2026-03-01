@@ -37,6 +37,7 @@ const AdminDashboard: React.FC = () => {
     const [showLimitSettings, setShowLimitSettings] = useState(false);
     const [sortOption, setSortOption] = useState<string>('Default'); // Added sort state
     const [collapsedPanelsBatches, setCollapsedPanelsBatches] = useState<Record<string, boolean>>({});
+    const [expandedPanelGroups, setExpandedPanelGroups] = useState<Record<string, boolean>>({});
 
     // Limits State
     const [globalMaxStudents, setGlobalMaxStudents] = useState<number>(21);
@@ -352,6 +353,24 @@ const AdminDashboard: React.FC = () => {
         }
     };
 
+    const handleExportPanels = async () => {
+        try {
+            const response = await api.get(`/panels/export?batchYear=${exportBatch}`, {
+                responseType: 'blob',
+            });
+            const url = window.URL.createObjectURL(new Blob([response.data]));
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', `panels_export_${exportBatch}.xlsx`);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+        } catch (error) {
+            console.error('Export failed', error);
+            alert('Failed to export panels');
+        }
+    };
+
 
     return (
         <div className="flex h-screen bg-neutral-50 font-jakarta text-neutral-900 overflow-hidden">
@@ -546,8 +565,8 @@ const AdminDashboard: React.FC = () => {
                                         )}
                                         {activeTab === 'groups' && (
                                             <>
-                                                <option value="Name (A-Z)">Group Name (A-Z)</option>
-                                                <option value="Name (Z-A)">Group Name (Z-A)</option>
+                                                <option value="Name (A-Z)">Group No. (Asc.-Desc.)</option>
+                                                <option value="Name (Z-A)">Group No. (Desc.-Asc.)</option>
                                                 <option value="Project (A-Z)">Project Title (A-Z)</option>
                                             </>
                                         )}
@@ -722,9 +741,9 @@ const AdminDashboard: React.FC = () => {
                                                                             <tr key={item._id} onClick={() => setViewGroup(item)} className="hover:bg-neutral-50 cursor-pointer transition-colors group">
                                                                                 <td className="px-6 py-4">
                                                                                     <div className="flex flex-col">
-                                                                                        <span className="font-bold text-neutral-900 group-hover:text-indigo-600 transition-colors">{item.name}</span>
+                                                                                        <span className="font-bold text-neutral-900 group-hover:text-indigo-600 transition-colors">{item.project?.title || 'No Project'}</span>
                                                                                         <span className="text-sm text-neutral-500 line-clamp-1 mb-1">
-                                                                                            {item.project?.title || 'No Project'}
+                                                                                            {item.name ? `Group ${item.name}` : ''}
                                                                                         </span>
                                                                                         <div className="flex flex-wrap gap-1 mt-1">
                                                                                             {item.members?.map((m: any, idx: number) => (
@@ -810,38 +829,90 @@ const AdminDashboard: React.FC = () => {
                                                         </div>
                                                     )}
                                                     {!isCollapsed && (
-                                                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                                                            {yearPanels.map((panel: any, index: number) => (
-                                                                <div key={panel._id} className="bg-white rounded-xl border border-neutral-200 p-6 shadow-sm">
-                                                                    <div className="flex justify-between items-start mb-4">
-                                                                        <div>
-                                                                            <h3 className="text-lg font-bold text-neutral-900">Panel {index + 1}</h3>
-                                                                            <p className="text-sm text-neutral-500">Batch {panel.batchYear}-{parseInt(panel.batchYear) + 4}</p>
-                                                                        </div>
-                                                                        <button
-                                                                            onClick={async () => {
-                                                                                if (confirm('Delete panel?')) {
-                                                                                    await api.delete(`/panels/${panel._id}`);
-                                                                                    const res = await api.get(`/panels?batchYear=${filterBatch}`);
-                                                                                    setPanels(Array.isArray(res.data) ? res.data : []);
-                                                                                }
-                                                                            }}
-                                                                            className="text-red-500 hover:bg-red-50 p-2 rounded text-sm transition-colors"
-                                                                        >
-                                                                            Delete
-                                                                        </button>
-                                                                    </div>
-                                                                    <div className="space-y-2">
-                                                                        <h4 className="text-sm font-semibold text-neutral-700">Faculty Members:</h4>
-                                                                        {panel.faculty.map((f: any) => (
-                                                                            <div key={f._id} className="text-sm text-neutral-600 bg-neutral-50 p-2 rounded border border-neutral-100 flex items-center gap-2">
-                                                                                <div className="w-2 h-2 rounded-full bg-indigo-400"></div>
-                                                                                {f.name} ({f.email})
+                                                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                                                            {yearPanels.map((panel: any, index: number) => {
+                                                                const isExpanded = expandedPanelGroups[panel._id] || false;
+                                                                const panelGroupsCount = panel.groups?.length || 0;
+                                                                return (
+                                                                    <div key={panel._id} className="bg-neutral-50 rounded-2xl p-5 border-2 border-neutral-200">
+                                                                        <div className="flex justify-between items-start mb-4">
+                                                                            <div className="flex items-center gap-2">
+                                                                                <div className="h-8 w-8 bg-indigo-100 text-indigo-600 rounded-lg flex items-center justify-center font-bold">
+                                                                                    {index + 1}
+                                                                                </div>
+                                                                                <div>
+                                                                                    <h4 className="text-sm font-bold text-neutral-900">Panel {index + 1}</h4>
+                                                                                    <p className="text-xs text-neutral-500">{panel.faculty.length} members • {panelGroupsCount} groups</p>
+                                                                                </div>
                                                                             </div>
-                                                                        ))}
+                                                                            <button
+                                                                                onClick={async () => {
+                                                                                    if (confirm('Delete panel?')) {
+                                                                                        await api.delete(`/panels/${panel._id}`);
+                                                                                        const res = await api.get(`/panels?batchYear=${filterBatch}`);
+                                                                                        setPanels(Array.isArray(res.data) ? res.data : []);
+                                                                                    }
+                                                                                }}
+                                                                                className="text-neutral-400 hover:text-red-600 hover:bg-neutral-100 p-2 rounded-full text-sm transition-colors"
+                                                                                title="Delete Panel"
+                                                                            >
+                                                                                <X className="w-4 h-4" />
+                                                                            </button>
+                                                                        </div>
+                                                                        <div className="space-y-2 min-h-[60px] mb-4">
+                                                                            <h5 className="text-xs font-bold text-neutral-400 uppercase mb-2">Faculty Members</h5>
+                                                                            {panel.faculty.map((f: any) => (
+                                                                                <div key={f._id} className="flex items-center gap-3 bg-white p-3 rounded-xl border border-neutral-200 shadow-sm">
+                                                                                    <div className="flex-1 min-w-0">
+                                                                                        <h5 className="text-sm font-bold text-neutral-900 truncate">{f.name}</h5>
+                                                                                        <p className="text-xs text-neutral-500 truncate">{f.email}</p>
+                                                                                    </div>
+                                                                                </div>
+                                                                            ))}
+                                                                        </div>
+
+                                                                        {panelGroupsCount > 0 && (
+                                                                            <div className="mt-4 border-t border-neutral-200/60 pt-4">
+                                                                                <button
+                                                                                    onClick={() => setExpandedPanelGroups(prev => ({ ...prev, [panel._id]: !prev[panel._id] }))}
+                                                                                    className="w-full flex items-center justify-between px-3 py-2 bg-white border border-neutral-200 hover:bg-indigo-50 hover:border-indigo-200 rounded-xl transition-all text-sm font-semibold text-neutral-700 hover:text-indigo-700"
+                                                                                >
+                                                                                    <div className="flex items-center gap-2">
+                                                                                        <Users className="w-4 h-4" />
+                                                                                        <span>Evaluated Groups ({panelGroupsCount})</span>
+                                                                                    </div>
+                                                                                    {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                                                                                </button>
+
+                                                                                {isExpanded && (
+                                                                                    <div className="mt-3 space-y-2 bg-white rounded-xl border border-neutral-100 p-2 shadow-sm">
+                                                                                        {panel.groups.map((g: any) => (
+                                                                                            <div key={g._id} className="p-3 bg-neutral-50 border border-neutral-100 hover:border-indigo-100 hover:bg-indigo-50/30 transition-colors rounded-lg">
+                                                                                                <div className="flex items-center justify-between mb-1.5">
+                                                                                                    <h6 className="font-bold text-xs text-indigo-900 group-hover:text-indigo-700 truncate mr-2">
+                                                                                                        Group {g.name}
+                                                                                                    </h6>
+                                                                                                    <span className="shrink-0 px-2 py-0.5 bg-white border border-neutral-200 rounded text-[10px] font-bold text-neutral-500">
+                                                                                                        {g.members?.length || 0} Members
+                                                                                                    </span>
+                                                                                                </div>
+                                                                                                <div className="space-y-1 mt-2 border-t border-neutral-200/50 pt-2 text-[11px] text-neutral-600">
+                                                                                                    {g.members?.map((m: any) => (
+                                                                                                        <div key={m._id} className="flex justify-between items-center">
+                                                                                                            <span className="truncate pr-2 font-medium">{m.name}</span>
+                                                                                                            <span className="font-mono text-[10px] text-neutral-400 shrink-0">{m.rollNumber}</span>
+                                                                                                        </div>
+                                                                                                    ))}
+                                                                                                </div>
+                                                                                            </div>
+                                                                                        ))}
+                                                                                    </div>
+                                                                                )}
+                                                                            </div>
+                                                                        )}
                                                                     </div>
-                                                                </div>
-                                                            ))}
+                                                                );
+                                                            })}
                                                         </div>
                                                     )}
                                                 </div>
@@ -943,6 +1014,36 @@ const AdminDashboard: React.FC = () => {
                                             <button className="px-6 py-2 bg-neutral-900 text-white rounded-lg font-medium hover:bg-neutral-800 transition-colors flex items-center gap-2">
                                                 <Download className="w-4 h-4" /> Export
                                             </button>
+                                        </div>
+
+                                        <div className="bg-white rounded-2xl border border-neutral-200 p-6 flex items-center justify-between shadow-sm">
+                                            <div className="flex items-center gap-4">
+                                                <div className="h-12 w-12 bg-orange-50 rounded-xl flex items-center justify-center text-orange-600">
+                                                    <Users className="w-6 h-6" />
+                                                </div>
+                                                <div>
+                                                    <h3 className="text-lg font-bold text-neutral-900">Evaluation Panels Export</h3>
+                                                    <p className="text-sm text-neutral-500">Export panels, faculty, and group mapping.</p>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-3">
+                                                <select
+                                                    value={exportBatch}
+                                                    onChange={(e) => setExportBatch(e.target.value)}
+                                                    className="px-3 py-2 bg-neutral-50 rounded-lg border border-neutral-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-orange-500/20"
+                                                >
+                                                    <option value="All">All Batches</option>
+                                                    {Array.from({ length: 7 }, (_, i) => (new Date().getFullYear() - 7) + i).map(year => (
+                                                        <option key={year} value={year.toString()}>{year}-{year + 4}</option>
+                                                    ))}
+                                                </select>
+                                                <button
+                                                    onClick={handleExportPanels}
+                                                    className="px-6 py-2 bg-neutral-900 text-white rounded-lg font-medium hover:bg-neutral-800 transition-colors flex items-center gap-2"
+                                                >
+                                                    <Download className="w-4 h-4" /> Export Excel
+                                                </button>
+                                            </div>
                                         </div>
 
                                         <div className="bg-white rounded-2xl border border-neutral-200 p-6 flex items-center justify-between shadow-sm">
