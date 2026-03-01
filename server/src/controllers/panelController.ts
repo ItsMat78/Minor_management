@@ -204,9 +204,8 @@ export const exportPanels = async (req: any, res: Response) => {
 
         // Setup Columns
         const columns = [
-            { header: '', key: 'label', width: 15 },
+            { key: 'label', width: 15 },
             ...panels.map((p: any, i: number) => ({
-                header: `Panel-${i + 1}`,
                 key: `panel_${i}`,
                 width: 30
             }))
@@ -227,21 +226,53 @@ export const exportPanels = async (req: any, res: Response) => {
             wrapText: true
         };
 
-        // Format Header Row (Row 1)
-        const headerRow = worksheet.getRow(1);
-        headerRow.font = { bold: true };
+        const refBatchYear = panels.length > 0 ? panels[0].batchYear : (batchYear !== 'All' ? Number(batchYear) : new Date().getFullYear());
+        const currentYear = new Date().getFullYear();
+        const currentMonth = new Date().getMonth();
+        const yearDiff = currentYear - refBatchYear;
+        let semCount = yearDiff * 2;
+        if (currentMonth >= 6) semCount += 1;
+        if (semCount < 1) semCount = 1;
+        const romanSems = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'];
+        const summarySemStr = romanSems[semCount - 1] || `${semCount}th`;
+
+        // Add 1-4 Headers
+        worksheet.addRow({ label: 'Dr. SPM International Institute of Information Technology, Naya Raipur' });
+        worksheet.addRow({ label: '(A Joint Initiative of Govt. of Chhattisgarh and NTPC)' });
+        worksheet.addRow({ label: 'Email: iiitnr@iiitnr.ac.in, Tel: (0771) 2474040, Web: www.iiitnr.ac.in' });
+        worksheet.addRow({ label: `MINOR PROJECT EVALUATION- B.Tech. ${summarySemStr} SEM` });
+        worksheet.addRow({}); // Empty row 5
+
+        for (let i = 1; i <= 4; i++) {
+            if (panels.length > 0) worksheet.mergeCells(i, 1, i, panels.length + 1);
+            const cell = worksheet.getCell(i, 1);
+            cell.alignment = { horizontal: 'center', vertical: 'middle' };
+            if (i === 1) cell.font = { bold: true, size: 14, color: { argb: 'FF0070C0' } };
+            else if (i === 4) cell.font = { bold: true, size: 12, underline: true };
+            else cell.font = { size: 11 };
+        }
+
+        // Format Header Row (Row 6)
+        const headerRowValues: any = { label: '' };
+        panels.forEach((p: any, i: number) => { headerRowValues[`panel_${i}`] = `Panel-${i + 1}`; });
+        const headerRow = worksheet.addRow(headerRowValues);
+        headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } }; // White text on headers is cleaner
         headerRow.alignment = centerAlignment;
-        headerRow.eachCell((cell) => {
+        headerRow.eachCell((cell, colNumber) => {
             cell.border = borderStyle;
+            if (colNumber > 1) {
+                cell.fill = {
+                    type: 'pattern',
+                    pattern: 'solid',
+                    fgColor: { argb: 'FF0070C0' } // Blue headers for panels
+                };
+            }
         });
 
-        // Add Faculty Row (Row 2)
+        // Add Faculty Row (Row 7)
         const facultyRowValues: any = { label: '' };
         panels.forEach((p: any, i: number) => {
-            facultyRowValues[`panel_${i}`] = p.faculty.map((f: any) => {
-                // Formatting name to roughly mimic Prof. (Dr.) etc if needed, or just append (Chair) optionally.
-                return f.name; // Can add logic for Chair later if property exists
-            }).join(', ');
+            facultyRowValues[`panel_${i}`] = p.faculty.map((f: any) => f.name).join(', ');
         });
         const facultyRow = worksheet.addRow(facultyRowValues);
         facultyRow.font = { bold: true };
@@ -350,20 +381,50 @@ export const exportPanels = async (req: any, res: Response) => {
                 { width: 10 }  // Grade
             ];
 
-            // Rows 1-3 empty
-            pSheet.addRow([]);
-            pSheet.addRow([]);
-            pSheet.addRow([]);
-
-            // Row 4: Title
+            // Rows 1-4: Title and Institute Info
             pSheet.addRow([
                 null,
-                `MINOR PROJECT EVALUATION- B.Tech. ${p.batchYear} BATCH`,
+                'Dr. SPM International Institute of Information Technology, Naya Raipur',
                 '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''
             ]);
-            pSheet.mergeCells(`B4:Q4`);
-            pSheet.getCell('B4').font = { bold: true, size: 14 };
-            pSheet.getCell('B4').alignment = { horizontal: 'center', vertical: 'middle' };
+            pSheet.addRow([
+                null,
+                '(A Joint Initiative of Govt. of Chhattisgarh and NTPC)',
+                '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''
+            ]);
+            pSheet.addRow([
+                null,
+                'Email: iiitnr@iiitnr.ac.in, Tel: (0771) 2474040, Web: www.iiitnr.ac.in',
+                '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''
+            ]);
+
+            // Calculate semester based on batch year and current date
+            const currentYear = new Date().getFullYear();
+            const currentMonth = new Date().getMonth(); // 0 is Jan, 11 is Dec
+            const yearDiff = currentYear - p.batchYear;
+            let semCount = yearDiff * 2;
+            // If current month is July or later, they have started the next academic year
+            if (currentMonth >= 6) semCount += 1;
+            if (semCount < 1) semCount = 1;
+
+            const romanSems = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'];
+            const semStr = romanSems[semCount - 1] || `${semCount}th`;
+
+            pSheet.addRow([
+                null,
+                `MINOR PROJECT EVALUATION- B.Tech. ${semStr} SEM`,
+                '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''
+            ]);
+
+            // Merge and stylize headers
+            for (let i = 1; i <= 4; i++) {
+                pSheet.mergeCells(`B${i}:Q${i}`);
+                const cell = pSheet.getCell(`B${i}`);
+                cell.alignment = { horizontal: 'center', vertical: 'middle' };
+                if (i === 1) cell.font = { bold: true, size: 14, color: { argb: 'FF0070C0' } };
+                else if (i === 4) cell.font = { bold: true, size: 12, underline: true };
+                else cell.font = { size: 11 };
+            }
 
             pSheet.addRow([]);
 
@@ -375,8 +436,17 @@ export const exportPanels = async (req: any, res: Response) => {
             ]);
             pSheet.mergeCells('B6:D6');
             pSheet.mergeCells('E6:Q6');
-            pSheet.getCell('B6').font = { bold: true };
-            pSheet.getCell('E6').font = { bold: true };
+
+            for (let col = 2; col <= 17; col++) {
+                const cell = pSheet.getCell(6, col);
+                cell.font = { bold: true, color: { argb: 'FF000000' } };
+                cell.fill = {
+                    type: 'pattern',
+                    pattern: 'solid',
+                    fgColor: { argb: 'FF9BC2E6' } // Light blue
+                };
+                cell.border = borderStyle;
+            }
 
             // Row 7 & 8: Headers
             const headerRow1 = pSheet.addRow([
@@ -406,7 +476,21 @@ export const exportPanels = async (req: any, res: Response) => {
                 row.font = { bold: true };
                 row.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
                 row.eachCell((cell, colNumber) => {
-                    if (colNumber > 1) cell.border = borderStyle;
+                    if (colNumber > 1) {
+                        cell.border = borderStyle;
+
+                        let bgColor = 'FFED7D31'; // Default Orange pattern
+                        // Column 11 is K (Average 30) Column 15 is O (Average 70)
+                        if (colNumber === 11 || colNumber === 15) {
+                            bgColor = 'FFFFF2CC'; // Pale yellow for averages
+                        }
+
+                        cell.fill = {
+                            type: 'pattern',
+                            pattern: 'solid',
+                            fgColor: { argb: bgColor }
+                        };
+                    }
                 });
             });
 
@@ -444,21 +528,43 @@ export const exportPanels = async (req: any, res: Response) => {
             pSheet.addRow([]);
 
             // Signatures
-            const sigLabelRow = pSheet.addRow([
-                null, null, null,
-                'Signatures of Evaluation Board members', '', '', '',
-                'Signature', 'Signature', 'Signature', 'Signature', 'Signature', 'Signature', 'Signature', 'Signature', 'Signature', 'Signature'
+            pSheet.addRow([]); // margin
+
+            const sigHeaderRow = pSheet.addRow([
+                null,
+                'Evaluation Board Member', '', 'Signature', '',
+                '', '', '', '', '', '', '', '', '', '', '', ''
             ]);
-            pSheet.mergeCells(`D${sigLabelRow.number}:G${sigLabelRow.number}`);
-            sigLabelRow.font = { bold: true };
+            pSheet.mergeCells(`B${sigHeaderRow.number}:C${sigHeaderRow.number}`);
+            pSheet.mergeCells(`D${sigHeaderRow.number}:E${sigHeaderRow.number}`);
+            sigHeaderRow.font = { bold: true, size: 11 };
+            sigHeaderRow.alignment = { horizontal: 'center', vertical: 'middle' };
+            ['B', 'C', 'D', 'E'].forEach(col => {
+                const cell = pSheet.getCell(`${col}${sigHeaderRow.number}`);
+                cell.border = borderStyle;
+                cell.fill = {
+                    type: 'pattern',
+                    pattern: 'solid',
+                    fgColor: { argb: 'FFD9E1F2' }
+                };
+            });
 
             p.faculty.forEach((fac: any) => {
                 const sigRow = pSheet.addRow([
-                    null, null, null,
+                    null,
                     fac.name, '', '', '',
-                    '', '', '', '', '', '', '', '', '', ''
+                    '', '', '', '', '', '', '', '', '', '', '', ''
                 ]);
-                pSheet.mergeCells(`D${sigRow.number}:G${sigRow.number}`);
+                pSheet.mergeCells(`B${sigRow.number}:C${sigRow.number}`);
+                pSheet.mergeCells(`D${sigRow.number}:E${sigRow.number}`);
+
+                sigRow.height = 30; // giving space for physical signature
+                sigRow.alignment = { vertical: 'middle' };
+
+                ['B', 'C', 'D', 'E'].forEach(col => {
+                    const cell = pSheet.getCell(`${col}${sigRow.number}`);
+                    cell.border = borderStyle;
+                });
             });
         });
         // --- END NEW ---

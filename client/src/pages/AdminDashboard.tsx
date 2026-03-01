@@ -958,6 +958,32 @@ const AdminDashboard: React.FC = () => {
                                                             {yearPanels.map((panel: any, index: number) => {
                                                                 const isExpanded = expandedPanelGroups[panel._id] || false;
                                                                 const panelGroupsCount = panel.groups?.length || 0;
+
+                                                                const batchSuffix = year.slice(2);
+                                                                const batchGroups = groups.filter((g: any) => {
+                                                                    return g.members?.some((m: any) => m.rollNumber && m.rollNumber.startsWith(batchSuffix));
+                                                                });
+
+                                                                const panelFacultyWithLoad = panel.faculty.map((f: any) => {
+                                                                    let count = 0;
+                                                                    batchGroups.forEach((g: any) => {
+                                                                        if (g.project && (g.project.faculty === f._id || g.project.faculty?._id === f._id)) {
+                                                                            count++;
+                                                                        }
+                                                                    });
+                                                                    return { ...f, groupCount: count };
+                                                                });
+
+                                                                let chairId = null;
+                                                                if (panelFacultyWithLoad.length > 0) {
+                                                                    const maxLoad = Math.max(...panelFacultyWithLoad.map((f: any) => f.groupCount));
+                                                                    chairId = panelFacultyWithLoad.find((f: any) => f.groupCount === maxLoad)?._id;
+                                                                }
+
+                                                                panelFacultyWithLoad.forEach((f: any) => {
+                                                                    f.isChair = f._id === chairId;
+                                                                });
+
                                                                 return (
                                                                     <div key={panel._id} className="bg-neutral-50 rounded-2xl p-5 border-2 border-neutral-200">
                                                                         <div className="flex justify-between items-start mb-4">
@@ -988,11 +1014,17 @@ const AdminDashboard: React.FC = () => {
                                                                         </div>
                                                                         <div className="space-y-2 min-h-[60px] mb-4">
                                                                             <h5 className="text-xs font-bold text-neutral-400 uppercase mb-2">Faculty Members</h5>
-                                                                            {panel.faculty.map((f: any) => (
-                                                                                <div key={f._id} className="flex items-center gap-3 bg-white p-3 rounded-xl border border-neutral-200 shadow-sm">
+                                                                            {panelFacultyWithLoad.map((f: any) => (
+                                                                                <div key={f._id} className={`flex items-center gap-3 bg-white p-3 rounded-xl border ${f.isChair ? 'border-amber-300 ring-1 ring-amber-100' : 'border-neutral-200'} shadow-sm`}>
                                                                                     <div className="flex-1 min-w-0">
-                                                                                        <h5 className="text-sm font-bold text-neutral-900 truncate">{f.name}</h5>
+                                                                                        <h5 className="text-sm font-bold text-neutral-900 truncate flex items-center gap-1.5">
+                                                                                            {f.name}
+                                                                                            {f.isChair && <span className="bg-amber-100 text-amber-800 text-[10px] px-1.5 py-0.5 rounded font-black uppercase tracking-wider">Chair</span>}
+                                                                                        </h5>
                                                                                         <p className="text-xs text-neutral-500 truncate">{f.email}</p>
+                                                                                    </div>
+                                                                                    <div className="bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-lg text-xs font-bold whitespace-nowrap">
+                                                                                        {f.groupCount} Grps
                                                                                     </div>
                                                                                 </div>
                                                                             ))}
