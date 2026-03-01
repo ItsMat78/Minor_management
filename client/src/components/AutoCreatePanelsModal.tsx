@@ -38,7 +38,9 @@ interface AutoCreatePanelsModalProps {
     faculties: FacultyWorkload[];
     batchYear: number;
     onClose: () => void;
-    onConfirm: (panels: { faculty: string[], batchYear: number }[]) => Promise<void>;
+    onConfirm: (panels: { faculty: string[], batchYear: number, _id?: string }[]) => Promise<void>;
+    isEditingMode?: boolean;
+    initialPanels?: any[];
 }
 
 // Draggable Faculty Item Component
@@ -131,7 +133,7 @@ const DroppablePanel = ({ panel, index }: { panel: DraftPanel, index: number }) 
     );
 };
 
-const AutoCreatePanelsModal: React.FC<AutoCreatePanelsModalProps> = ({ faculties, batchYear, onClose, onConfirm }) => {
+const AutoCreatePanelsModal: React.FC<AutoCreatePanelsModalProps> = ({ faculties, batchYear, onClose, onConfirm, isEditingMode, initialPanels }) => {
     const [draftPanels, setDraftPanels] = useState<DraftPanel[]>([]);
     const [isSaving, setIsSaving] = useState(false);
     const [hasOvercrowded, setHasOvercrowded] = useState(false);
@@ -143,20 +145,25 @@ const AutoCreatePanelsModal: React.FC<AutoCreatePanelsModalProps> = ({ faculties
     );
 
     useEffect(() => {
+        if (isEditingMode && initialPanels) {
+            setDraftPanels(initialPanels);
+            return;
+        }
+
         // Simple and smart auto-allocation logic
         const sortedFaculties = [...faculties].sort((a, b) => b.groupCount - a.groupCount);
 
         const N = Math.floor(sortedFaculties.length / 3);
         const panelsCount = N === 0 ? 1 : N;
 
-        const initialPanels: DraftPanel[] = Array.from({ length: panelsCount }, (_, i) => ({
+        const initialDrafts: DraftPanel[] = Array.from({ length: panelsCount }, (_, i) => ({
             id: `panel-${i}`,
             faculties: []
         }));
 
         sortedFaculties.forEach(f => {
             // Pick a panel with least faculties first, if tied, pick the one with least groups
-            const targetPanel = [...initialPanels].sort((a, b) => {
+            const targetPanel = [...initialDrafts].sort((a, b) => {
                 if (a.faculties.length !== b.faculties.length) {
                     return a.faculties.length - b.faculties.length;
                 }
@@ -167,8 +174,8 @@ const AutoCreatePanelsModal: React.FC<AutoCreatePanelsModalProps> = ({ faculties
             targetPanel.faculties.push(f);
         });
 
-        setDraftPanels(initialPanels);
-    }, [faculties]);
+        setDraftPanels(initialDrafts);
+    }, [faculties, isEditingMode, initialPanels]);
 
     useEffect(() => {
         setHasOvercrowded(draftPanels.some(p => p.faculties.length > 3));
@@ -276,9 +283,10 @@ const AutoCreatePanelsModal: React.FC<AutoCreatePanelsModalProps> = ({ faculties
             return;
         }
 
-        const dataToSave = validPanels.map(p => ({
+        const dataToSave = validPanels.map((p: any) => ({
             batchYear: batchYear,
-            faculty: p.faculties.map(f => f._id),
+            faculty: p.faculties.map((f: any) => f._id),
+            ...(p._tempPanelId ? { _id: p._tempPanelId } : {})
         }));
 
         setIsSaving(true);
@@ -298,11 +306,11 @@ const AutoCreatePanelsModal: React.FC<AutoCreatePanelsModalProps> = ({ faculties
                 <div className="px-8 py-6 border-b border-gray-100 flex items-center justify-between bg-neutral-50/50">
                     <div>
                         <h3 className="text-2xl font-black text-neutral-900 flex items-center gap-3">
-                            <Users className="w-6 h-6 text-indigo-600" /> Auto-Create Panels
+                            <Users className="w-6 h-6 text-indigo-600" /> {isEditingMode ? 'Edit Panels Interface' : 'Auto-Create Panels'}
                             <span className="bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full text-base font-bold ml-2">Batch {batchYear}</span>
                         </h3>
                         <p className="text-sm text-neutral-500 mt-2">
-                            Review and adjust the intelligently allocated panel structure. Drag nodes to remap faculties.
+                            {isEditingMode ? 'Drag and drop faculties to reposition them between panels, or add available active faculties.' : 'Review and adjust the intelligently allocated panel structure. Drag nodes to remap faculties.'}
                         </p>
                     </div>
                     <button onClick={onClose} className="p-2 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-900 rounded-full transition-colors">
@@ -319,7 +327,7 @@ const AutoCreatePanelsModal: React.FC<AutoCreatePanelsModalProps> = ({ faculties
                             <div>
                                 <h4 className="text-sm font-bold text-orange-900">Uneven Distribution Notice</h4>
                                 <p className="text-sm text-orange-700 mt-0.5">
-                                    Due to the total number of unallocated faculties, 1 or 2 faculties had to be merged into existing panels containing more than 3 members. You can drag and drop to manually adjust this if you wish.
+                                    {isEditingMode ? "Some panels have more than 3 members." : "Due to the total number of unallocated faculties, 1 or 2 faculties had to be merged into existing panels containing more than 3 members."} You can drag and drop to manually adjust this if you wish.
                                 </p>
                             </div>
                         </div>
@@ -333,9 +341,19 @@ const AutoCreatePanelsModal: React.FC<AutoCreatePanelsModalProps> = ({ faculties
                         onDragEnd={handleDragEnd}
                     >
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                            {draftPanels.map((p, i) => (
+                            {draftPanels.map((p: any, i) => (
                                 <DroppablePanel key={p.id} panel={p} index={i} />
                             ))}
+                            {isEditingMode && (
+                                <div className="bg-neutral-50/50 rounded-2xl p-5 border-2 border-dashed border-neutral-300 flex items-center justify-center flex-col text-neutral-500 hover:bg-indigo-50/30 hover:border-indigo-300 hover:text-indigo-600 transition-all cursor-pointer group" onClick={() => {
+                                    setDraftPanels(prev => [...prev, { id: `new-panel-${Date.now()}`, faculties: [] }]);
+                                }}>
+                                    <div className="h-10 w-10 bg-white rounded-full flex items-center justify-center shadow-sm mb-3 group-hover:scale-110 transition-transform">
+                                        <Users className="w-5 h-5" />
+                                    </div>
+                                    <span className="font-bold text-sm">Add Empty Panel</span>
+                                </div>
+                            )}
                         </div>
                         <DragOverlay>
                             {activeFaculty ? (

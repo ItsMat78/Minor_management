@@ -1,5 +1,5 @@
 import express from 'express';
-import { createPanel, getPanels, deletePanel, getMyPanelEvaluationGroups, exportPanels } from '../controllers/panelController';
+import { createPanel, getPanels, deletePanel, getMyPanelEvaluationGroups, exportPanels, updatePanel } from '../controllers/panelController';
 import { auth } from '../middleware/authMiddleware';
 import { UserRole } from '../models/User';
 
@@ -24,6 +24,7 @@ const facultyAuth = (req: any, res: any, next: any) => {
 router.post('/', auth, adminAuth, createPanel);
 router.get('/', auth, adminAuth, getPanels);
 router.delete('/:id', auth, adminAuth, deletePanel);
+router.put('/:id', auth, adminAuth, updatePanel);
 router.get('/my-panels', auth, facultyAuth, getMyPanelEvaluationGroups);
 router.get('/export', auth, adminAuth, exportPanels);
 

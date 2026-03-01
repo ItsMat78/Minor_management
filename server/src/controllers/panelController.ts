@@ -17,6 +17,31 @@ export const createPanel = async (req: any, res: Response) => {
     }
 };
 
+export const updatePanel = async (req: any, res: Response) => {
+    try {
+        const panelId = req.params.id;
+        const { faculty, batchYear } = req.body;
+
+        if (!faculty || !batchYear) {
+            return res.status(400).json({ message: 'Missing required fields' });
+        }
+
+        const updatedPanel = await Panel.findByIdAndUpdate(
+            panelId,
+            { faculty, batchYear },
+            { new: true }
+        ).populate('faculty', 'name email department maxGroups currentGroups');
+
+        if (!updatedPanel) {
+            return res.status(404).json({ message: 'Panel not found' });
+        }
+
+        res.status(200).json(updatedPanel);
+    } catch (error: any) {
+        res.status(500).json({ message: 'Error updating panel', error: error.message });
+    }
+};
+
 export const getPanels = async (req: any, res: Response) => {
     try {
         const { batchYear } = req.query;

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
-import { Search, Users, Clock, CheckCircle, FileText, LayoutGrid, X, LogOut, ChevronRight, ChevronDown, ChevronUp, Settings, Menu, Calendar, Download, AlertCircle, TrendingUp, Save } from 'lucide-react';
+import { Search, Users, Clock, CheckCircle, FileText, LayoutGrid, X, LogOut, ChevronRight, ChevronDown, ChevronUp, Settings, Menu, Calendar, Download, AlertCircle, TrendingUp, Save, Pencil } from 'lucide-react';
 import { motion } from 'framer-motion';
 import MenteeGroupDetails from '../components/MenteeGroupDetails';
 import AutoCreatePanelsModal from '../components/AutoCreatePanelsModal';
@@ -21,9 +21,12 @@ const AdminDashboard: React.FC = () => {
     const [autoCreateFaculties, setAutoCreateFaculties] = useState<any[]>([]);
     const [showAutoCreateBatchSelect, setShowAutoCreateBatchSelect] = useState(false);
     const [autoCreateBatchYear, setAutoCreateBatchYear] = useState('');
+    const [isEditingPanelsDnd, setIsEditingPanelsDnd] = useState(false);
+    const [dndEditInitialPanels, setDndEditInitialPanels] = useState<any[]>([]);
     const [showCreatePanel, setShowCreatePanel] = useState(false);
     const [newPanelFaculty, setNewPanelFaculty] = useState<string[]>([]);
     const [newPanelBatch, setNewPanelBatch] = useState<string>('');
+    const [editingPanelId, setEditingPanelId] = useState<string | null>(null);
 
     // Filter State
     const [searchTerm, setSearchTerm] = useState('');
@@ -146,29 +149,56 @@ const AdminDashboard: React.FC = () => {
 
         setAutoCreateFaculties(facultiesWithWorkload);
         setShowAutoCreateBatchSelect(false);
+        setIsEditingPanelsDnd(false);
+        setDndEditInitialPanels([]);
         setShowAutoCreateModal(true);
     };
 
     const confirmAutoCreatePanels = async (newPanels: any[]) => {
         try {
-            // Fetch existing panels for this batch explicitly from DB before delete
-            const batchYearNum = parseInt(autoCreateBatchYear);
-            const resExisting = await api.get(`/panels?batchYear=${batchYearNum}`);
-            const existingPanelsForBatch = Array.isArray(resExisting.data) ? resExisting.data : [];
+            if (isEditingPanelsDnd) {
+                // In interactive edit mode, some have _id (existing) some don't (newly dropped empty panels)
+                const existingPanelsForBatchRaw = await api.get(`/panels?batchYear=${autoCreateBatchYear}`);
+                const existingPanelsForBatch = Array.isArray(existingPanelsForBatchRaw.data) ? existingPanelsForBatchRaw.data : [];
 
-            for (const p of existingPanelsForBatch) {
-                await api.delete(`/panels/${p._id}`);
-            }
+                const submittedPanelIds = newPanels.filter(p => p._id).map(p => p._id);
 
-            // Create new panels
-            for (const p of newPanels) {
-                await api.post('/panels', p);
+                // 1. Delete panels that were completely emptied and removed
+                for (const p of existingPanelsForBatch) {
+                    if (!submittedPanelIds.includes(p._id)) {
+                        await api.delete(`/panels/${p._id}`);
+                    }
+                }
+
+                // 2. Update existing and create new
+                for (const p of newPanels) {
+                    if (p._id) {
+                        await api.put(`/panels/${p._id}`, { faculty: p.faculty, batchYear: p.batchYear });
+                    } else {
+                        await api.post('/panels', { faculty: p.faculty, batchYear: p.batchYear });
+                    }
+                }
+            } else {
+                // Standard auto-create: Delete all first
+                const batchYearNum = parseInt(autoCreateBatchYear);
+                const resExisting = await api.get(`/panels?batchYear=${batchYearNum}`);
+                const existingPanelsForBatch = Array.isArray(resExisting.data) ? resExisting.data : [];
+
+                for (const p of existingPanelsForBatch) {
+                    await api.delete(`/panels/${p._id}`);
+                }
+
+                // Create new panels
+                for (const p of newPanels) {
+                    await api.post('/panels', p);
+                }
             }
 
             setShowAutoCreateModal(false);
+            setIsEditingPanelsDnd(false);
             const res = await api.get(`/panels?batchYear=${filterBatch}`);
             setPanels(Array.isArray(res.data) ? res.data : []);
-            alert("Panels Auto-Created and Saved Successfully!");
+            alert(`Panels ${isEditingPanelsDnd ? 'Updated' : 'Auto-Created'} Successfully!`);
         } catch (e: any) {
             alert("Error saving panels: " + (e.response?.data?.message || e.message));
             console.error("Panel save error:", e.response?.data || e);
@@ -801,7 +831,12 @@ const AdminDashboard: React.FC = () => {
                                             <button onClick={handleAutoCreateClick} className="px-4 py-2 bg-indigo-50 text-indigo-600 border border-indigo-200 rounded-lg font-bold hover:bg-indigo-100 transition">
                                                 Auto Create Panels
                                             </button>
-                                            <button onClick={() => setShowCreatePanel(true)} className="px-4 py-2 bg-indigo-600 text-white rounded-lg font-bold hover:bg-indigo-700 transition">
+                                            <button onClick={() => {
+                                                setEditingPanelId(null);
+                                                setNewPanelFaculty([]);
+                                                setNewPanelBatch('');
+                                                setShowCreatePanel(true);
+                                            }} className="px-4 py-2 bg-indigo-600 text-white rounded-lg font-bold hover:bg-indigo-700 transition">
                                                 Create New Panel
                                             </button>
                                         </div>
@@ -819,13 +854,103 @@ const AdminDashboard: React.FC = () => {
                                                     {filterBatch === 'All' && (
                                                         <div
                                                             className="flex items-center gap-4 cursor-pointer group"
-                                                            onClick={() => setCollapsedPanelsBatches(prev => ({ ...prev, [year]: !prev[year] }))}
+                                                            onClick={(e) => {
+                                                                if ((e.target as HTMLElement).closest('button')) return;
+                                                                setCollapsedPanelsBatches(prev => ({ ...prev, [year]: !prev[year] }))
+                                                            }}
                                                         >
                                                             <div className="bg-indigo-100 text-indigo-700 px-3 py-1.5 rounded-full text-sm font-bold flex items-center gap-2 group-hover:bg-indigo-200 transition-colors">
                                                                 Batch {year}-{parseInt(year) + 4}
                                                                 {isCollapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
                                                             </div>
                                                             <div className="h-px bg-neutral-200 flex-1 group-hover:bg-indigo-200 transition-colors"></div>
+                                                            <button
+                                                                onClick={async (e) => {
+                                                                    e.stopPropagation();
+
+                                                                    let currentGroups = groups;
+                                                                    let currentFaculty = faculty;
+
+                                                                    if (currentGroups.length === 0 || currentFaculty.length === 0) {
+                                                                        try {
+                                                                            const [facultyRes, groupsRes] = await Promise.all([
+                                                                                api.get('/users/faculty'),
+                                                                                api.get('/groups')
+                                                                            ]);
+                                                                            currentFaculty = Array.isArray(facultyRes.data) ? facultyRes.data : [];
+                                                                            currentGroups = Array.isArray(groupsRes.data) ? groupsRes.data : [];
+                                                                            setFaculty(currentFaculty);
+                                                                            setGroups(currentGroups);
+                                                                        } catch (error) {
+                                                                            console.error("Failed to fetch data for editing panels", error);
+                                                                            alert("Failed to load required faculty or group data.");
+                                                                            return;
+                                                                        }
+                                                                    }
+
+                                                                    const batchSuffix = year.slice(2);
+                                                                    const batchGroups = currentGroups.filter((g: any) => {
+                                                                        return g.members?.some((m: any) => m.rollNumber && m.rollNumber.startsWith(batchSuffix));
+                                                                    });
+
+                                                                    const calculateLoad = (fId: string) => {
+                                                                        let count = 0;
+                                                                        batchGroups.forEach(g => {
+                                                                            if (g.project && (g.project.faculty === fId || g.project.faculty?._id === fId)) {
+                                                                                count++;
+                                                                            }
+                                                                        });
+                                                                        return count;
+                                                                    };
+
+                                                                    // Gather faculties currently in this batch's panels
+                                                                    const facultiesInPanels: any[] = [];
+                                                                    const initialDraftPanels: any[] = [];
+
+                                                                    yearPanels.forEach((panel: any, idx: number) => {
+                                                                        const mappedFaculties = panel.faculty.map((f: any) => ({
+                                                                            _id: f._id,
+                                                                            name: f.name,
+                                                                            email: f.email,
+                                                                            groupCount: calculateLoad(f._id)
+                                                                        }));
+
+                                                                        facultiesInPanels.push(...mappedFaculties);
+
+                                                                        initialDraftPanels.push({
+                                                                            id: `panel-${idx}`,
+                                                                            _tempPanelId: panel._id,
+                                                                            faculties: mappedFaculties
+                                                                        });
+                                                                    });
+
+                                                                    // Deduplicate faculties
+                                                                    const uniqueFacultiesMap = new Map();
+                                                                    facultiesInPanels.forEach(f => {
+                                                                        if (!uniqueFacultiesMap.has(f._id)) {
+                                                                            uniqueFacultiesMap.set(f._id, f);
+                                                                        }
+                                                                    });
+
+                                                                    // Identify any completely unassigned faculty for this batch workload to include in pool
+                                                                    const unassignedFacs = currentFaculty.filter(f => !uniqueFacultiesMap.has(f._id)).map(f => ({
+                                                                        _id: f._id,
+                                                                        name: f.name,
+                                                                        email: f.email,
+                                                                        groupCount: calculateLoad(f._id)
+                                                                    }));
+
+                                                                    // Start building panels state
+                                                                    setDndEditInitialPanels(initialDraftPanels);
+                                                                    setAutoCreateFaculties([...Array.from(uniqueFacultiesMap.values()), ...unassignedFacs]);
+                                                                    setAutoCreateBatchYear(year);
+                                                                    setIsEditingPanelsDnd(true);
+                                                                    setShowAutoCreateModal(true);
+                                                                }}
+                                                                className="px-3 py-1 bg-white border border-indigo-200 text-indigo-600 font-bold rounded flex shrink-0 items-center gap-1 hover:bg-indigo-50 transition"
+                                                            >
+                                                                <Pencil className="w-3 h-3" /> Edit Interactive
+                                                            </button>
                                                         </div>
                                                     )}
                                                     {!isCollapsed && (
@@ -845,19 +970,21 @@ const AdminDashboard: React.FC = () => {
                                                                                     <p className="text-xs text-neutral-500">{panel.faculty.length} members • {panelGroupsCount} groups</p>
                                                                                 </div>
                                                                             </div>
-                                                                            <button
-                                                                                onClick={async () => {
-                                                                                    if (confirm('Delete panel?')) {
-                                                                                        await api.delete(`/panels/${panel._id}`);
-                                                                                        const res = await api.get(`/panels?batchYear=${filterBatch}`);
-                                                                                        setPanels(Array.isArray(res.data) ? res.data : []);
-                                                                                    }
-                                                                                }}
-                                                                                className="text-neutral-400 hover:text-red-600 hover:bg-neutral-100 p-2 rounded-full text-sm transition-colors"
-                                                                                title="Delete Panel"
-                                                                            >
-                                                                                <X className="w-4 h-4" />
-                                                                            </button>
+                                                                            <div className="flex items-center gap-1">
+                                                                                <button
+                                                                                    onClick={async () => {
+                                                                                        if (confirm('Delete panel?')) {
+                                                                                            await api.delete(`/panels/${panel._id}`);
+                                                                                            const res = await api.get(`/panels?batchYear=${filterBatch}`);
+                                                                                            setPanels(Array.isArray(res.data) ? res.data : []);
+                                                                                        }
+                                                                                    }}
+                                                                                    className="text-neutral-400 hover:text-red-600 hover:bg-neutral-100 p-2 rounded-full text-sm transition-colors"
+                                                                                    title="Delete Panel"
+                                                                                >
+                                                                                    <X className="w-4 h-4" />
+                                                                                </button>
+                                                                            </div>
                                                                         </div>
                                                                         <div className="space-y-2 min-h-[60px] mb-4">
                                                                             <h5 className="text-xs font-bold text-neutral-400 uppercase mb-2">Faculty Members</h5>
@@ -1073,8 +1200,13 @@ const AdminDashboard: React.FC = () => {
                     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm">
                         <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden flex flex-col">
                             <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-                                <h3 className="text-lg font-bold text-gray-900">Create Panel</h3>
-                                <button onClick={() => setShowCreatePanel(false)} className="text-gray-400 hover:text-gray-600">
+                                <h3 className="text-lg font-bold text-gray-900">{editingPanelId ? 'Edit Panel' : 'Create Panel'}</h3>
+                                <button onClick={() => {
+                                    setShowCreatePanel(false);
+                                    setEditingPanelId(null);
+                                    setNewPanelFaculty([]);
+                                    setNewPanelBatch('');
+                                }} className="text-gray-400 hover:text-gray-600">
                                     <X className="w-5 h-5" />
                                 </button>
                             </div>
@@ -1113,22 +1245,32 @@ const AdminDashboard: React.FC = () => {
                                 </div>
                             </div>
                             <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-3">
-                                <button onClick={() => setShowCreatePanel(false)} className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition">Cancel</button>
+                                <button onClick={() => {
+                                    setShowCreatePanel(false);
+                                    setEditingPanelId(null);
+                                    setNewPanelFaculty([]);
+                                    setNewPanelBatch('');
+                                }} className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition">Cancel</button>
                                 <button
                                     onClick={async () => {
                                         try {
-                                            await api.post('/panels', { faculty: newPanelFaculty, batchYear: parseInt(newPanelBatch) });
+                                            if (editingPanelId) {
+                                                await api.put(`/panels/${editingPanelId}`, { faculty: newPanelFaculty, batchYear: parseInt(newPanelBatch) });
+                                            } else {
+                                                await api.post('/panels', { faculty: newPanelFaculty, batchYear: parseInt(newPanelBatch) });
+                                            }
                                             setShowCreatePanel(false);
+                                            setEditingPanelId(null);
                                             setNewPanelFaculty([]);
                                             setNewPanelBatch('');
                                             const res = await api.get(`/panels?batchYear=${filterBatch}`);
                                             setPanels(Array.isArray(res.data) ? res.data : []);
-                                        } catch (e: any) { alert(e.response?.data?.message || 'Error creating panel'); }
+                                        } catch (e: any) { alert(e.response?.data?.message || `Error ${editingPanelId ? 'updating' : 'creating'} panel`); }
                                     }}
                                     disabled={!newPanelBatch || newPanelFaculty.length === 0}
                                     className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition"
                                 >
-                                    Create Panel
+                                    {editingPanelId ? 'Save Changes' : 'Create Panel'}
                                 </button>
                             </div>
                         </div>
@@ -1406,6 +1548,8 @@ const AdminDashboard: React.FC = () => {
                         batchYear={parseInt(autoCreateBatchYear)}
                         onClose={() => setShowAutoCreateModal(false)}
                         onConfirm={confirmAutoCreatePanels}
+                        isEditingMode={isEditingPanelsDnd}
+                        initialPanels={dndEditInitialPanels}
                     />
                 )}
             </div>
