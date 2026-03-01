@@ -272,7 +272,24 @@ export const exportPanels = async (req: any, res: Response) => {
         // Add Faculty Row (Row 7)
         const facultyRowValues: any = { label: '' };
         panels.forEach((p: any, i: number) => {
-            facultyRowValues[`panel_${i}`] = p.faculty.map((f: any) => f.name).join(', ');
+            const pGroups = panelGroupsArray[i] || [];
+            const facultyWithCounts = p.faculty.map((f: any) => {
+                const count = pGroups.filter((g: any) => {
+                    const projFacId = typeof g.project?.faculty === 'string' ? g.project.faculty : (g.project?.faculty?._id?.toString() || null);
+                    return projFacId === f._id.toString();
+                }).length;
+                return { ...f, groupCount: count };
+            });
+
+            let chairId = null;
+            if (facultyWithCounts.length > 0) {
+                const maxLoad = Math.max(...facultyWithCounts.map((f: any) => f.groupCount));
+                chairId = facultyWithCounts.find((f: any) => f.groupCount === maxLoad)?._id.toString();
+            }
+
+            facultyRowValues[`panel_${i}`] = p.faculty.map((f: any) => {
+                return f._id.toString() === chairId ? `${f.name} (Chair)` : f.name;
+            }).join(', ');
         });
         const facultyRow = worksheet.addRow(facultyRowValues);
         facultyRow.font = { bold: true };
@@ -364,7 +381,26 @@ export const exportPanels = async (req: any, res: Response) => {
         panels.forEach((p: any, pIndex: number) => {
             const pSheet = workbook.addWorksheet(`Panel ${pIndex + 1}`);
             const pGroups = panelGroupsArray[pIndex] || [];
-            const panelMembersString = `Panel Members -: ` + p.faculty.map((f: any) => f.name).join(', ');
+
+            const facultyWithCounts = p.faculty.map((f: any) => {
+                const count = pGroups.filter((g: any) => {
+                    const projFacId = typeof g.project?.faculty === 'string' ? g.project.faculty : (g.project?.faculty?._id?.toString() || null);
+                    return projFacId === f._id.toString();
+                }).length;
+                return { ...f, groupCount: count };
+            });
+
+            let chairId = null;
+            if (facultyWithCounts.length > 0) {
+                const maxLoad = Math.max(...facultyWithCounts.map((f: any) => f.groupCount));
+                chairId = facultyWithCounts.find((f: any) => f.groupCount === maxLoad)?._id.toString();
+            }
+
+            p.faculty.forEach((f: any) => {
+                f.isChair = f._id.toString() === chairId;
+            });
+
+            const panelMembersString = `Panel Members -: ` + p.faculty.map((f: any) => f.isChair ? `${f.name} (Chair)` : f.name).join(', ');
 
             // Setup Columns for individual panel sheet
             pSheet.columns = [
@@ -508,12 +544,24 @@ export const exportPanels = async (req: any, res: Response) => {
                 }
 
                 members.forEach((m: any, mIdx: number) => {
+                    const getBranchFromRollNo = (rollNo: any) => {
+                        if (!rollNo) return '';
+                        const rollStr = String(rollNo);
+                        if (rollStr.length >= 5) {
+                            const code = rollStr.charAt(4);
+                            if (code === '0') return 'CSE';
+                            if (code === '1') return 'ECE';
+                            if (code === '2') return 'DSAI';
+                        }
+                        return '';
+                    };
+
                     const row = pSheet.addRow([
                         null,
                         mIdx === 0 ? groupNo : '',
                         m.name || '',
                         m.rollNumber || '',
-                        m.branch || m.department || '',
+                        m.branch || m.department || getBranchFromRollNo(m.rollNumber) || '',
                         mIdx === 0 ? projTitle : '',
                         mIdx === 0 ? facName : '',
                         '', '', '', '', '', '', '', '', '', ''
@@ -552,7 +600,7 @@ export const exportPanels = async (req: any, res: Response) => {
             p.faculty.forEach((fac: any) => {
                 const sigRow = pSheet.addRow([
                     null,
-                    fac.name, '', '', '',
+                    fac.isChair ? `${fac.name} (Chair)` : fac.name, '', '', '',
                     '', '', '', '', '', '', '', '', '', '', '', ''
                 ]);
                 pSheet.mergeCells(`B${sigRow.number}:C${sigRow.number}`);

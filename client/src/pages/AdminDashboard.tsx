@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
-import { Search, Users, Clock, CheckCircle, FileText, LayoutGrid, X, LogOut, ChevronRight, ChevronDown, ChevronUp, Settings, Menu, Calendar, Download, AlertCircle, TrendingUp, Save, Pencil } from 'lucide-react';
+import { Search, Users, Clock, CheckCircle, FileText, X, LogOut, ChevronRight, ChevronDown, ChevronUp, Settings, Menu, Calendar, Download, AlertCircle, Save, Pencil, LayoutGrid } from 'lucide-react';
 import { motion } from 'framer-motion';
 import MenteeGroupDetails from '../components/MenteeGroupDetails';
 import AutoCreatePanelsModal from '../components/AutoCreatePanelsModal';
@@ -76,6 +76,15 @@ const AdminDashboard: React.FC = () => {
                 } else if (activeTab === 'panels') {
                     const res = await api.get(`/panels?batchYear=${filterBatch}`);
                     setPanels(Array.isArray(res.data) ? res.data : []);
+
+                    if (faculty.length === 0) {
+                        const facultyRes = await api.get('/users/faculty');
+                        setFaculty(Array.isArray(facultyRes.data) ? facultyRes.data : []);
+                    }
+                    if (groups.length === 0) {
+                        const groupsRes = await api.get('/groups');
+                        setGroups(Array.isArray(groupsRes.data) ? groupsRes.data : []);
+                    }
                 }
             } catch (error) {
                 console.error(`Failed to fetch ${activeTab}`, error);
@@ -1160,20 +1169,7 @@ const AdminDashboard: React.FC = () => {
                                             </div>
                                         </div>
 
-                                        <div className="bg-white rounded-2xl border border-neutral-200 p-6 flex items-center justify-between shadow-sm">
-                                            <div className="flex items-center gap-4">
-                                                <div className="h-12 w-12 bg-blue-50 rounded-xl flex items-center justify-center text-blue-600">
-                                                    <LayoutGrid className="w-6 h-6" />
-                                                </div>
-                                                <div>
-                                                    <h3 className="text-lg font-bold text-neutral-900">Groups & Projects CSV</h3>
-                                                    <p className="text-sm text-neutral-500">Export detailed list of groups and projects.</p>
-                                                </div>
-                                            </div>
-                                            <button className="px-6 py-2 bg-neutral-900 text-white rounded-lg font-medium hover:bg-neutral-800 transition-colors flex items-center gap-2">
-                                                <Download className="w-4 h-4" /> Export
-                                            </button>
-                                        </div>
+
 
                                         <div className="bg-white rounded-2xl border border-neutral-200 p-6 flex items-center justify-between shadow-sm">
                                             <div className="flex items-center gap-4">
@@ -1205,20 +1201,7 @@ const AdminDashboard: React.FC = () => {
                                             </div>
                                         </div>
 
-                                        <div className="bg-white rounded-2xl border border-neutral-200 p-6 flex items-center justify-between shadow-sm">
-                                            <div className="flex items-center gap-4">
-                                                <div className="h-12 w-12 bg-purple-50 rounded-xl flex items-center justify-center text-purple-600">
-                                                    <TrendingUp className="w-6 h-6" />
-                                                </div>
-                                                <div>
-                                                    <h3 className="text-lg font-bold text-neutral-900">Evaluation Report</h3>
-                                                    <p className="text-sm text-neutral-500">Export marks and evaluation results.</p>
-                                                </div>
-                                            </div>
-                                            <button className="px-6 py-2 bg-neutral-900 text-white rounded-lg font-medium hover:bg-neutral-800 transition-colors flex items-center gap-2">
-                                                <Download className="w-4 h-4" /> Export
-                                            </button>
-                                        </div>
+
                                     </div>
                                 )}
                             </>
@@ -1255,7 +1238,15 @@ const AdminDashboard: React.FC = () => {
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-1">Select Faculty Members (Max 3)</label>
                                     <div className="max-h-48 overflow-y-auto border border-gray-200 rounded-lg p-2 space-y-1">
-                                        {faculty.map((f: any) => (
+                                        {faculty.filter((f: any) => {
+                                            if (!newPanelBatch) return true;
+                                            const isAssigned = panels.some((p: any) =>
+                                                String(p.batchYear) === String(newPanelBatch) &&
+                                                p._id !== editingPanelId &&
+                                                p.faculty.some((pf: any) => pf._id === f._id || pf === f._id)
+                                            );
+                                            return !isAssigned;
+                                        }).map((f: any) => (
                                             <label key={f._id} className="flex items-center gap-2 p-1 hover:bg-gray-50 rounded">
                                                 <input
                                                     type="checkbox"
