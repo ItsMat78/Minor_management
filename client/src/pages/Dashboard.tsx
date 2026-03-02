@@ -49,6 +49,10 @@ const Dashboard: React.FC = () => {
     const [isProposalWarningOpen, setIsProposalWarningOpen] = useState(false);
     const [creatingGroup, setCreatingGroup] = useState(false);
 
+    // Dropper State
+    const [isDropper, setIsDropper] = useState(false);
+    const [targetBatch, setTargetBatch] = useState('2024');
+
     // Leave Group State
     const [isLeaveDialogOpen, setIsLeaveDialogOpen] = useState(false);
     const [leavePassword, setLeavePassword] = useState('');
@@ -131,9 +135,11 @@ const Dashboard: React.FC = () => {
     const handleCreateGroup = async () => {
         setCreatingGroup(true);
         try {
-            await api.post('/groups', {
-                members: Array.from(selectedStudents)
-            });
+            const payload: any = { members: Array.from(selectedStudents) };
+            if (isDropper) {
+                payload.targetBatch = targetBatch;
+            }
+            await api.post('/groups', payload);
             // Refresh state
             const groupRes = await api.get('/groups/my');
             setGroup(groupRes.data);
@@ -385,6 +391,34 @@ const Dashboard: React.FC = () => {
                                                             })}
                                                         </div>
                                                     </div>
+
+                                                    <div className="mt-4 p-4 border border-neutral-200 rounded-lg bg-neutral-50/50">
+                                                        <label className="flex items-center gap-2 text-sm font-medium text-neutral-700 cursor-pointer">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={isDropper}
+                                                                onChange={(e) => setIsDropper(e.target.checked)}
+                                                                className="rounded border-neutral-300 text-indigo-600 focus:ring-indigo-500"
+                                                            />
+                                                            Is anyone in this group a dropper / re-registering?
+                                                        </label>
+                                                        {isDropper && (
+                                                            <div className="mt-3">
+                                                                <label className="block text-xs font-medium text-neutral-600 mb-1">Select Expected Batch Year (e.g. 2024)</label>
+                                                                <select
+                                                                    value={targetBatch}
+                                                                    onChange={(e) => setTargetBatch(e.target.value)}
+                                                                    className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                                                >
+                                                                    <option value="2023">2023</option>
+                                                                    <option value="2024">2024</option>
+                                                                    <option value="2025">2025</option>
+                                                                    <option value="2026">2026</option>
+                                                                </select>
+                                                            </div>
+                                                        )}
+                                                    </div>
+
                                                     <div className="flex justify-end gap-3 mt-6">
                                                         <Dialog.Close asChild>
                                                             <button className="px-4 py-2 text-sm font-medium text-neutral-600 hover:bg-neutral-50 rounded-lg">Cancel</button>

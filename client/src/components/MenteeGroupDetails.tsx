@@ -94,6 +94,31 @@ const MenteeGroupDetails: React.FC<MenteeGroupDetailsProps> = ({ group, user, on
                             <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-3 py-1 rounded-lg border border-indigo-100 flex items-center gap-1.5">
                                 <Users className="w-3.5 h-3.5" /> {group.name}
                             </span>
+
+                            {user?.role === 'Admin' && (
+                                <div className="flex items-center gap-2 ml-4">
+                                    <span className="text-xs font-bold text-gray-500">Override Batch:</span>
+                                    <select
+                                        value={group.targetBatch || ''}
+                                        onChange={async (e) => {
+                                            const val = e.target.value;
+                                            try {
+                                                await api.put(`/groups/${group._id}`, { targetBatch: val || null });
+                                                onUpdateSuccess();
+                                            } catch (err) {
+                                                alert("Failed to change batch");
+                                            }
+                                        }}
+                                        className="text-xs border border-gray-300 rounded p-1 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                    >
+                                        <option value="">Default (From Roll No)</option>
+                                        <option value="2023">2023</option>
+                                        <option value="2024">2024</option>
+                                        <option value="2025">2025</option>
+                                        <option value="2026">2026</option>
+                                    </select>
+                                </div>
+                            )}
                         </div>
 
                         <h1 className="text-3xl font-bold text-gray-900 mb-4 capitalize leading-tight">

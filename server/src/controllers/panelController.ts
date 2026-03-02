@@ -68,7 +68,7 @@ export const getPanels = async (req: any, res: Response) => {
                 if (!projFacId) return false;
                 if (!panelFacultyIds.includes(projFacId)) return false;
 
-                const gBatch = g.members && g.members.length > 0 && g.members[0].rollNumber ? '20' + g.members[0].rollNumber.substring(0, 2) : 'Unknown';
+                const gBatch = g.targetBatch ? String(g.targetBatch) : (g.members && g.members.length > 0 && g.members[0].rollNumber ? '20' + g.members[0].rollNumber.substring(0, 2) : 'Unknown');
                 if (gBatch !== String(panel.batchYear)) return false;
 
                 return true;
@@ -137,7 +137,7 @@ export const getMyPanelEvaluationGroups = async (req: any, res: Response) => {
 
                 if (!panelFacultyIds.includes(projFacId)) return false;
 
-                const gBatch = g.members && g.members.length > 0 && g.members[0].rollNumber ? '20' + g.members[0].rollNumber.substring(0, 2) : 'Unknown';
+                const gBatch = g.targetBatch ? String(g.targetBatch) : (g.members && g.members.length > 0 && g.members[0].rollNumber ? '20' + g.members[0].rollNumber.substring(0, 2) : 'Unknown');
                 if (gBatch !== String(panel.batchYear)) return false;
 
                 return true;
@@ -194,7 +194,7 @@ export const exportPanels = async (req: any, res: Response) => {
                 if (!projFacId) return false;
                 if (!panelFacultyIds.includes(projFacId)) return false;
 
-                const gBatch = g.members && g.members.length > 0 && g.members[0].rollNumber ? '20' + String(g.members[0].rollNumber).substring(0, 2) : 'Unknown';
+                const gBatch = g.targetBatch ? String(g.targetBatch) : (g.members && g.members.length > 0 && g.members[0].rollNumber ? '20' + String(g.members[0].rollNumber).substring(0, 2) : 'Unknown');
                 if (gBatch !== String(panel.batchYear)) return false;
 
                 return true;

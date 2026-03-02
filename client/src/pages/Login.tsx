@@ -10,8 +10,18 @@ const Login: React.FC = () => {
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
     const [isLoading, setIsLoading] = useState(false);
-    const { login } = useAuth();
+    const { login, isAuthenticated, user } = useAuth();
     const navigate = useNavigate();
+
+    React.useEffect(() => {
+        if (isAuthenticated && user) {
+            if (user.role === 'Admin') {
+                navigate('/admin', { replace: true });
+            } else {
+                navigate('/dashboard', { replace: true });
+            }
+        }
+    }, [isAuthenticated, user, navigate]);
 
     // URLs for assets - These would ideally be local assets or hosted on a reliable CDN
     const LOGO_URL = "/logo.svg";

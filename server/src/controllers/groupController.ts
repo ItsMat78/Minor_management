@@ -7,7 +7,7 @@ import Project from '../models/Project';
 export const createGroup = async (req: Request, res: Response) => {
     try {
         const userId = (req as any).user.id;
-        const { name, members } = req.body; // Expecting array of member IDs
+        const { name, members, targetBatch } = req.body; // Expecting array of member IDs
 
         // Check if user is already in a group
         const user = await User.findById(userId);
@@ -39,11 +39,43 @@ export const createGroup = async (req: Request, res: Response) => {
             }
         }
 
+        let assignedName = name;
+        if (!assignedName) {
+            // Determine the batch year for the new group
+            let batchYear = targetBatch;
+            if (!batchYear && user.rollNumber) {
+                batchYear = '20' + user.rollNumber.substring(0, 2);
+            }
+
+            // Find all groups to determine the next available number for this batch
+            const allGroups = await Group.find().populate('members', 'rollNumber');
+            const usedNumbers = new Set<number>();
+
+            allGroups.forEach(g => {
+                let gb = g.targetBatch;
+                if (!gb && g.members && g.members.length > 0 && (g.members[0] as any).rollNumber) {
+                    gb = '20' + (g.members[0] as any).rollNumber.substring(0, 2);
+                }
+                if (gb === batchYear && g.name) {
+                    // Try to extract a leading number from the name if possible, or parse it directly
+                    const num = parseInt(g.name, 10);
+                    if (!isNaN(num)) usedNumbers.add(num);
+                }
+            });
+
+            let nextNum = 1;
+            while (usedNumbers.has(nextNum)) {
+                nextNum++;
+            }
+            assignedName = nextNum.toString();
+        }
+
         const newGroup = new Group({
-            name: name || `Group-${Date.now()}`,
+            name: assignedName,
             members: groupMembers,
             status: 'Forming',
-            inviteCode: Math.random().toString(36).substring(7).toUpperCase()
+            inviteCode: Math.random().toString(36).substring(7).toUpperCase(),
+            targetBatch
         });
 
         await newGroup.save();
@@ -168,9 +200,26 @@ export const getAllGroups = async (req: Request, res: Response) => {
             })
             .sort({ createdAt: -1 });
 
+        console.log("getAllGroups fetched groups with targetBatch:", groups.filter(g => g.targetBatch).length);
+
         res.json(groups);
     } catch (error) {
         console.error("Error fetching all groups:", error);
+        res.status(500).json({ message: 'Server error', error });
+    }
+};
+
+export const updateGroup = async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const { targetBatch } = req.body;
+
+        const group = await Group.findByIdAndUpdate(id, { targetBatch }, { new: true });
+        if (!group) return res.status(404).json({ message: 'Group not found' });
+
+        res.json(group);
+    } catch (error) {
+        console.error("Error updating group:", error);
         res.status(500).json({ message: 'Server error', error });
     }
 };

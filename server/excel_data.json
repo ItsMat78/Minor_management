@@ -1,0 +1,69 @@
+{
+  "../MINOR Project-II (IV Semester)_2025-2026.xlsx": {
+    "totalRows": 261,
+    "first2": [
+      {
+        "K": 1,
+        "Project Group Members Name": "Aakansha Verma ",
+        "Roll No": 241010201,
+        "Department": "ECE",
+        "Title of the Minor Project": "skinsense AI",
+        "Area of Project": "AI, Web development ",
+        "Name of the  Supervisor": "Dr. Abhishek Sharma"
+      },
+      {
+        "K": null,
+        "Project Group Members Name": "Abhay Yadav ",
+        "Roll No": 241000001,
+        "Department": "CSE",
+        "Title of the Minor Project": null,
+        "Area of Project": null,
+        "Name of the  Supervisor": null
+      }
+    ],
+    "thirdRow": {
+      "K": 2,
+      "Project Group Members Name": "Siddharth ",
+      "Roll No": 241000477,
+      "Department": "CSE",
+      "Title of the Minor Project": "Dyanmic RL Based Traffic Light System",
+      "Area of Project": "Reinforcement Learning",
+      "Name of the  Supervisor": "Dr. Avantika Singh"
+    }
+  },
+  "../UG Research Work-I (VI Semester)_2025-2026.xlsx": {
+    "totalRows": 171,
+    "first2": [
+      {
+        "F": 1,
+        "Project Group Members Name": "Arnav Ticku",
+        "Roll No": 231000013,
+        "Department": "CSE",
+        "Title of the Minor Project": "AI-Driven Semantic Form Automator for Academic and Career Portals",
+        "Area of Project": "tbd",
+        "Name of the  Supervisor": "Dr. Ruhul Amin",
+        "Name of the  Supervisor_1": "Dr. Ruhul Amin"
+      },
+      {
+        "F": null,
+        "Project Group Members Name": "Taran Pal Singh",
+        "Roll No": 231000055,
+        "Department": "CSE",
+        "Title of the Minor Project": null,
+        "Area of Project": null,
+        "Name of the  Supervisor": null,
+        "Name of the  Supervisor_1": null
+      }
+    ],
+    "thirdRow": {
+      "F": null,
+      "Project Group Members Name": "Yash Mohan Joshi",
+      "Roll No": 231000060,
+      "Department": "CSE",
+      "Title of the Minor Project": null,
+      "Area of Project": null,
+      "Name of the  Supervisor": null,
+      "Name of the  Supervisor_1": null
+    }
+  }
+}

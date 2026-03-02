@@ -1,10 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
-import { Search, Users, Clock, CheckCircle, FileText, X, LogOut, ChevronRight, ChevronDown, ChevronUp, Settings, Menu, Calendar, Download, AlertCircle, Save, Pencil, LayoutGrid } from 'lucide-react';
+import { Search, Users, Clock, CheckCircle, FileText, X, LogOut, ChevronRight, ChevronDown, ChevronUp, Settings, Menu, Calendar, Download, AlertCircle, Save, Pencil, LayoutGrid, MoreVertical } from 'lucide-react';
 import { motion } from 'framer-motion';
 import MenteeGroupDetails from '../components/MenteeGroupDetails';
 import AutoCreatePanelsModal from '../components/AutoCreatePanelsModal';
+
+export const getGroupBatchYear = (group: any) => {
+    if (group.targetBatch) return group.targetBatch.toString();
+    if (group.members && group.members.length > 0 && group.members[0].rollNumber) {
+        return '20' + group.members[0].rollNumber.substring(0, 2);
+    }
+    return 'Unknown';
+};
+
+export const getOriginalGroupBatchYear = (group: any) => {
+    if (group.members && group.members.length > 0 && group.members[0].rollNumber) {
+        return '20' + group.members[0].rollNumber.toString().substring(0, 2);
+    }
+    return 'Unknown';
+};
 
 const AdminDashboard: React.FC = () => {
     const { user, logout } = useAuth();
@@ -40,6 +55,8 @@ const AdminDashboard: React.FC = () => {
     const [showLimitSettings, setShowLimitSettings] = useState(false);
     const [sortOption, setSortOption] = useState<string>('Default'); // Added sort state
     const [collapsedPanelsBatches, setCollapsedPanelsBatches] = useState<Record<string, boolean>>({});
+    const [configBatchGroup, setConfigBatchGroup] = useState<any>(null); // For configure batch modal
+    const [configBatchMenuOpen, setConfigBatchMenuOpen] = useState<string | null>(null); // To toggle menu per row
     const [expandedPanelGroups, setExpandedPanelGroups] = useState<Record<string, boolean>>({});
 
     // Limits State
@@ -66,7 +83,8 @@ const AdminDashboard: React.FC = () => {
                     // Assuming endpoint exists for admin to see all groups
                     // If this fails, we might need a different endpoint, e.g., /groups
                     const res = await api.get('/groups');
-                    setGroups(Array.isArray(res.data) ? res.data : []);
+                    const groupsData = Array.isArray(res.data) ? res.data : [];
+                    setGroups(groupsData);
 
                     // Also fetch faculty for the filter dropdown if not already loaded
                     if (faculty.length === 0) {
@@ -113,8 +131,6 @@ const AdminDashboard: React.FC = () => {
     const processAutoCreate = async () => {
         if (!autoCreateBatchYear) return;
 
-        const batchSuffix = autoCreateBatchYear.slice(2);
-
         let currentFaculty = faculty;
         let currentGroups = groups;
 
@@ -138,7 +154,7 @@ const AdminDashboard: React.FC = () => {
 
         // Calculate workload for ALL faculties regarding this batch
         const batchGroups = currentGroups.filter((g: any) => {
-            return g.members?.some((m: any) => m.rollNumber && m.rollNumber.startsWith(batchSuffix));
+            return getGroupBatchYear(g) === autoCreateBatchYear;
         });
 
         const facultiesWithWorkload = currentFaculty.map(f => {
@@ -315,6 +331,20 @@ const AdminDashboard: React.FC = () => {
         });
     };
 
+    const handleUpdateBatchViaModal = async (newBatch: string) => {
+        if (!configBatchGroup) return;
+        try {
+            await api.put(`/groups/${configBatchGroup._id}`, { targetBatch: newBatch });
+            const groupsRes = await api.get('/groups');
+            setGroups(Array.isArray(groupsRes.data) ? groupsRes.data : []);
+            setConfigBatchGroup(null);
+            setConfigBatchMenuOpen(null);
+        } catch (error) {
+            console.error('Failed to update targetBatch', error);
+            alert('Failed to update batch');
+        }
+    };
+
     // Filter Logic for Groups
     const getFilteredGroups = () => {
         if (!groups) return [];
@@ -328,17 +358,14 @@ const AdminDashboard: React.FC = () => {
                 g.project?.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                 g.members?.some((m: any) => m.name.toLowerCase().includes(searchTerm.toLowerCase()));
 
-            const matchesBatch = filterBatch === 'All' || (() => {
-                const batchSuffix = filterBatch.slice(2);
-                return g.members?.some((m: any) => m.rollNumber && m.rollNumber.startsWith(batchSuffix));
-            })();
+            const matchesBatch = filterBatch === 'All' || getGroupBatchYear(g) === filterBatch;
 
             const matchesFaculty = filterFaculty === 'All' || g.project?.faculty?._id === filterFaculty || g.project?.faculty === filterFaculty;
 
             return matchesSearch && matchesBatch && matchesFaculty;
         }).sort((a, b) => {
-            if (sortOption === 'Name (A-Z)') return a.name.localeCompare(b.name);
-            if (sortOption === 'Name (Z-A)') return b.name.localeCompare(a.name);
+            if (sortOption === 'Name (A-Z)') return (a.name || '').localeCompare(b.name || '', undefined, { numeric: true });
+            if (sortOption === 'Name (Z-A)') return (b.name || '').localeCompare(a.name || '', undefined, { numeric: true });
             if (sortOption === 'Project (A-Z)') return (a.project?.title || '').localeCompare(b.project?.title || '');
             return 0;
         });
@@ -358,10 +385,8 @@ const AdminDashboard: React.FC = () => {
             // The group.project.faculty might be populated. 
             // Ideally we need to check if the project is approved assigned to this faculty.
             if (g.project?.faculty?._id === facultyId || g.project?.faculty === facultyId) {
-                // Determine batch from members
-                const batchYear = g.members && g.members.length > 0 && g.members[0].rollNumber
-                    ? '20' + g.members[0].rollNumber.substring(0, 2)
-                    : 'Unknown';
+                // Determine batch from members or targetBatch
+                const batchYear = getGroupBatchYear(g);
 
                 if (!stats[batchYear]) {
                     stats[batchYear] = { students: 0, groups: 0 };
@@ -744,11 +769,9 @@ const AdminDashboard: React.FC = () => {
                                         ) : (
                                             <div className="pb-20">
                                                 {(filterBatch === 'All' ? Array.from({ length: 7 }, (_, i) => (new Date().getFullYear() - 7) + i).reverse() : [parseInt(filterBatch)]).map(batchYear => {
-                                                    const batchSuffix = batchYear.toString().slice(2);
                                                     const batchGroups = displayGroups.filter((g: any) => {
-                                                        const members = g.members || [];
                                                         if (filterBatch !== 'All') return true; // Already filtered
-                                                        return members.some((m: any) => m.rollNumber && m.rollNumber.startsWith(batchSuffix));
+                                                        return getGroupBatchYear(g) === batchYear.toString();
                                                     });
 
                                                     if (batchGroups.length === 0) return null;
@@ -777,12 +800,12 @@ const AdminDashboard: React.FC = () => {
                                                                     </thead>
                                                                     <tbody className="divide-y divide-neutral-100">
                                                                         {batchGroups.map((item: any) => (
-                                                                            <tr key={item._id} onClick={() => setViewGroup(item)} className="hover:bg-neutral-50 cursor-pointer transition-colors group">
+                                                                            <tr key={item._id} onClick={() => setViewGroup(item)} className={`cursor-pointer transition-colors group ${item.targetBatch && item.targetBatch !== getOriginalGroupBatchYear(item) ? 'bg-red-50 hover:bg-red-100 border-l-4 border-l-red-500' : 'hover:bg-neutral-50'}`}>
                                                                                 <td className="px-6 py-4">
                                                                                     <div className="flex flex-col">
                                                                                         <span className="font-bold text-neutral-900 group-hover:text-indigo-600 transition-colors">{item.project?.title || 'No Project'}</span>
                                                                                         <span className="text-sm text-neutral-500 line-clamp-1 mb-1">
-                                                                                            {item.name ? `Group ${item.name}` : ''}
+                                                                                            {item.name ? `Group ${item.name}` : ''} {item.targetBatch ? `(Dropper/Batch override: ${item.targetBatch})` : ''}
                                                                                         </span>
                                                                                         <div className="flex flex-wrap gap-1 mt-1">
                                                                                             {item.members?.map((m: any, idx: number) => (
@@ -816,8 +839,31 @@ const AdminDashboard: React.FC = () => {
                                                                                     </span>
                                                                                 </td>
                                                                                 <td className="px-6 py-4 text-right">
-                                                                                    <div className="inline-flex items-center gap-1 text-indigo-600 font-bold text-xs opacity-0 group-hover:opacity-100 transition-opacity">
-                                                                                        View <ChevronRight className="w-3 h-3" />
+                                                                                    <div className="flex flex-col items-end gap-2">
+                                                                                        <div className="relative">
+                                                                                            <button
+                                                                                                onClick={(e) => {
+                                                                                                    e.stopPropagation();
+                                                                                                    setConfigBatchMenuOpen(configBatchMenuOpen === item._id ? null : item._id);
+                                                                                                }}
+                                                                                                className="p-1 rounded-full hover:bg-neutral-100 text-neutral-500 transition-colors"
+                                                                                            >
+                                                                                                <MoreVertical className="w-5 h-5" />
+                                                                                            </button>
+                                                                                            {configBatchMenuOpen === item._id && (
+                                                                                                <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-lg border border-neutral-200 py-1 z-30" onClick={e => e.stopPropagation()}>
+                                                                                                    <button
+                                                                                                        onClick={() => {
+                                                                                                            setConfigBatchGroup(item);
+                                                                                                            setConfigBatchMenuOpen(null);
+                                                                                                        }}
+                                                                                                        className="w-full text-left px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-50 flex items-center gap-2"
+                                                                                                    >
+                                                                                                        <Settings className="w-4 h-4" /> Configure Batch
+                                                                                                    </button>
+                                                                                                </div>
+                                                                                            )}
+                                                                                        </div>
                                                                                     </div>
                                                                                 </td>
                                                                             </tr>
@@ -897,9 +943,8 @@ const AdminDashboard: React.FC = () => {
                                                                         }
                                                                     }
 
-                                                                    const batchSuffix = year.slice(2);
                                                                     const batchGroups = currentGroups.filter((g: any) => {
-                                                                        return g.members?.some((m: any) => m.rollNumber && m.rollNumber.startsWith(batchSuffix));
+                                                                        return getGroupBatchYear(g) === year.toString();
                                                                     });
 
                                                                     const calculateLoad = (fId: string) => {
@@ -1055,10 +1100,10 @@ const AdminDashboard: React.FC = () => {
                                                                                 {isExpanded && (
                                                                                     <div className="mt-3 space-y-2 bg-white rounded-xl border border-neutral-100 p-2 shadow-sm">
                                                                                         {panel.groups.map((g: any) => (
-                                                                                            <div key={g._id} className="p-3 bg-neutral-50 border border-neutral-100 hover:border-indigo-100 hover:bg-indigo-50/30 transition-colors rounded-lg">
+                                                                                            <div key={g._id} className={`p-3 border transition-colors rounded-lg ${g.targetBatch && g.targetBatch !== getOriginalGroupBatchYear(g) ? 'bg-red-50 border-red-200 hover:border-red-300 hover:bg-red-100/50' : 'bg-neutral-50 border-neutral-100 hover:border-indigo-100 hover:bg-indigo-50/30'}`}>
                                                                                                 <div className="flex items-center justify-between mb-1.5">
-                                                                                                    <h6 className="font-bold text-xs text-indigo-900 group-hover:text-indigo-700 truncate mr-2">
-                                                                                                        Group {g.name}
+                                                                                                    <h6 className={`font-bold text-xs truncate mr-2 ${g.targetBatch && g.targetBatch !== getOriginalGroupBatchYear(g) ? 'text-red-800' : 'text-indigo-900'}`}>
+                                                                                                        Group {g.name} {g.targetBatch && g.targetBatch !== getOriginalGroupBatchYear(g) ? `(Dropper/Batch override: ${g.targetBatch})` : ''}
                                                                                                     </h6>
                                                                                                     <span className="shrink-0 px-2 py-0.5 bg-white border border-neutral-200 rounded text-[10px] font-bold text-neutral-500">
                                                                                                         {g.members?.length || 0} Members
@@ -1574,6 +1619,52 @@ const AdminDashboard: React.FC = () => {
                         isEditingMode={isEditingPanelsDnd}
                         initialPanels={dndEditInitialPanels}
                     />
+                )}
+                {configBatchGroup && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm">
+                        <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden flex flex-col">
+                            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+                                <h3 className="text-lg font-bold text-gray-900">Configure Target Batch</h3>
+                                <button onClick={() => setConfigBatchGroup(null)} className="text-gray-400 hover:text-gray-600">
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+                            <div className="p-6 space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Group Details</label>
+                                    <div className="text-sm text-neutral-600 bg-neutral-50 p-3 rounded border border-neutral-200">
+                                        <p><strong>Group Name/No:</strong> {configBatchGroup.name}</p>
+                                        <p><strong>Original Batch:</strong> {getOriginalGroupBatchYear(configBatchGroup)}</p>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Target Batch Year</label>
+                                    <select
+                                        defaultValue={configBatchGroup.targetBatch || getOriginalGroupBatchYear(configBatchGroup)}
+                                        id="targetBatchUpdate"
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                                    >
+                                        <option value="">Select Batch</option>
+                                        {Array.from({ length: 7 }, (_, i) => (new Date().getFullYear() - 7) + i).reverse().map(year => (
+                                            <option key={year} value={year.toString()}>Batch {year}</option>
+                                        ))}
+                                    </select>
+                                    <p className="mt-2 text-xs text-neutral-500">
+                                        Changing the target batch will treat this group as if they belong to the selected batch for all evaluation and panel creation purposes. If the target batch is set to their original batch, they will not be highlighted.
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-3">
+                                <button onClick={() => setConfigBatchGroup(null)} className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition">Cancel</button>
+                                <button
+                                    onClick={() => handleUpdateBatchViaModal((document.getElementById('targetBatchUpdate') as HTMLSelectElement).value)}
+                                    className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition"
+                                >
+                                    Save Batch
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 )}
             </div>
         </div>

@@ -7,6 +7,7 @@ export interface IGroup extends Document {
     status: 'Forming' | 'ProposalPending' | 'Approved' | 'Dissolved';
     inviteCode?: string;
     createdAt: Date;
+    targetBatch?: string;
 }
 
 const GroupSchema: Schema = new Schema({
@@ -14,7 +15,8 @@ const GroupSchema: Schema = new Schema({
     members: [{ type: Schema.Types.ObjectId, ref: 'User' }],
     project: { type: Schema.Types.ObjectId, ref: 'Project' },
     status: { type: String, enum: ['Forming', 'ProposalPending', 'Approved', 'Dissolved'], default: 'Forming' },
-    inviteCode: { type: String }
+    inviteCode: { type: String },
+    targetBatch: { type: String }
 }, {
     timestamps: true
 });
@@ -25,3 +27,4 @@ GroupSchema.path('members').validate(function (members: any[]) {
 }, 'Group cannot have more than 3 members.');
 
 export default mongoose.model<IGroup>('Group', GroupSchema);
+// Trigger nodemon restart
