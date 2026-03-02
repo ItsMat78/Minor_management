@@ -1099,26 +1099,30 @@ const AdminDashboard: React.FC = () => {
 
                                                                                 {isExpanded && (
                                                                                     <div className="mt-3 space-y-2 bg-white rounded-xl border border-neutral-100 p-2 shadow-sm">
-                                                                                        {panel.groups.map((g: any) => (
-                                                                                            <div key={g._id} className={`p-3 border transition-colors rounded-lg ${g.targetBatch && g.targetBatch !== getOriginalGroupBatchYear(g) ? 'bg-red-50 border-red-200 hover:border-red-300 hover:bg-red-100/50' : 'bg-neutral-50 border-neutral-100 hover:border-indigo-100 hover:bg-indigo-50/30'}`}>
-                                                                                                <div className="flex items-center justify-between mb-1.5">
-                                                                                                    <h6 className={`font-bold text-xs truncate mr-2 ${g.targetBatch && g.targetBatch !== getOriginalGroupBatchYear(g) ? 'text-red-800' : 'text-indigo-900'}`}>
-                                                                                                        Group {g.name} {g.targetBatch && g.targetBatch !== getOriginalGroupBatchYear(g) ? `(Dropper/Batch override: ${g.targetBatch})` : ''}
-                                                                                                    </h6>
-                                                                                                    <span className="shrink-0 px-2 py-0.5 bg-white border border-neutral-200 rounded text-[10px] font-bold text-neutral-500">
-                                                                                                        {g.members?.length || 0} Members
-                                                                                                    </span>
+                                                                                        {panel.groups.map((g: any) => {
+                                                                                            const isDropper = g.targetBatch && g.targetBatch !== getOriginalGroupBatchYear(g);
+                                                                                            return (
+                                                                                                <div key={g._id} className={`p-3 border transition-colors rounded-lg overflow-hidden relative ${isDropper ? 'bg-red-50 border-red-200 hover:border-red-300 hover:bg-red-100/50' : 'bg-neutral-50 border-neutral-100 hover:border-indigo-100 hover:bg-indigo-50/30'}`}>
+                                                                                                    {isDropper && <div className="absolute left-0 top-0 bottom-0 w-1 bg-red-500"></div>}
+                                                                                                    <div className={`flex items-center justify-between mb-1.5 ${isDropper ? 'pl-2' : ''}`}>
+                                                                                                        <h6 className={`font-bold text-xs truncate mr-2 ${isDropper ? 'text-red-800' : 'text-indigo-900 group-hover:text-indigo-700'}`}>
+                                                                                                            Group {g.name} {isDropper ? `(Dropper/Batch override: ${g.targetBatch})` : ''}
+                                                                                                        </h6>
+                                                                                                        <span className="shrink-0 px-2 py-0.5 bg-white border border-neutral-200 rounded text-[10px] font-bold text-neutral-500">
+                                                                                                            {g.members?.length || 0} Members
+                                                                                                        </span>
+                                                                                                    </div>
+                                                                                                    <div className="space-y-1 mt-2 border-t border-neutral-200/50 pt-2 text-[11px] text-neutral-600">
+                                                                                                        {g.members?.map((m: any) => (
+                                                                                                            <div key={m._id} className="flex justify-between items-center">
+                                                                                                                <span className="truncate pr-2 font-medium">{m.name}</span>
+                                                                                                                <span className="font-mono text-[10px] text-neutral-400 shrink-0">{m.rollNumber}</span>
+                                                                                                            </div>
+                                                                                                        ))}
+                                                                                                    </div>
                                                                                                 </div>
-                                                                                                <div className="space-y-1 mt-2 border-t border-neutral-200/50 pt-2 text-[11px] text-neutral-600">
-                                                                                                    {g.members?.map((m: any) => (
-                                                                                                        <div key={m._id} className="flex justify-between items-center">
-                                                                                                            <span className="truncate pr-2 font-medium">{m.name}</span>
-                                                                                                            <span className="font-mono text-[10px] text-neutral-400 shrink-0">{m.rollNumber}</span>
-                                                                                                        </div>
-                                                                                                    ))}
-                                                                                                </div>
-                                                                                            </div>
-                                                                                        ))}
+                                                                                            );
+                                                                                        })}
                                                                                     </div>
                                                                                 )}
                                                                             </div>

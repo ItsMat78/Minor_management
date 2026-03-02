@@ -151,8 +151,10 @@ const getProjectColor = (id: string) => { // Existing function kept
 };
 
 const MenteeCard = ({ item, activeTab, navigate, setSelectedProject }: any) => {
+    const groupData = item.group || item;
+    const isDropper = groupData?.targetBatch && groupData.targetBatch !== getOriginalGroupBatchYear(groupData);
     const projectId = item.project?._id || item._id || 'default';
-    const borderColor = getProjectColor(projectId);
+    const borderColor = isDropper ? 'bg-red-500' : getProjectColor(projectId);
 
     return (
         <motion.div
@@ -164,7 +166,7 @@ const MenteeCard = ({ item, activeTab, navigate, setSelectedProject }: any) => {
                     setSelectedProject(item);
                 }
             }}
-            className={`bg-white rounded-2xl border border-neutral-200 shadow-sm overflow-hidden hover:shadow-xl hover:border-indigo-200 hover:-translate-y-1 transition-all group flex flex-col cursor-pointer relative ${item.project?.hasNewUpdate ? '!border-blue-300 !shadow-md' : ''
+            className={`bg-white rounded-2xl border shadow-sm overflow-hidden hover:shadow-xl hover:-translate-y-1 transition-all group flex flex-col cursor-pointer relative ${isDropper ? 'border-red-200 hover:border-red-300 bg-red-50/30' : 'border-neutral-200 hover:border-indigo-200'} ${item.project?.hasNewUpdate ? '!border-blue-300 !shadow-md' : ''
                 }`}
         >
             {/* Unique Color Stripe */}
@@ -210,8 +212,11 @@ const MenteeCard = ({ item, activeTab, navigate, setSelectedProject }: any) => {
                 </h3>
 
                 <div className="flex items-center gap-2 text-sm text-neutral-600 font-medium mb-4">
-                    <Users className="w-4 h-4 text-neutral-400" />
-                    {item.group?.name || item.name}
+                    <Users className={`w-4 h-4 ${isDropper ? 'text-red-400' : 'text-neutral-400'}`} />
+                    <span className={isDropper ? 'text-red-700 font-bold' : ''}>
+                        {item.group?.name || item.name}
+                        {isDropper && ` (Dropper/Batch override: ${groupData.targetBatch})`}
+                    </span>
                 </div>
 
                 <p className="text-sm text-neutral-500 line-clamp-3 mb-4 leading-relaxed">
@@ -255,10 +260,19 @@ const MenteeCard = ({ item, activeTab, navigate, setSelectedProject }: any) => {
 };
 
 
+function getOriginalGroupBatchYear(group: any) {
+    if (group.members && group.members.length > 0 && group.members[0].rollNumber) {
+        return '20' + group.members[0].rollNumber.toString().substring(0, 2);
+    }
+    return 'Unknown';
+}
+
 const renderEvalCard = (item: any, activeTab: string, handleOpenEvaluation: any, isPanel: boolean = false, viewMode: 'grid' | 'list' = 'grid') => {
     const projectData = item.project || item;
     const evalData = activeTab === 'mid-term' ? projectData?.midTermEvaluation :
         projectData?.endTermEvaluation; // Removed finalReportEvaluation
+    const groupData = item.group || item;
+    const isDropper = groupData.targetBatch && groupData.targetBatch !== getOriginalGroupBatchYear(groupData);
 
     const isEvaluated = !!evalData && !!evalData.marks;
     const RUBRIC_CONFIG_LOCAL = { // Renamed to avoid conflict with global RUBRIC_CONFIG
@@ -268,7 +282,7 @@ const renderEvalCard = (item: any, activeTab: string, handleOpenEvaluation: any,
 
     if (viewMode === 'list') {
         return (
-            <div key={item._id} className="bg-white rounded-2xl border border-neutral-200 p-4 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden group flex flex-col md:flex-row items-start md:items-center justify-between gap-4 px-6">
+            <div key={item._id} className={`rounded-2xl border p-4 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden group flex flex-col md:flex-row items-start md:items-center justify-between gap-4 px-6 ${isDropper ? 'bg-red-50 border-red-200 hover:border-red-300 border-l-4 border-l-red-500' : 'bg-white border-neutral-200'}`}>
                 {isEvaluated && (
                     <div className="absolute top-0 right-0 p-2 px-3 bg-green-50 rounded-bl-2xl border-l border-b border-green-100 text-green-700 flex items-center gap-1.5 font-bold text-[10px] z-10 hidden md:flex uppercase tracking-wider">
                         <CheckCircle className="w-3 h-3" />
@@ -286,8 +300,8 @@ const renderEvalCard = (item: any, activeTab: string, handleOpenEvaluation: any,
                         {isEvaluated && <span className="md:hidden px-2 py-0.5 bg-green-50 text-green-700 rounded text-[10px] font-bold flex items-center gap-1 uppercase tracking-wider"><CheckCircle className="w-3 h-3" /> Evaluated</span>}
                     </div>
                     <h3 className="text-xl font-bold text-gray-900 truncate" title={projectData?.title}>{projectData?.title || 'Untitled Project'}</h3>
-                    <p className="text-sm text-neutral-500 font-medium truncate flex items-center gap-1.5 align-middle mt-1 uppercase tracking-wider">
-                        {item.name || item.group?.name}
+                    <p className={`text-sm font-medium truncate flex items-center gap-1.5 align-middle mt-1 uppercase tracking-wider ${isDropper ? 'text-red-700 font-bold' : 'text-neutral-500'}`}>
+                        {item.name || item.group?.name} {isDropper ? `(Dropper/Batch override: ${groupData.targetBatch})` : ''}
                     </p>
                     {projectData?.attachments && projectData.attachments.length > 0 && (
                         <div className="mt-3 flex flex-wrap gap-2">
@@ -300,7 +314,7 @@ const renderEvalCard = (item: any, activeTab: string, handleOpenEvaluation: any,
                     )}
                 </div>
 
-                <div className="flex items-center gap-6 shrink-0 w-full md:w-auto bg-neutral-50 p-4 rounded-xl border border-neutral-100 group-hover:border-indigo-100 transition-colors">
+                <div className={`flex items-center gap-6 shrink-0 w-full md:w-auto p-4 rounded-xl border transition-colors ${isDropper ? 'bg-red-100/30 border-red-200 group-hover:border-red-300' : 'bg-neutral-50 border-neutral-100 group-hover:border-indigo-100'}`}>
                     <div className="flex flex-col text-right">
                         <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1 text-right">Score</span>
                         <div className="flex items-end justify-end gap-1">
@@ -326,7 +340,7 @@ const renderEvalCard = (item: any, activeTab: string, handleOpenEvaluation: any,
     }
 
     return (
-        <div key={item._id} className="bg-white rounded-2xl border border-neutral-200 p-6 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden group flex flex-col h-full">
+        <div key={item._id} className={`rounded-2xl border p-6 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden group flex flex-col h-full ${isDropper ? 'bg-red-50 border-red-200 hover:border-red-300 border-l-4 border-l-red-500' : 'bg-white border-neutral-200'}`}>
             {isEvaluated && (
                 <div className="absolute top-0 right-0 p-3 bg-green-50 rounded-bl-2xl border-l border-b border-green-100 text-green-700 flex items-center gap-1.5 font-bold text-xs z-10">
                     <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><path d="M22 4L12 14.01l-3-3"></path></svg>
@@ -340,8 +354,8 @@ const renderEvalCard = (item: any, activeTab: string, handleOpenEvaluation: any,
             )}
             <div className="mb-4 mt-2">
                 <h3 className="text-lg font-bold text-gray-900 mb-1 line-clamp-1 pr-8" title={projectData?.title}>{projectData?.title || 'Untitled Project'}</h3>
-                <p className="text-sm text-neutral-500 font-medium flex items-center gap-1.5 align-middle">
-                    {item.name || item.group?.name}
+                <p className={`text-sm font-medium flex items-center gap-1.5 align-middle ${isDropper ? 'text-red-700 font-bold' : 'text-neutral-500'}`}>
+                    {item.name || item.group?.name} {isDropper ? `(Dropper: ${groupData.targetBatch})` : ''}
                 </p>
             </div>
             {projectData?.attachments && projectData.attachments.length > 0 && (
@@ -353,11 +367,11 @@ const renderEvalCard = (item: any, activeTab: string, handleOpenEvaluation: any,
                     ))}
                 </div>
             )}
-            <div className="bg-neutral-50 rounded-xl p-4 border border-neutral-100 flex flex-col gap-3 group-hover:border-indigo-100 transition-colors mt-auto">
+            <div className={`mt-auto rounded-xl p-4 border flex flex-col gap-3 transition-colors ${isDropper ? 'bg-red-100/30 border-red-200 group-hover:border-red-300' : 'bg-neutral-50 border-neutral-100 group-hover:border-indigo-100'}`}>
                 <div className="flex justify-between items-center">
-                    <span className="text-xs font-bold text-neutral-400 uppercase tracking-wider">Score</span>
+                    <span className={`text-xs font-bold uppercase tracking-wider ${isDropper ? 'text-red-400' : 'text-neutral-400'}`}>Score</span>
                     <span className={`text-xl font-bold ${isEvaluated ? 'text-indigo-600' : 'text-neutral-300'}`}>
-                        {isEvaluated ? evalData.marks : '--'} <span className="text-sm text-neutral-400 font-medium">/ {RUBRIC_CONFIG_LOCAL[activeTab]?.maxMarks || 100}</span>
+                        {isEvaluated ? evalData.marks : '--'} <span className={`text-sm font-medium ${isDropper ? 'text-red-400' : 'text-neutral-400'}`}>/ {RUBRIC_CONFIG_LOCAL[activeTab]?.maxMarks || 100}</span>
                     </span>
                 </div>
                 <button
@@ -1154,13 +1168,18 @@ const FacultyDashboard: React.FC = () => {
                                                     } else {
                                                         const batches = new Set<string>();
                                                         displayItems.forEach((item: any) => {
-                                                            const members = item.members || item.group?.members || [];
-                                                            const hasRoll = members.find((m: any) => m.rollNumber);
-                                                            if (hasRoll) {
-                                                                const prefix = hasRoll.rollNumber.substring(0, 2);
-                                                                batches.add('20' + prefix);
+                                                            const groupData = item.group || item;
+                                                            if (groupData.targetBatch) {
+                                                                batches.add(groupData.targetBatch.toString());
                                                             } else {
-                                                                batches.add('Unknown');
+                                                                const members = groupData.members || [];
+                                                                const hasRoll = members.find((m: any) => m.rollNumber);
+                                                                if (hasRoll) {
+                                                                    const prefix = hasRoll.rollNumber.substring(0, 2);
+                                                                    batches.add('20' + prefix);
+                                                                } else {
+                                                                    batches.add('Unknown');
+                                                                }
                                                             }
                                                         });
                                                         batchesToRender = Array.from(batches).sort().reverse();
@@ -1169,7 +1188,11 @@ const FacultyDashboard: React.FC = () => {
                                                     return batchesToRender.map(batchKey => {
                                                         const batchMentees = filterBatch === 'All'
                                                             ? displayItems.filter((item: any) => {
-                                                                const members = item.members || item.group?.members || [];
+                                                                const groupData = item.group || item;
+                                                                if (groupData.targetBatch) {
+                                                                    return groupData.targetBatch.toString() === batchKey;
+                                                                }
+                                                                const members = groupData.members || [];
                                                                 const hasRoll = members.find((m: any) => m.rollNumber);
                                                                 if (batchKey === 'Unknown') return !hasRoll;
                                                                 return members.some((m: any) => m.rollNumber && m.rollNumber.startsWith(batchKey.slice(2)));
@@ -1235,80 +1258,89 @@ const FacultyDashboard: React.FC = () => {
                                                                                     </tr>
                                                                                 </thead>
                                                                                 <tbody className="divide-y divide-neutral-100">
-                                                                                    {batchMentees.map((item: any) => (
-                                                                                        <tr
-                                                                                            key={item._id}
-                                                                                            onClick={() => handleGroupClick(item)}
-                                                                                            className={`cursor-pointer transition-all group ${item.project?.hasNewUpdate
-                                                                                                ? 'bg-amber-50/50 hover:bg-amber-50 relative'
-                                                                                                : 'hover:bg-neutral-50'}`}
-                                                                                        >
-                                                                                            {item.project?.hasNewUpdate && (
-                                                                                                <td className="absolute left-0 top-0 bottom-0 w-1 bg-amber-400 animate-pulse"></td>
-                                                                                            )}
-                                                                                            <td className="px-6 py-4">
-                                                                                                <div className="flex flex-col gap-1">
-                                                                                                    <div className="flex items-start justify-between gap-2">
-                                                                                                        <span className="font-bold text-neutral-900 group-hover:text-indigo-600 transition-colors line-clamp-1 text-base">
-                                                                                                            {item.project?.title || item.name}
-                                                                                                        </span>
-                                                                                                        {item.project?.hasNewUpdate && (
-                                                                                                            <span className="px-2 py-0.5 bg-amber-100 text-amber-700 border border-amber-200 text-[10px] font-bold uppercase rounded-md shadow-sm whitespace-nowrap">
-                                                                                                                New Update
+                                                                                    {batchMentees.map((item: any) => {
+                                                                                        const groupData = item.group || item;
+                                                                                        const isDropper = groupData?.targetBatch && groupData.targetBatch !== getOriginalGroupBatchYear(groupData);
+                                                                                        return (
+                                                                                            <tr
+                                                                                                key={item._id}
+                                                                                                onClick={() => handleGroupClick(item)}
+                                                                                                className={`cursor-pointer transition-all group relative overflow-hidden ${item.project?.hasNewUpdate
+                                                                                                    ? 'bg-amber-50/50 hover:bg-amber-50'
+                                                                                                    : isDropper ? 'bg-red-50/30 hover:bg-red-50' : 'bg-white hover:bg-neutral-50'}`}
+                                                                                            >
+                                                                                                {item.project?.hasNewUpdate ? (
+                                                                                                    <td className="absolute left-0 top-0 bottom-0 w-1 bg-amber-400 animate-pulse"></td>
+                                                                                                ) : isDropper ? (
+                                                                                                    <td className="absolute left-0 top-0 bottom-0 w-1 bg-red-500"></td>
+                                                                                                ) : null}
+                                                                                                <td className="px-6 py-4">
+                                                                                                    <div className="flex flex-col gap-1">
+                                                                                                        <div className="flex items-start justify-between gap-2">
+                                                                                                            <span className="font-bold text-neutral-900 group-hover:text-indigo-600 transition-colors line-clamp-1 text-base">
+                                                                                                                {item.project?.title || item.name}
                                                                                                             </span>
+                                                                                                            {item.project?.hasNewUpdate && (
+                                                                                                                <span className="px-2 py-0.5 bg-amber-100 text-amber-700 border border-amber-200 text-[10px] font-bold uppercase rounded-md shadow-sm whitespace-nowrap">
+                                                                                                                    New Update
+                                                                                                                </span>
+                                                                                                            )}
+                                                                                                        </div>
+                                                                                                        <span className={`text-xs font-medium uppercase tracking-wider flex items-center gap-1.5 ${isDropper ? 'text-red-700 font-bold' : 'text-neutral-500'}`}>
+                                                                                                            <Users className={`w-3 h-3 ${isDropper ? 'text-red-400' : ''}`} />
+                                                                                                            <span className="truncate">
+                                                                                                                {item.name}
+                                                                                                                {isDropper && ` (Dropper/Batch override: ${groupData.targetBatch})`}
+                                                                                                            </span>
+                                                                                                        </span>
+                                                                                                        {item.project?.tags && item.project.tags.length > 0 && (
+                                                                                                            <div className="flex flex-wrap gap-1 mt-1">
+                                                                                                                {item.project.tags.slice(0, 3).map((tag: string, i: number) => (
+                                                                                                                    <span key={i} className="px-1.5 py-0.5 bg-neutral-100 text-neutral-500 text-[10px] rounded border border-neutral-200">
+                                                                                                                        {tag}
+                                                                                                                    </span>
+                                                                                                                ))}
+                                                                                                            </div>
                                                                                                         )}
                                                                                                     </div>
-                                                                                                    <span className="text-xs font-medium text-neutral-500 uppercase tracking-wider flex items-center gap-1.5">
-                                                                                                        <Users className="w-3 h-3" />
-                                                                                                        {item.name}
+                                                                                                </td>
+                                                                                                <td className="px-6 py-4">
+                                                                                                    <div className="flex -space-x-2">
+                                                                                                        {(item.members || item.group?.members || []).slice(0, 3).map((m: any, idx: number) => (
+                                                                                                            <div key={idx} className="h-8 w-8 rounded-full bg-indigo-100 border-2 border-white flex items-center justify-center text-xs font-bold text-indigo-600 hover:z-10 transition-transform hover:scale-110" title={m.name}>
+                                                                                                                {m.name ? m.name.charAt(0) : '?'}
+                                                                                                            </div>
+                                                                                                        ))}
+                                                                                                        {(item.members || item.group?.members || []).length > 3 && (
+                                                                                                            <div className="h-8 w-8 rounded-full bg-neutral-100 border-2 border-white flex items-center justify-center text-xs font-bold text-neutral-500">
+                                                                                                                +{(item.members || item.group?.members || []).length - 3}
+                                                                                                            </div>
+                                                                                                        )}
+                                                                                                    </div>
+                                                                                                </td>
+                                                                                                <td className="px-6 py-4">
+                                                                                                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${(item.status || item.project?.status) === 'Approved' ? 'bg-green-100 text-green-700' :
+                                                                                                        (item.status || item.project?.status) === 'Rejected' ? 'bg-red-100 text-red-700' :
+                                                                                                            'bg-indigo-100 text-indigo-700'
+                                                                                                        }`}>
+                                                                                                        <div className={`w-1.5 h-1.5 rounded-full ${(item.status || item.project?.status) === 'Approved' ? 'bg-green-500' :
+                                                                                                            (item.status || item.project?.status) === 'Rejected' ? 'bg-red-500' :
+                                                                                                                'bg-indigo-500'
+                                                                                                            }`} />
+                                                                                                        {item.status || item.project?.status || 'Active'}
                                                                                                     </span>
-                                                                                                    {item.project?.tags && item.project.tags.length > 0 && (
-                                                                                                        <div className="flex flex-wrap gap-1 mt-1">
-                                                                                                            {item.project.tags.slice(0, 3).map((tag: string, i: number) => (
-                                                                                                                <span key={i} className="px-1.5 py-0.5 bg-neutral-100 text-neutral-500 text-[10px] rounded border border-neutral-200">
-                                                                                                                    {tag}
-                                                                                                                </span>
-                                                                                                            ))}
-                                                                                                        </div>
-                                                                                                    )}
-                                                                                                </div>
-                                                                                            </td>
-                                                                                            <td className="px-6 py-4">
-                                                                                                <div className="flex -space-x-2">
-                                                                                                    {(item.members || item.group?.members || []).slice(0, 3).map((m: any, idx: number) => (
-                                                                                                        <div key={idx} className="h-8 w-8 rounded-full bg-indigo-100 border-2 border-white flex items-center justify-center text-xs font-bold text-indigo-600 hover:z-10 transition-transform hover:scale-110" title={m.name}>
-                                                                                                            {m.name ? m.name.charAt(0) : '?'}
-                                                                                                        </div>
-                                                                                                    ))}
-                                                                                                    {(item.members || item.group?.members || []).length > 3 && (
-                                                                                                        <div className="h-8 w-8 rounded-full bg-neutral-100 border-2 border-white flex items-center justify-center text-xs font-bold text-neutral-500">
-                                                                                                            +{(item.members || item.group?.members || []).length - 3}
-                                                                                                        </div>
-                                                                                                    )}
-                                                                                                </div>
-                                                                                            </td>
-                                                                                            <td className="px-6 py-4">
-                                                                                                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${(item.status || item.project?.status) === 'Approved' ? 'bg-green-100 text-green-700' :
-                                                                                                    (item.status || item.project?.status) === 'Rejected' ? 'bg-red-100 text-red-700' :
-                                                                                                        'bg-indigo-100 text-indigo-700'
-                                                                                                    }`}>
-                                                                                                    <div className={`w-1.5 h-1.5 rounded-full ${(item.status || item.project?.status) === 'Approved' ? 'bg-green-500' :
-                                                                                                        (item.status || item.project?.status) === 'Rejected' ? 'bg-red-500' :
-                                                                                                            'bg-indigo-500'
-                                                                                                        }`} />
-                                                                                                    {item.status || item.project?.status || 'Active'}
-                                                                                                </span>
-                                                                                            </td>
-                                                                                            <td className="px-6 py-4 text-sm text-neutral-500 font-mono text-xs">
-                                                                                                {new Date(item.project?.updatedAt || item.createdAt).toLocaleDateString()}
-                                                                                            </td>
-                                                                                            <td className="px-6 py-4 text-right">
-                                                                                                <div className="inline-flex items-center gap-1 text-indigo-600 font-bold text-xs opacity-0 group-hover:opacity-100 transition-opacity">
-                                                                                                    View <ChevronRight className="w-3 h-3" />
-                                                                                                </div>
-                                                                                            </td>
-                                                                                        </tr>
-                                                                                    ))}
+                                                                                                </td>
+                                                                                                <td className="px-6 py-4 text-sm text-neutral-500 font-mono text-xs">
+                                                                                                    {new Date(item.project?.updatedAt || item.createdAt).toLocaleDateString()}
+                                                                                                </td>
+                                                                                                <td className="px-6 py-4 text-right">
+                                                                                                    <div className="inline-flex items-center gap-1 text-indigo-600 font-bold text-xs opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                                                        View <ChevronRight className="w-3 h-3" />
+                                                                                                    </div>
+                                                                                                </td>
+                                                                                            </tr>
+                                                                                        );
+                                                                                    })}
                                                                                 </tbody>
                                                                             </table>
                                                                         </div>
@@ -1339,7 +1371,11 @@ const FacultyDashboard: React.FC = () => {
 
                                                     // My Mentees in this batch
                                                     const batchProjects = filteredMentees.filter((item: any) => {
-                                                        const members = item.members || item.group?.members || [];
+                                                        const groupData = item.group || item;
+                                                        if (groupData.targetBatch) {
+                                                            return groupData.targetBatch.toString() === batchYear.toString();
+                                                        }
+                                                        const members = groupData.members || [];
                                                         return members.some((m: any) => m.rollNumber && m.rollNumber.startsWith(batchSuffix));
                                                     });
 
@@ -1466,13 +1502,18 @@ const FacultyDashboard: React.FC = () => {
                                                     {(() => {
                                                         const batches = new Set<string>();
                                                         displayItems.forEach((item: any) => {
-                                                            const members = item.members || item.group?.members || [];
-                                                            const hasRoll = members.find((m: any) => m.rollNumber);
-                                                            if (hasRoll) {
-                                                                const prefix = hasRoll.rollNumber.substring(0, 2);
-                                                                batches.add('20' + prefix);
+                                                            const groupData = item.group || item;
+                                                            if (groupData.targetBatch) {
+                                                                batches.add(groupData.targetBatch.toString());
                                                             } else {
-                                                                batches.add('Unknown');
+                                                                const members = groupData.members || [];
+                                                                const hasRoll = members.find((m: any) => m.rollNumber);
+                                                                if (hasRoll) {
+                                                                    const prefix = hasRoll.rollNumber.substring(0, 2);
+                                                                    batches.add('20' + prefix);
+                                                                } else {
+                                                                    batches.add('Unknown');
+                                                                }
                                                             }
                                                         });
 
@@ -1480,7 +1521,11 @@ const FacultyDashboard: React.FC = () => {
 
                                                         return batchesToRender.map(batchKey => {
                                                             const batchMentees = displayItems.filter((item: any) => {
-                                                                const members = item.members || item.group?.members || [];
+                                                                const groupData = item.group || item;
+                                                                if (groupData.targetBatch) {
+                                                                    return groupData.targetBatch.toString() === batchKey;
+                                                                }
+                                                                const members = groupData.members || [];
                                                                 const hasRoll = members.find((m: any) => m.rollNumber);
                                                                 if (batchKey === 'Unknown') return !hasRoll;
                                                                 return members.some((m: any) => m.rollNumber && m.rollNumber.startsWith(batchKey.slice(2)));
