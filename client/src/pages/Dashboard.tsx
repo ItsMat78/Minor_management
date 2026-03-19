@@ -1074,14 +1074,25 @@ const Dashboard: React.FC = () => {
                                                     </div>
                                                 </div>
 
-                                                <div className="grid grid-cols-2 gap-8 mt-8 pt-8 border-t border-neutral-100">
+                                                <div className="flex items-center gap-12 mt-8 pt-8 border-t border-neutral-100">
                                                     <div>
-                                                        <p className="text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-1">Target Evaluation Batch</p>
-                                                        <p className="text-xl font-black text-neutral-900">Batch {group.targetBatch || getBatch(group.members[0]?.rollNumber)}</p>
+                                                        <h4 className="text-[10px] font-black text-neutral-400 uppercase tracking-[0.2em] mb-2 px-0.5">Target Evaluation Batch</h4>
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="w-2 h-2 rounded-full bg-indigo-500"></div>
+                                                            <span className="text-xl font-black text-neutral-900 leading-none">
+                                                                Batch {group.targetBatch || getBatch(group.members[0]?.rollNumber)}
+                                                            </span>
+                                                        </div>
                                                     </div>
+                                                    <div className="h-10 w-px bg-neutral-100"></div>
                                                     <div>
-                                                        <p className="text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-1">Team Composition</p>
-                                                        <p className="text-xl font-black text-neutral-900">{group.members.length} / 3 Members</p>
+                                                        <h4 className="text-[10px] font-black text-neutral-400 uppercase tracking-[0.2em] mb-2 px-0.5">Team Composition</h4>
+                                                        <div className="flex items-center gap-2">
+                                                            <Users className="w-5 h-5 text-indigo-500" />
+                                                            <span className="text-xl font-black text-neutral-900 leading-none">
+                                                                {group.members.length} <span className="text-neutral-400">/ 3</span> Members
+                                                            </span>
+                                                        </div>
                                                     </div>
                                                 </div>
                                             </div>
@@ -1306,9 +1317,9 @@ const Dashboard: React.FC = () => {
             {/* Leave Group Dialog */}
             <Dialog.Root open={isLeaveDialogOpen} onOpenChange={setIsLeaveDialogOpen}>
                 <Dialog.Portal>
-                    <Dialog.Overlay className="fixed inset-0 bg-black/50 backdrop-blur-sm data-[state=open]:animate-overlayShow" />
-                    <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md bg-white p-6 rounded-2xl shadow-xl focus:outline-none data-[state=open]:animate-contentShow">
-                        <Dialog.Title className="text-lg font-bold mb-2 text-red-600">Leave Group</Dialog.Title>
+                    <Dialog.Overlay className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] transition-all" />
+                    <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md bg-white p-8 rounded-3xl shadow-2xl z-[101] focus:outline-none border border-neutral-100 animate-in fade-in zoom-in-95 duration-200">
+                        <Dialog.Title className="text-2xl font-black mb-2 text-red-600 tracking-tight">Leave Group</Dialog.Title>
                         <Dialog.Description className="text-neutral-500 mb-4">
                             Are you sure you want to leave this group? This action cannot be undone.
                             If you are the last member, the group will be dissolved.
