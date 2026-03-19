@@ -187,6 +187,7 @@ export const updateProjectStatus = async (req: Request, res: Response) => {
         if (group) {
             if (status === 'Approved') {
                 group.status = 'Approved';
+                group.project = project._id; // Ensure group points to the approved project
 
                 // Permanently delete all other proposals for this group
                 await Project.deleteMany(
@@ -368,6 +369,7 @@ export const updateProject = async (req: Request, res: Response) => {
             if (status === 'Pending') {
                 project.status = 'Pending';
                 group.status = 'ProposalPending';
+                group.project = project._id; // Ensure group points to the active proposal
                 await group.save();
             } else if (status === 'Draft') {
                 project.status = 'Draft';
@@ -379,6 +381,7 @@ export const updateProject = async (req: Request, res: Response) => {
             project.status = 'Pending';
             project.feedback = undefined; // Clear feedback
             group.status = 'ProposalPending';
+            group.project = project._id; // Ensure group points to updated proposal
             await group.save();
         }
 

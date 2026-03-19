@@ -477,6 +477,24 @@ const AdminDashboard: React.FC = () => {
         }
     };
 
+    const handleExportEvaluations = async (type: 'midterm' | 'full') => {
+        try {
+            const response = await api.get(`/panels/export-evaluations?batchYear=${exportBatch}&evalType=${type}`, {
+                responseType: 'blob',
+            });
+            const url = window.URL.createObjectURL(new Blob([response.data]));
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', `evaluation_export_${exportBatch}_${type}.xlsx`);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+        } catch (error) {
+            console.error('Export failed', error);
+            alert('Failed to export evaluations');
+        }
+    };
+
 
     return (
         <div className="flex h-full bg-neutral-50 font-jakarta text-neutral-900 overflow-hidden">
@@ -890,7 +908,7 @@ const AdminDashboard: React.FC = () => {
                                                                     </thead>
                                                                     <tbody className="divide-y divide-neutral-100">
                                                                         {batchGroups.map((item: any) => (
-                                                                            <tr key={item._id} onClick={() => setViewGroup(item)} className={`cursor-pointer transition-colors group ${item.targetBatch && item.targetBatch !== getOriginalGroupBatchYear(item) ? 'bg-red-50 hover:bg-red-100 border-l-4 border-l-red-500' : 'hover:bg-neutral-50'}`}>
+                                                                            <tr key={item._id} onClick={() => setViewGroup(item)} className={`cursor-pointer transition-colors group ${item.targetBatch && (item.members?.some((m: any) => getBatch(m.rollNumber) !== item.targetBatch)) ? 'bg-red-50 hover:bg-red-100 border-l-4 border-l-red-500' : 'hover:bg-neutral-50'}`}>
                                                                                 <td className="px-6 py-4">
                                                                                     <div className="flex flex-col">
                                                                                         <span className="font-bold text-neutral-900 group-hover:text-indigo-600 transition-colors">{item.project?.title || 'No Project'}</span>
@@ -1177,7 +1195,7 @@ const AdminDashboard: React.FC = () => {
                                                                                 {isExpanded && (
                                                                                     <div className="mt-3 space-y-2 bg-white rounded-xl border border-neutral-100 p-2 shadow-sm">
                                                                                         {panel.groups.map((g: any) => {
-                                                                                            const isDropper = g.targetBatch && g.targetBatch !== getOriginalGroupBatchYear(g);
+                                                                                            const isDropper = g.targetBatch && (g.members?.some((m: any) => getBatch(m.rollNumber) !== g.targetBatch));
                                                                                             return (
                                                                                                 <div key={g._id} className={`p-3 border transition-colors rounded-lg overflow-hidden relative ${isDropper ? 'bg-red-50 border-red-200 hover:border-red-300 hover:bg-red-100/50' : 'bg-neutral-50 border-neutral-100 hover:border-indigo-100 hover:bg-indigo-50/30'}`}>
                                                                                                     {isDropper && <div className="absolute left-0 top-0 bottom-0 w-1 bg-red-500"></div>}
@@ -1425,7 +1443,7 @@ const AdminDashboard: React.FC = () => {
                                                 </div>
                                                 <div>
                                                     <h3 className="text-lg font-bold text-neutral-900">Evaluation Panels Export</h3>
-                                                    <p className="text-sm text-neutral-500">Export panels, faculty, and group mapping.</p>
+                                                    <p className="text-sm text-neutral-500">Export panels, faculty, and group mapping (Blank Template).</p>
                                                 </div>
                                             </div>
                                             <div className="flex items-center gap-3">
@@ -1444,6 +1462,58 @@ const AdminDashboard: React.FC = () => {
                                                     className="px-6 py-2 bg-neutral-900 text-white rounded-lg font-medium hover:bg-neutral-800 transition-colors flex items-center gap-2"
                                                 >
                                                     <Download className="w-4 h-4" /> Export Excel
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <div className="bg-white rounded-2xl border border-neutral-200 p-6 flex flex-col gap-6 shadow-sm">
+                                            <div className="flex items-center justify-between">
+                                                <div className="flex items-center gap-4">
+                                                    <div className="h-12 w-12 bg-blue-50 rounded-xl flex items-center justify-center text-blue-600">
+                                                        <FileText className="w-6 h-6" />
+                                                    </div>
+                                                    <div>
+                                                        <h3 className="text-lg font-bold text-neutral-900">Evaluation Data Export</h3>
+                                                        <p className="text-sm text-neutral-500">Export evaluation marks and grades for each group.</p>
+                                                    </div>
+                                                </div>
+                                                <select
+                                                    value={exportBatch}
+                                                    onChange={(e) => setExportBatch(e.target.value)}
+                                                    className="px-3 py-1.5 bg-neutral-50 rounded-lg border border-neutral-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                                                >
+                                                    <option value="All">All Batches</option>
+                                                    {Array.from({ length: 7 }, (_, i) => (new Date().getFullYear() - 7) + i).map(year => (
+                                                        <option key={year} value={year.toString()}>{year}-{year + 4}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                            
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                <button
+                                                    onClick={() => handleExportEvaluations('midterm')}
+                                                    className="flex items-center justify-center gap-3 p-4 border border-neutral-200 rounded-xl hover:bg-neutral-50 transition-colors group"
+                                                >
+                                                    <div className="h-10 w-10 bg-blue-50 rounded-lg flex items-center justify-center text-blue-600 group-hover:scale-110 transition-transform">
+                                                        <Download className="w-5 h-5" />
+                                                    </div>
+                                                    <div className="text-left">
+                                                        <div className="font-bold text-neutral-900">Midterm Evaluation</div>
+                                                        <div className="text-xs text-neutral-500">Only midterm marks populated</div>
+                                                    </div>
+                                                </button>
+
+                                                <button
+                                                    onClick={() => handleExportEvaluations('full')}
+                                                    className="flex items-center justify-center gap-3 p-4 border border-blue-200 bg-blue-50/30 rounded-xl hover:bg-blue-50 transition-colors group"
+                                                >
+                                                    <div className="h-10 w-10 bg-blue-600 rounded-lg flex items-center justify-center text-white group-hover:scale-110 transition-transform shadow-md shadow-blue-200">
+                                                        <Download className="w-5 h-5" />
+                                                    </div>
+                                                    <div className="text-left">
+                                                        <div className="font-bold text-neutral-900">Midterm + Endterm</div>
+                                                        <div className="text-xs text-neutral-500">Combined evaluation data</div>
+                                                    </div>
                                                 </button>
                                             </div>
                                         </div>

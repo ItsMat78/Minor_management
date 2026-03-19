@@ -1,0 +1,290 @@
+[
+  {
+    "_id": "69947f91175b787e6bdcffdc",
+    "title": "EQ Interview Bot",
+    "description": "Auto-collect cleanliness data in urban areas and mark for cleanup on Google Maps",
+    "tags": [
+      "TBD",
+      "Minor Project"
+    ],
+    "faculty": "69947f91175b787e6bdcffce",
+    "group": "69947f91175b787e6bdcffd9",
+    "semester": 4,
+    "status": "Approved",
+    "attachments": [],
+    "createdAt": "2026-02-17T14:47:45.423Z",
+    "updatedAt": "2026-02-20T19:02:00.164Z",
+    "__v": 1,
+    "endTermEvaluation": {
+      "marks": 0,
+      "remarks": "",
+      "gradedBy": "69947f91175b787e6bdcffce",
+      "date": "2026-02-20T19:02:00.163Z",
+      "guide": {
+        "requirementSpecification": 0,
+        "systemDesign": 0,
+        "implementation": 0,
+        "projectManagement": 0,
+        "planningVsExecution": 0
+      },
+      "panel": {
+        "testingAndResults": 0,
+        "innovationAndRelevance": 0,
+        "presentationAndViva": 0,
+        "conceptualDepth": 0
+      }
+    },
+    "finalReportEvaluation": {
+      "guide": {
+        "reportWriting": 0
+      },
+      "panel": {
+        "finalReport": 0
+      }
+    },
+    "hasNewUpdate": false,
+    "midTermEvaluation": {
+      "marks": 18,
+      "remarks": "",
+      "gradedBy": "69947f91175b787e6bdcffce",
+      "date": "2026-02-20T09:59:21.683Z",
+      "guide": {
+        "dataElicitation": 2,
+        "problemDefinition": 5,
+        "planning": 3
+      },
+      "panel": {
+        "literatureSurvey": 2,
+        "presentationSkills": 5,
+        "technicalUnderstanding": 1
+      }
+    },
+    "updates": [],
+    "domain": "AI, Education Technology"
+  },
+  {
+    "_id": "69947f91175b787e6bdd000e",
+    "title": "AI Assisted Twin System For Nuclear Power Plant",
+    "description": "Airplane control navigation system using AI",
+    "tags": [
+      "TBD",
+      "Minor Project"
+    ],
+    "faculty": "69947f91175b787e6bdcffce",
+    "group": "69947f91175b787e6bdd000b",
+    "semester": 4,
+    "status": "Approved",
+    "attachments": [],
+    "createdAt": "2026-02-17T14:47:45.471Z",
+    "updatedAt": "2026-02-19T19:05:57.215Z",
+    "__v": 1,
+    "endTermEvaluation": {
+      "guide": {
+        "requirementSpecification": 4,
+        "systemDesign": 5,
+        "implementation": 2,
+        "projectManagement": 5,
+        "planningVsExecution": 2
+      },
+      "panel": {
+        "testingAndResults": 3,
+        "innovationAndRelevance": 5,
+        "presentationAndViva": 0,
+        "conceptualDepth": 4
+      },
+      "marks": 30,
+      "remarks": "",
+      "gradedBy": "69947f91175b787e6bdcffce",
+      "date": "2026-02-19T18:07:24.646Z"
+    },
+    "finalReportEvaluation": {
+      "guide": {
+        "reportWriting": 0
+      },
+      "panel": {
+        "finalReport": 0
+      }
+    },
+    "hasNewUpdate": false,
+    "midTermEvaluation": {
+      "marks": 15,
+      "remarks": "",
+      "gradedBy": "69947f91175b787e6bdcffce",
+      "date": "2026-02-19T19:05:57.203Z",
+      "guide": {
+        "dataElicitation": 5,
+        "problemDefinition": 5,
+        "planning": 5
+      },
+      "panel": {
+        "literatureSurvey": 0,
+        "presentationSkills": 0,
+        "technicalUnderstanding": 0
+      }
+    },
+    "updates": [],
+    "domain": "Physical Systems"
+  },
+  {
+    "_id": "69947f91175b787e6bdd00ab",
+    "title": "Budget Fiscal Risk Predictor Using Monte Carlo",
+    "description": "Using ML and Fintech to classify different images",
+    "tags": [
+      "ML + Fintech",
+      "Minor Project"
+    ],
+    "faculty": "69947f91175b787e6bdcffce",
+    "group": "69947f91175b787e6bdd00a8",
+    "semester": 4,
+    "status": "Approved",
+    "attachments": [],
+    "createdAt": "2026-02-17T14:47:45.601Z",
+    "updatedAt": "2026-02-20T19:01:53.878Z",
+    "__v": 1,
+    "hasNewUpdate": false,
+    "midTermEvaluation": {
+      "marks": 12,
+      "remarks": "",
+      "gradedBy": "69947f91175b787e6bdcffce",
+      "date": "2026-02-20T10:28:14.795Z",
+      "guide": {
+        "dataElicitation": 5,
+        "problemDefinition": 4,
+        "planning": 3
+      },
+      "panel": {
+        "literatureSurvey": 0,
+        "presentationSkills": 0,
+        "technicalUnderstanding": 0
+      }
+    },
+    "updates": [],
+    "endTermEvaluation": {
+      "marks": 0,
+      "remarks": "",
+      "gradedBy": "69947f91175b787e6bdcffce",
+      "date": "2026-02-20T19:01:53.876Z",
+      "guide": {
+        "requirementSpecification": 0,
+        "systemDesign": 0,
+        "implementation": 0,
+        "projectManagement": 0,
+        "planningVsExecution": 0
+      },
+      "panel": {
+        "testingAndResults": 0,
+        "innovationAndRelevance": 0,
+        "presentationAndViva": 0,
+        "conceptualDepth": 0
+      }
+    },
+    "domain": "ML + Fintech"
+  },
+  {
+    "_id": "69947f92175b787e6bdd0353",
+    "title": "Emotion Aware Smart Vehicle CPS-Humain-In-The-Loop RL",
+    "description": "Using VLSI and digital circuits, we will track inventory",
+    "tags": [
+      "VLSI",
+      "Minor Project"
+    ],
+    "faculty": "69947f91175b787e6bdcffce",
+    "group": "69947f92175b787e6bdd0350",
+    "semester": 4,
+    "status": "Approved",
+    "attachments": [],
+    "createdAt": "2026-02-17T14:47:46.161Z",
+    "updatedAt": "2026-02-20T18:55:26.993Z",
+    "__v": 1,
+    "hasNewUpdate": false,
+    "midTermEvaluation": {
+      "marks": 20,
+      "remarks": "",
+      "gradedBy": "69947f91175b787e6bdcffce",
+      "date": "2026-02-20T18:55:26.990Z",
+      "guide": {
+        "dataElicitation": 5,
+        "problemDefinition": 5,
+        "planning": 5
+      },
+      "panel": {
+        "literatureSurvey": 5,
+        "presentationSkills": 0,
+        "technicalUnderstanding": 0
+      }
+    },
+    "updates": [],
+    "domain": "Reinforcement Learning"
+  },
+  {
+    "_id": "69947f92175b787e6bdd03d5",
+    "title": "Minor Management System",
+    "description": "We will use Open-Source data from NASA and use ML, DL models to complete.",
+    "tags": [
+      "TBD",
+      "Minor Project"
+    ],
+    "faculty": "69947f91175b787e6bdcffce",
+    "group": "69947f92175b787e6bdd03d2",
+    "semester": 4,
+    "status": "Approved",
+    "attachments": [],
+    "createdAt": "2026-02-17T14:47:46.265Z",
+    "updatedAt": "2026-02-20T09:58:00.856Z",
+    "__v": 4,
+    "hasNewUpdate": false,
+    "updates": [
+      {
+        "title": "Where is the update?",
+        "content": "Send quickly",
+        "date": "2026-02-17T15:32:33.392Z",
+        "attachments": [],
+        "links": [],
+        "_id": "69948a11e4ec140fc25af184"
+      },
+      {
+        "title": "Here is the progress",
+        "content": "PDF is attached",
+        "date": "2026-02-17T15:35:33.294Z",
+        "attachments": [
+          "http://localhost:5000/uploads/1771342533214-554018445.pdf"
+        ],
+        "links": [],
+        "_id": "69948ac5e4ec140fc25af1b5"
+      },
+      {
+        "title": "",
+        "content": "Good",
+        "date": "2026-02-17T16:20:58.735Z",
+        "attachments": [],
+        "links": [],
+        "_id": "6994956ae4ec140fc25af1e6"
+      },
+      {
+        "title": "",
+        "content": "Give up update immediately",
+        "date": "2026-02-17T17:15:53.394Z",
+        "attachments": [],
+        "links": [],
+        "_id": "6994a249448a2f88bf228ac2"
+      }
+    ],
+    "midTermEvaluation": {
+      "marks": 21,
+      "remarks": "",
+      "gradedBy": "69947f91175b787e6bdcffce",
+      "date": "2026-02-20T09:58:00.839Z",
+      "guide": {
+        "dataElicitation": 5,
+        "problemDefinition": 5,
+        "planning": 5
+      },
+      "panel": {
+        "literatureSurvey": 3,
+        "presentationSkills": 2,
+        "technicalUnderstanding": 1
+      }
+    },
+    "domain": "Web Dev + Automation"
+  }
+]

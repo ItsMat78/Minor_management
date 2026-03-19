@@ -1,8 +1,197 @@
 import { Request, Response } from 'express';
-import Panel from '../models/Panel';
+import Panel, { IPanel } from '../models/Panel';
 import Group from '../models/Group';
 import Project from '../models/Project';
 import ExcelJS from 'exceljs';
+export const exportEvaluations = async (req: any, res: Response) => {
+    try {
+        const { batchYear, evalType } = req.query; // evalType: 'midterm' or 'full'
+
+        // Get all groups and filter by batch
+        const allGroups = await Group.find({ status: { $in: ['Approved', 'Assigned', 'Pending'] } })
+            .populate('members', 'name rollNumber branch department')
+            .populate({
+                path: 'project',
+                populate: { path: 'faculty', select: 'name email _id' }
+            })
+            .lean();
+
+        // Filter by batch if specified
+        let filteredGroups = allGroups.filter((g: any) => {
+            const gBatch = g.targetBatch ? String(g.targetBatch) : (g.members && g.members.length > 0 && g.members[0].rollNumber ? '20' + String(g.members[0].rollNumber).substring(0, 2) : 'Unknown');
+            if (batchYear && batchYear !== 'All' && gBatch !== String(batchYear)) return false;
+            return true;
+        });
+
+        // Sort groups by group number (parse g.name as integer)
+        filteredGroups.sort((a: any, b: any) => {
+            const numA = parseInt(a.name) || 0;
+            const numB = parseInt(b.name) || 0;
+            return numA - numB;
+        });
+
+        const workbook = new ExcelJS.Workbook();
+        const pSheet = workbook.addWorksheet('Evaluations');
+
+        const borderStyle: Partial<ExcelJS.Borders> = {
+            top: { style: 'thin' },
+            left: { style: 'thin' },
+            bottom: { style: 'thin' },
+            right: { style: 'thin' }
+        };
+
+        // Formatting columns
+        pSheet.columns = [
+            { width: 3 }, // Spacer
+            { width: 10 }, // Group No.
+            { width: 25 }, // Student's name
+            { width: 15 }, // Roll no.
+            { width: 15 }, // Department
+            { width: 40 }, // Title of the Project
+            { width: 25 }, // Supervisor Name
+            { width: 10 }, { width: 10 }, { width: 10 }, { width: 20 }, // Mid term (E1, E2, Guide, Avg)
+            { width: 10 }, { width: 10 }, { width: 10 }, { width: 20 }, // End term (E1, E2, Guide, Avg)
+            { width: 10 }, // Total
+            { width: 10 }  // Grade
+        ];
+
+        // Header titles (Rows 1-4)
+        pSheet.addRow([null, 'Dr. SPM International Institute of Information Technology, Naya Raipur']);
+        pSheet.addRow([null, '(A Joint Initiative of Govt. of Chhattisgarh and NTPC)']);
+        pSheet.addRow([null, 'Email: iiitnr@iiitnr.ac.in, Tel: (0771) 2474040, Web: www.iiitnr.ac.in']);
+
+        // Calculate semester string for header
+        const currentYear = new Date().getFullYear();
+        let displayBatchYear = batchYear && batchYear !== 'All' ? Number(batchYear) : currentYear;
+        const yearDiff = currentYear - displayBatchYear;
+        let semCount = yearDiff * 2 + (new Date().getMonth() >= 6 ? 1 : 0);
+        if (semCount < 1) semCount = 1;
+        const romanSems = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'];
+        const semStr = romanSems[semCount - 1] || `${semCount}th`;
+
+        pSheet.addRow([null, `MINOR PROJECT EVALUATION- B.Tech. ${semStr} SEM (Batch ${batchYear || 'All'})`]);
+
+        for (let i = 1; i <= 4; i++) {
+            pSheet.mergeCells(`B${i}:Q${i}`);
+            const cell = pSheet.getCell(`B${i}`);
+            cell.alignment = { horizontal: 'center', vertical: 'middle' };
+            if (i === 1) cell.font = { bold: true, size: 14, color: { argb: 'FF0070C0' } };
+            else if (i === 4) cell.font = { bold: true, size: 12, underline: true };
+            else cell.font = { size: 11 };
+        }
+
+        pSheet.addRow([]); // Empty Row 5
+
+        // Headers (Rows 6 & 7)
+        const headerRow1 = pSheet.addRow([
+            null, 'Group No.', 'Student\'s name', 'Roll no.', 'Department', 'Title of the Project', 'Supervisor Name',
+            'MID-TERM (15+15)', '', '', `Average Marks (30) Guide+(E1+E2)/2`,
+            'END-TERM (35+35)', '', '', 'Average Marks (70) Guide+(E1+E2)/2',
+            'Total (100)', 'Grade'
+        ]);
+
+        const headerRow2 = pSheet.addRow([
+            null, '', '', '', '', '', '',
+            'E1 (15)', 'E2 (15)', 'Guide (15)', '',
+            'E1 (35)', 'E2 (35)', 'Guide (35)', '',
+            '', ''
+        ]);
+
+        const commonFields = ['B', 'C', 'D', 'E', 'F', 'G', 'K', 'O', 'P', 'Q'];
+        commonFields.forEach(col => pSheet.mergeCells(`${col}6:${col}7`));
+        pSheet.mergeCells('H6:J6');
+        pSheet.mergeCells('L6:N6');
+
+        [headerRow1, headerRow2].forEach(row => {
+            row.font = { bold: true };
+            row.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+            row.eachCell((cell, colNumber) => {
+                if (colNumber > 1) {
+                    cell.border = borderStyle;
+                    let bgColor = 'FFED7D31'; // Default Orange
+                    if (colNumber === 11 || colNumber === 15) bgColor = 'FFFFF2CC'; // Pale yellow
+                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bgColor } };
+                }
+            });
+        });
+
+        // Grading Logic
+        const calculateGrade = (total: number) => {
+            if (total >= 90) return 'A+';
+            if (total >= 80) return 'A';
+            if (total >= 70) return 'B+';
+            if (total >= 60) return 'B';
+            if (total >= 50) return 'C+';
+            if (total >= 40) return 'C';
+            if (total > 0) return 'F';
+            return '';
+        };
+
+        // Data Population
+        filteredGroups.forEach((g: any) => {
+            const project = g.project;
+            const members = g.members || [];
+            const midEval = project?.midTermEvaluation;
+            const endEval = project?.endTermEvaluation;
+
+            // Extract Mid-term marks
+            let midE1 = '', midE2 = '', midGuide = '', midAvg = '';
+            if (midEval) {
+                midGuide = String(midEval.guide?.dataElicitation + midEval.guide?.problemDefinition + midEval.guide?.planning || 0);
+                const panelSum = (midEval.panel?.literatureSurvey || 0) + (midEval.panel?.presentationSkills || 0) + (midEval.panel?.technicalUnderstanding || 0);
+                midE1 = String(panelSum); 
+                midE2 = String(panelSum); 
+                midAvg = String(Number(midGuide) + (Number(midE1) + Number(midE2)) / 2);
+            }
+
+            // Extract End-term marks
+            let endE1 = '', endE2 = '', endGuide = '', endAvg = '';
+            if (endEval && evalType === 'full') {
+                endGuide = String((endEval.guide?.requirementSpecification || 0) + (endEval.guide?.systemDesign || 0) + (endEval.guide?.implementation || 0) + (endEval.guide?.projectManagement || 0) + (endEval.guide?.planningVsExecution || 0));
+                const panelSum = (endEval.panel?.testingAndResults || 0) + (endEval.panel?.innovationAndRelevance || 0) + (endEval.panel?.presentationAndViva || 0) + (endEval.panel?.conceptualDepth || 0);
+                endE1 = String(panelSum);
+                endE2 = String(panelSum);
+                endAvg = String(Number(endGuide) + (Number(endE1) + Number(endE2)) / 2);
+            }
+
+            const total = Number(midAvg || 0) + Number(endAvg || 0);
+            const grade = (midEval || (endEval && evalType === 'full')) ? calculateGrade(total) : '';
+
+            members.forEach((m: any, mIdx: number) => {
+                const rowData = [
+                    null,
+                    mIdx === 0 ? g.name : '',
+                    m.name || '',
+                    m.rollNumber || '',
+                    m.branch || m.department || '',
+                    mIdx === 0 ? project?.title : '',
+                    mIdx === 0 ? project?.faculty?.name : '',
+                    midE1, midE2, midGuide, midAvg,
+                    endE1, endE2, endGuide, endAvg,
+                    total > 0 ? total : '',
+                    grade
+                ];
+                const row = pSheet.addRow(rowData);
+                row.eachCell((cell, colNum) => {
+                    if (colNum > 1) {
+                        cell.border = borderStyle;
+                        cell.alignment = { horizontal: 'center', vertical: 'middle' };
+                    }
+                });
+            });
+        });
+
+        const buffer = await workbook.xlsx.writeBuffer();
+        res.set('Content-Disposition', `attachment; filename=evaluation_export_${batchYear || 'All'}_${evalType}.xlsx`);
+        res.set('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.send(buffer);
+
+    } catch (error: any) {
+        console.error(error);
+        res.status(500).json({ message: 'Error exporting evaluations', error: error.message });
+    }
+};
+
 export const createPanel = async (req: any, res: Response) => {
     try {
         const { faculty, batchYear } = req.body;
