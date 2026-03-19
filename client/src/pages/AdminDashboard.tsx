@@ -441,25 +441,6 @@ const AdminDashboard: React.FC = () => {
         return stats;
     };
 
-    const handleExportStudents = async () => {
-        if (!exportBatch || exportBatch === 'All') { alert('Please select a specific batch first.'); return; }
-        try {
-            const response = await api.get(`/users/students/export?batch=${exportBatch}`, {
-                responseType: 'blob',
-            });
-            const url = window.URL.createObjectURL(new Blob([response.data]));
-            const link = document.createElement('a');
-            link.href = url;
-            link.setAttribute('download', `students_${exportBatch}.xlsx`);
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
-        } catch (error) {
-            console.error('Export failed', error);
-            alert('Failed to export students');
-        }
-    };
-
     const handleExportPanels = async () => {
         if (!exportBatch || exportBatch === 'All') { alert('Please select a specific batch first.'); return; }
         try {
@@ -1407,38 +1388,6 @@ const AdminDashboard: React.FC = () => {
 
                                 {activeTab === 'exports' && (
                                     <div className="max-w-3xl mx-auto space-y-6">
-                                        <div className="bg-white rounded-2xl border border-neutral-200 p-6 flex items-center justify-between shadow-sm">
-                                            <div className="flex items-center gap-4">
-                                                <div className="h-12 w-12 bg-green-50 rounded-xl flex items-center justify-center text-green-600">
-                                                    <FileText className="w-6 h-6" />
-                                                </div>
-                                                <div>
-                                                    <h3 className="text-lg font-bold text-neutral-900">Student Data Export</h3>
-                                                    <p className="text-sm text-neutral-500">Export student details filtered by batch.</p>
-                                                </div>
-                                            </div>
-                                            <div className="flex items-center gap-3">
-                                                <select
-                                                    value={exportBatch}
-                                                    onChange={(e) => setExportBatch(e.target.value)}
-                                                    className="px-3 py-2 bg-neutral-50 rounded-lg border border-neutral-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-green-500/20"
-                                                >
-                                                    <option value="All">All Batches</option>
-                                                    {Array.from({ length: 7 }, (_, i) => (new Date().getFullYear() - 7) + i).map(year => (
-                                                        <option key={year} value={year.toString()}>{year}-{year + 4}</option>
-                                                    ))}
-                                                </select>
-                                                <button
-                                                    onClick={handleExportStudents}
-                                                    className="px-6 py-2 bg-neutral-900 text-white rounded-lg font-medium hover:bg-neutral-800 transition-colors flex items-center gap-2"
-                                                >
-                                                    <Download className="w-4 h-4" /> Export Excel
-                                                </button>
-                                            </div>
-                                        </div>
-
-
-
                                         <div className="bg-white rounded-2xl border border-neutral-200 p-6 flex items-center justify-between shadow-sm">
                                             <div className="flex items-center gap-4">
                                                 <div className="h-12 w-12 bg-orange-50 rounded-xl flex items-center justify-center text-orange-600">
