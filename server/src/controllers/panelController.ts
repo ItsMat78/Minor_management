@@ -83,24 +83,37 @@ export const exportEvaluations = async (req: any, res: Response) => {
         pSheet.addRow([]); // Empty Row 5
 
         // Headers (Rows 6 & 7)
-        const headerRow1 = pSheet.addRow([
+        const headerRow1Data: any[] = [
             null, 'Group No.', 'Student\'s name', 'Roll no.', 'Department', 'Title of the Project', 'Supervisor Name',
-            'MID-TERM (15+15)', '', '', `Average Marks (30) Guide+(E1+E2)/2`,
-            'END-TERM (35+35)', '', '', 'Average Marks (70) Guide+(E1+E2)/2',
-            'Total (100)', 'Grade'
-        ]);
-
-        const headerRow2 = pSheet.addRow([
+            'MID-TERM (15+15)', '', '', `Average Marks (30) Guide+(E1+E2)/2`
+        ];
+        const headerRow2Data: any[] = [
             null, '', '', '', '', '', '',
-            'E1 (15)', 'E2 (15)', 'Guide (15)', '',
-            'E1 (35)', 'E2 (35)', 'Guide (35)', '',
-            '', ''
-        ]);
+            'E1 (15)', 'E2 (15)', 'Guide (15)', ''
+        ];
 
-        const commonFields = ['B', 'C', 'D', 'E', 'F', 'G', 'K', 'O', 'P', 'Q'];
-        commonFields.forEach(col => pSheet.mergeCells(`${col}6:${col}7`));
+        if (evalType === 'full') {
+            headerRow1Data.push('END-TERM (35+35)', '', '', 'Average Marks (70) Guide+(E1+E2)/2', 'Total (100)', 'Grade');
+            headerRow2Data.push('E1 (35)', 'E2 (35)', 'Guide (35)', '', '', '');
+        }
+
+        const headerRow1 = pSheet.addRow(headerRow1Data);
+        const headerRow2 = pSheet.addRow(headerRow2Data);
+
+        // Header Merging Logic
+        const commonFields = ['B', 'C', 'D', 'E', 'F', 'G', 'K'];
+        if (evalType === 'full') {
+            commonFields.push('O', 'P', 'Q');
+        }
+        
+        commonFields.forEach(col => {
+            pSheet.mergeCells(`${col}6:${col}7`);
+        });
+
         pSheet.mergeCells('H6:J6');
-        pSheet.mergeCells('L6:N6');
+        if (evalType === 'full') {
+            pSheet.mergeCells('L6:N6');
+        }
 
         [headerRow1, headerRow2].forEach(row => {
             row.font = { bold: true };
@@ -128,7 +141,7 @@ export const exportEvaluations = async (req: any, res: Response) => {
         };
 
         // Data Population
-        filteredGroups.forEach((g: any) => {
+        filteredGroups.forEach((g: any, gIdx: number) => {
             const project = g.project;
             const members = g.members || [];
             const midEval = project?.midTermEvaluation;
@@ -154,11 +167,11 @@ export const exportEvaluations = async (req: any, res: Response) => {
                 endAvg = String(Number(endGuide) + (Number(endE1) + Number(endE2)) / 2);
             }
 
-            const total = Number(midAvg || 0) + Number(endAvg || 0);
-            const grade = (midEval || (endEval && evalType === 'full')) ? calculateGrade(total) : '';
+            const total = evalType === 'full' ? (Number(midAvg || 0) + Number(endAvg || 0)) : 0;
+            const grade = (evalType === 'full' && (midEval || endEval)) ? calculateGrade(total) : '';
 
             members.forEach((m: any, mIdx: number) => {
-                const rowData = [
+                const rowData: any[] = [
                     null,
                     mIdx === 0 ? g.name : '',
                     m.name || '',
@@ -166,16 +179,31 @@ export const exportEvaluations = async (req: any, res: Response) => {
                     m.branch || m.department || '',
                     mIdx === 0 ? project?.title : '',
                     mIdx === 0 ? project?.faculty?.name : '',
-                    midE1, midE2, midGuide, midAvg,
-                    endE1, endE2, endGuide, endAvg,
-                    total > 0 ? total : '',
-                    grade
+                    midE1, midE2, midGuide, midAvg
                 ];
+
+                if (evalType === 'full') {
+                    rowData.push(
+                        endE1, endE2, endGuide, endAvg,
+                        total > 0 ? total : '',
+                        grade
+                    );
+                }
+
                 const row = pSheet.addRow(rowData);
+                
+                // Color logic: Alternate background for each GROUP (not each row)
+                const fillColor = gIdx % 2 === 0 ? 'FFFFFFFF' : 'FFEAEAEA'; // White vs Light Grey (Darker than before)
+
                 row.eachCell((cell, colNum) => {
                     if (colNum > 1) {
                         cell.border = borderStyle;
                         cell.alignment = { horizontal: 'center', vertical: 'middle' };
+                        cell.fill = {
+                            type: 'pattern',
+                            pattern: 'solid',
+                            fgColor: { argb: fillColor }
+                        };
                     }
                 });
             });

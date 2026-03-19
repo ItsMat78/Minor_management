@@ -56,7 +56,7 @@ const AdminDashboard: React.FC = () => {
     const [filterGroupStatus, setFilterGroupStatus] = useState<string>('All'); // Added group status filter
     const [filterFaculty, setFilterFaculty] = useState<string>('All'); // Added faculty filter
     const [viewGroup, setViewGroup] = useState<any>(null); // Re-added viewGroup state
-    const [exportBatch, setExportBatch] = useState<string>('All'); // For export filtering
+    const [exportBatch, setExportBatch] = useState<string>(''); // For export filtering (Require selection)
     const [editingFaculty, setEditingFaculty] = useState<any>(null);
     const [showLimitSettings, setShowLimitSettings] = useState(false);
     const [sortOption, setSortOption] = useState<string>('Default'); // Added sort state
@@ -442,6 +442,7 @@ const AdminDashboard: React.FC = () => {
     };
 
     const handleExportStudents = async () => {
+        if (!exportBatch || exportBatch === 'All') { alert('Please select a specific batch first.'); return; }
         try {
             const response = await api.get(`/users/students/export?batch=${exportBatch}`, {
                 responseType: 'blob',
@@ -460,6 +461,7 @@ const AdminDashboard: React.FC = () => {
     };
 
     const handleExportPanels = async () => {
+        if (!exportBatch || exportBatch === 'All') { alert('Please select a specific batch first.'); return; }
         try {
             const response = await api.get(`/panels/export?batchYear=${exportBatch}`, {
                 responseType: 'blob',
@@ -478,6 +480,7 @@ const AdminDashboard: React.FC = () => {
     };
 
     const handleExportEvaluations = async (type: 'midterm' | 'full') => {
+        if (!exportBatch || exportBatch === 'All') { alert('Please select a specific batch first.'); return; }
         try {
             const response = await api.get(`/panels/export-evaluations?batchYear=${exportBatch}&evalType=${type}`, {
                 responseType: 'blob',
@@ -1246,7 +1249,7 @@ const AdminDashboard: React.FC = () => {
                                                 onClick={() => {
                                                     setEditingEvent(null);
                                                     setEventForm({
-                                                        type: 'group_formation_project_proposal',
+                                                        type: '',
                                                         endDate: '',
                                                         extensionDate: '',
                                                         batchYear: ''
@@ -1452,7 +1455,7 @@ const AdminDashboard: React.FC = () => {
                                                     onChange={(e) => setExportBatch(e.target.value)}
                                                     className="px-3 py-2 bg-neutral-50 rounded-lg border border-neutral-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-orange-500/20"
                                                 >
-                                                    <option value="All">All Batches</option>
+                                                    <option value="">Select Batch</option>
                                                     {Array.from({ length: 7 }, (_, i) => (new Date().getFullYear() - 7) + i).map(year => (
                                                         <option key={year} value={year.toString()}>{year}-{year + 4}</option>
                                                     ))}
@@ -1482,7 +1485,7 @@ const AdminDashboard: React.FC = () => {
                                                     onChange={(e) => setExportBatch(e.target.value)}
                                                     className="px-3 py-1.5 bg-neutral-50 rounded-lg border border-neutral-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                                                 >
-                                                    <option value="All">All Batches</option>
+                                                    <option value="">Select Batch</option>
                                                     {Array.from({ length: 7 }, (_, i) => (new Date().getFullYear() - 7) + i).map(year => (
                                                         <option key={year} value={year.toString()}>{year}-{year + 4}</option>
                                                     ))}
@@ -2024,16 +2027,36 @@ const AdminDashboard: React.FC = () => {
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-1.5">Event Type</label>
                                     <select value={eventForm.type} onChange={(e) => setEventForm(prev => ({ ...prev, type: e.target.value }))} className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm transition-all focus:ring-2 focus:ring-indigo-500/20">
+                                        <option value="">Select Event Type</option>
                                         <option value="group_formation_project_proposal">Group Formation & Project Proposal</option>
                                         <option value="mid_term_evaluation">Mid-Term Evaluation</option>
                                         <option value="end_term_evaluation">End-Term Evaluation</option>
                                     </select>
-                                    {eventForm.type === 'mid_term_evaluation' && events.some(ev => ev.type === 'group_formation_project_proposal' && (ev.batchYear === eventForm.batchYear || !ev.batchYear || !eventForm.batchYear) && new Date(ev.extensionDate || ev.endDate) > new Date()) && (
+                                    
+                                    {eventForm.type === 'group_formation_project_proposal' && (
+                                        <div className="mt-3 p-4 bg-red-50 border-2 border-red-200 rounded-xl animate-in fade-in slide-in-from-top-1 duration-300">
+                                            <div className="flex items-start gap-3">
+                                                <div className="h-10 w-10 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+                                                    <AlertTriangle className="w-6 h-6 text-red-600" />
+                                                </div>
+                                                <div>
+                                                    <h4 className="text-sm font-black text-red-800 uppercase tracking-wider">Critical Warning</h4>
+                                                    <p className="text-xs text-red-700 mt-1 font-bold leading-relaxed">
+                                                        Starting a new <span className="underline decoration-red-400 decoration-2">Group Formation</span> phase will eventually <span className="bg-red-200 px-1 rounded">RESET ALL EXISTING GROUPS & PANELS</span>. 
+                                                        Current groups will be archived and destroyed. This action is irreversible.
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {eventForm.type === 'mid_term_evaluation' && events.some(ev => ev.type === 'group_formation_project_proposal' && new Date(ev.extensionDate || ev.endDate) > new Date()) && (
                                         <div className="mt-2 text-[10px] text-red-500 font-bold uppercase tracking-wider flex items-center gap-1.5 animate-pulse">
                                             <AlertCircle className="w-3.5 h-3.5" /> Requirement: Group Formation phase must end first
                                         </div>
                                     )}
                                 </div>
+
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 mb-1.5">Deadline (End Date & Time)</label>
@@ -2045,15 +2068,6 @@ const AdminDashboard: React.FC = () => {
                                         {eventForm.extensionDate && (<button onClick={() => setEventForm(prev => ({ ...prev, extensionDate: '' }))} className="text-xs text-red-500 mt-1 hover:underline">Remove extension</button>)}
                                     </div>
                                 </div>
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 mb-1.5">Batch Year (Optional)</label>
-                                            <select value={eventForm.batchYear} onChange={(e) => setEventForm(prev => ({ ...prev, batchYear: e.target.value }))} className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm">
-                                                <option value="">All Batches</option>
-                                                {Array.from({ length: 7 }, (_, i) => (new Date().getFullYear() - 7) + i).map(yr => (<option key={yr} value={yr.toString()}>{yr}-{yr + 4}</option>))}
-                                            </select>
-                                        </div>
-                                    </div>
                                 <div className="mt-4 pt-4 border-t border-gray-100">
                                     <label className="block text-sm font-bold text-gray-700 mb-1.5 flex items-center gap-1.5">
                                         <Settings className="w-4 h-4 text-indigo-500" /> Admin Password
