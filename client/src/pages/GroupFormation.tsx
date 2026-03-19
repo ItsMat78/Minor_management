@@ -3,6 +3,7 @@ import api from '../utils/api';
 
 import { useNavigate } from 'react-router-dom';
 import { Users, UserPlus, CheckCircle, AlertCircle } from 'lucide-react';
+import { GlobalEventBanner } from '../components/GlobalEventBanner';
 
 const GroupFormation: React.FC = () => {
     const navigate = useNavigate();
@@ -26,9 +27,12 @@ const GroupFormation: React.FC = () => {
 
     return (
         <div className="max-w-2xl mx-auto p-6 bg-white rounded-lg shadow-md mt-10">
-            <div className="flex items-center gap-3 mb-6">
-                <Users className="w-8 h-8 text-blue-600" />
-                <h2 className="text-2xl font-bold text-gray-800">Form a Group</h2>
+            <div className="flex items-center justify-between gap-3 mb-6">
+                <div className="flex items-center gap-3">
+                    <Users className="w-8 h-8 text-blue-600" />
+                    <h2 className="text-2xl font-bold text-gray-800">Form a Group</h2>
+                </div>
+                <GlobalEventBanner />
             </div>
 
             <div className="bg-blue-50 border border-blue-200 rounded-md p-4 mb-6">

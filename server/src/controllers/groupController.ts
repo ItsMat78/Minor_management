@@ -223,3 +223,31 @@ export const updateGroup = async (req: Request, res: Response) => {
         res.status(500).json({ message: 'Server error', error });
     }
 };
+export const getNextGroupNumber = async (req: Request, res: Response) => {
+    try {
+        const { batch } = req.query;
+        if (!batch) return res.status(400).json({ message: 'Batch is required' });
+
+        const allGroups = await Group.find().populate('members', 'rollNumber');
+        const usedNumbers = new Set<number>();
+
+        allGroups.forEach(g => {
+            let gb = g.targetBatch;
+            if (!gb && g.members && g.members.length > 0 && (g.members[0] as any).rollNumber) {
+                gb = '20' + (g.members[0] as any).rollNumber.substring(0, 2);
+            }
+            if (gb === batch && g.name) {
+                const num = parseInt(g.name, 10);
+                if (!isNaN(num)) usedNumbers.add(num);
+            }
+        });
+
+        let nextNum = 1;
+        while (usedNumbers.has(nextNum)) {
+            nextNum++;
+        }
+        res.json({ nextNumber: nextNum });
+    } catch (error) {
+        res.status(500).json({ message: 'Server error', error });
+    }
+};

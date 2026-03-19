@@ -6,7 +6,7 @@ import Signup from './pages/Signup';
 import Dashboard from './pages/Dashboard';
 import GroupFormation from './pages/GroupFormation';
 import ProjectProposal from './pages/ProjectProposal';
-import MenteeGroupPage from './pages/MenteeGroupPage'; // Added import
+import MenteeGroupPage from './pages/MenteeGroupPage';
 
 import AdminDashboard from './pages/AdminDashboard';
 
@@ -36,7 +36,13 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode, adminOnly?: boolean 
   if (!user) return <Navigate to="/login" replace />;
   if (adminOnly && user.role !== 'Admin') return <Navigate to="/dashboard" replace />;
 
-  return <>{children}</>;
+  return (
+    <div className="h-screen w-full flex flex-col overflow-hidden bg-neutral-50 m-0 p-0">
+      <div className="flex-1 overflow-hidden w-full relative">
+        {children}
+      </div>
+    </div>
+  );
 };
 
 export default App;

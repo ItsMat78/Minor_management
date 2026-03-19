@@ -2,13 +2,14 @@ import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import api from '../utils/api';
-import { Layout, Users, CheckSquare, MessageSquare, Menu, Clock, Calendar, X, ChevronRight, Plus, Archive, FileText, Search, Square } from 'lucide-react';
+import { Layout, Users, CheckSquare, MessageSquare, Menu, Clock, Calendar, X, ChevronRight, Plus, Archive, FileText, Search, Square, AlertCircle, Trash2 } from 'lucide-react';
 import FilePreview from '../components/FilePreview';
 import AdminDashboard from './AdminDashboard';
 import FacultyDashboard from './FacultyDashboard';
 import Chat from '../components/Chat';
 import { motion } from 'framer-motion';
 import * as Dialog from '@radix-ui/react-dialog';
+import { GlobalEventBanner } from '../components/GlobalEventBanner';
 
 interface Group {
     _id: string;
@@ -17,6 +18,9 @@ interface Group {
     status: string;
     project?: any;
     projects?: any[];
+    targetBatch?: string;
+    inviteCode?: string;
+    groupNo?: number | string;
 }
 
 interface Student {
@@ -27,10 +31,11 @@ interface Student {
     branch: string;
     semester: number;
     isGrouped: boolean;
+    targetBatch?: string;
 }
 
 const Dashboard: React.FC = () => {
-    const { user, logout } = useAuth();
+    const { user, logout, activeEvents } = useAuth();
     const navigate = useNavigate();
     const [group, setGroup] = useState<Group | null>(null);
     const [loading, setLoading] = useState(true);
@@ -40,6 +45,12 @@ const Dashboard: React.FC = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
     const [activeTab, setActiveTab] = useState<'directory' | 'project' | 'group' | 'archive'>('directory');
+    const getBatch = (roll?: string) => {
+        if (!roll) return 'Unknown';
+        return '20' + roll.toString().substring(0, 2);
+    };
+    const myBatch = (user as any)?.targetBatch || getBatch(user?.rollNumber);
+
     const [isChatOpen, setIsChatOpen] = useState(false);
     const [filterStatus, setFilterStatus] = useState<string>('all');
     const [filterBranch, setFilterBranch] = useState<string>('all');
@@ -53,6 +64,15 @@ const Dashboard: React.FC = () => {
     const [isDropper, setIsDropper] = useState(false);
     const [targetBatch, setTargetBatch] = useState('2024');
 
+    // Confirmation State
+    const [showConfirmation, setShowConfirmation] = useState(false);
+    const [estimatedGroupNumber, setEstimatedGroupNumber] = useState<number | null>(null);
+    const [isFetchingGroupNo, setIsFetchingGroupNo] = useState(false);
+
+    useEffect(() => {
+        if (myBatch) setTargetBatch(myBatch);
+    }, [myBatch]);
+
     // Leave Group State
     const [isLeaveDialogOpen, setIsLeaveDialogOpen] = useState(false);
     const [leavePassword, setLeavePassword] = useState('');
@@ -63,6 +83,7 @@ const Dashboard: React.FC = () => {
     const [updateFiles, setUpdateFiles] = useState<FileList | null>(null);
     const [isUpdateDialogOpen, setIsUpdateDialogOpen] = useState(false);
     const [isUpdateSubmitting, setIsUpdateSubmitting] = useState(false);
+    const [selectedProject, setSelectedProject] = useState<any>(null);
 
     const fetchStudents = async () => {
         setLoadingStudents(true);
@@ -114,6 +135,22 @@ const Dashboard: React.FC = () => {
             fetchStudents();
         }
     }, [filterStatus, filterBranch]);
+
+    const handleReviewGroup = async () => {
+        setIsFetchingGroupNo(true);
+        try {
+            const batch = isDropper ? targetBatch : myBatch;
+            const res = await api.get(`/groups/next-number?batch=${batch}`);
+            setEstimatedGroupNumber(res.data.nextNumber);
+            setShowConfirmation(true);
+        } catch (error) {
+            console.error("Failed to fetch group number", error);
+            // Default to showing confirmation anyway if it fails
+            setShowConfirmation(true);
+        } finally {
+            setIsFetchingGroupNo(false);
+        }
+    };
 
     const toggleStudentSelection = (id: string) => {
         const student = students.find(s => s._id === id);
@@ -205,10 +242,17 @@ const Dashboard: React.FC = () => {
         }
     };
 
-    const filteredStudents = students.filter(student =>
-        student.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (student.rollNumber && student.rollNumber.includes(searchTerm))
-    ).sort((a, b) => (a.rollNumber || '').localeCompare(b.rollNumber || ''));
+    const filteredStudents = students.filter(student => {
+        const matchesSearch = student.name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                             student.rollNumber?.toLowerCase().includes(searchTerm.toLowerCase());
+        
+        // Trust server-side batch/cohort filtering.
+        // Client only filters locally by search and grouping status (if needed later)
+        const matchesStatus = filterStatus === 'all' || (filterStatus === 'available' ? !student.isGrouped : student.isGrouped);
+        const matchesBranch = filterBranch === 'all' || student.branch === filterBranch;
+
+        return matchesSearch && matchesStatus && matchesBranch;
+    }).sort((a, b) => (a.rollNumber || '').localeCompare(b.rollNumber || ''));
 
     if (loading) {
         return (
@@ -221,8 +265,14 @@ const Dashboard: React.FC = () => {
     if (user?.role === 'Admin') return <AdminDashboard />;
     if (user?.role === 'Faculty') return <FacultyDashboard />;
 
+    // Final Deadline Check for students without groups
+    const groupFormationEvent = activeEvents?.find(e => e.type === 'group_formation_project_proposal');
+    const isFormationActive = groupFormationEvent && new Date(groupFormationEvent.extensionDate || groupFormationEvent.endDate) > new Date();
+
+
+
     return (
-        <div className="flex h-screen bg-neutral-50 font-jakarta text-neutral-900 overflow-hidden">
+        <div className="flex h-full bg-neutral-50 font-jakarta text-neutral-900 overflow-hidden">
             {/* Sidebar */}
             <motion.aside
                 initial={{ x: -250 }}
@@ -306,12 +356,65 @@ const Dashboard: React.FC = () => {
                             </h1>
                         </div>
                     </div>
+                    <GlobalEventBanner />
                 </header>
 
                 <main className="flex-1 overflow-y-auto p-6">
                     {activeTab === 'directory' && (
                         /* Directory View */
                         <div className="max-w-5xl mx-auto space-y-6">
+                            {!group && !isFormationActive ? (
+                                <motion.div
+                                    initial={{ opacity: 0, y: 20 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    className="bg-white p-10 rounded-[2.5rem] border border-red-100 shadow-[0_30px_70px_-20px_rgba(220,38,38,0.12)] relative overflow-hidden"
+                                >
+                                    {/* Decorative background element */}
+                                    <div className="absolute top-0 right-0 w-32 h-32 bg-red-50 rounded-bl-full -mr-16 -mt-16 opacity-50" />
+                                    
+                                    <div className="w-20 h-20 bg-red-600 text-white rounded-3xl flex items-center justify-center mx-auto mb-8 shadow-xl shadow-red-200 rotate-3">
+                                        <AlertCircle className="w-10 h-10" />
+                                    </div>
+
+                                    <h1 className="text-3xl font-black text-neutral-900 mb-4 tracking-tight leading-tight uppercase text-center">
+                                        Group Formation <br />is Closed
+                                    </h1>
+                                    
+                                    <div className="h-1 w-12 bg-red-600 mx-auto mb-6 rounded-full" />
+
+                                    <p className="text-neutral-500 text-lg font-medium leading-relaxed mb-8 text-center">
+                                        The official deadline for forming or joining a group has passed. Access to the student directory is now restricted.
+                                    </p>
+
+
+
+                                    <div className="bg-red-50/50 p-6 rounded-2xl border border-red-100 text-left mb-8">
+                                        <div className="flex items-center gap-3 mb-3">
+                                            <div className="p-1.5 bg-red-100 text-red-600 rounded-lg">
+                                                <Users className="w-4 h-4" />
+                                            </div>
+                                            <span className="text-xs font-black uppercase tracking-widest text-neutral-400">Required Action</span>
+                                        </div>
+                                        <p className="text-neutral-900 font-bold text-sm leading-snug">
+                                            You are not assigned to any group. Please contact the <span className="text-red-600 underline underline-offset-4 decoration-2">Minor Project Administrator</span> immediately for manual allocation.
+                                        </p>
+                                    </div>
+
+                                    <div className="flex flex-col gap-3">
+                                        <button 
+                                            onClick={() => window.location.reload()}
+                                            className="w-full py-4 bg-neutral-900 text-white rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-neutral-800 transition-all shadow-xl shadow-neutral-200 active:scale-95 text-center"
+                                        >
+                                            Refresh Status
+                                        </button>
+                                    </div>
+                                    
+                                    <p className="mt-6 text-[11px] font-bold text-neutral-300 uppercase tracking-widest text-center">
+                                        Minor Project Management System • {new Date().getFullYear()}
+                                    </p>
+                                </motion.div>
+                            ) : (
+                                <>
                             {group && (
                                 <div className="p-4 bg-indigo-50 border border-indigo-100 rounded-xl flex items-center justify-between">
                                     <div className="flex items-center gap-3">
@@ -364,8 +467,14 @@ const Dashboard: React.FC = () => {
                                         <option value="DSAI">DSAI</option>
                                     </select>
                                 </div>
-                                {!group && (
-                                    <Dialog.Root open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                                {!group && activeEvents?.some(e => e.type === 'group_formation_project_proposal') && (
+                                    <Dialog.Root open={isDialogOpen} onOpenChange={(open) => {
+                                        setIsDialogOpen(open);
+                                        if (!open) {
+                                            setShowConfirmation(false);
+                                            setEstimatedGroupNumber(null);
+                                        }
+                                    }}>
                                         <Dialog.Trigger asChild>
                                             <button className="px-4 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition-colors shadow-sm flex items-center gap-2">
                                                 <Plus className="w-4 h-4" /> Form Group ({selectedStudents.size + 1})
@@ -375,63 +484,127 @@ const Dashboard: React.FC = () => {
                                             <Dialog.Overlay className="fixed inset-0 bg-black/50 backdrop-blur-sm data-[state=open]:animate-overlayShow" />
                                             <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md bg-white p-6 rounded-2xl shadow-xl focus:outline-none data-[state=open]:animate-contentShow">
                                                 <Dialog.Title className="text-lg font-bold mb-4">Create New Group</Dialog.Title>
-                                                <div className="space-y-4">
-                                                    <div className="text-sm text-neutral-600 mb-4">
-                                                        You are about to create a group. Your group number will be generated later upon project submission.
-                                                    </div>
-                                                    <div>
-                                                        <label className="block text-sm font-medium text-neutral-700 mb-1">Members ({selectedStudents.size + 1})</label>
-                                                        <div className="flex flex-wrap gap-2">
-                                                            <span className="px-2 py-1 bg-neutral-100 rounded text-xs text-neutral-600">You (Owner)</span>
-                                                            {Array.from(selectedStudents).map(id => {
-                                                                const s = students.find(stu => stu._id === id);
-                                                                return s ? (
-                                                                    <span key={id} className="px-2 py-1 bg-indigo-50 rounded text-xs text-indigo-700">{s.name}</span>
-                                                                ) : null;
-                                                            })}
+                                                {!showConfirmation ? (
+                                                    <>
+                                                        <div className="text-sm text-neutral-600 mb-4">
+                                                            You are about to create a group. Your group number will be generated later upon project submission.
+                                                        </div>
+                                                        <div>
+                                                            <label className="block text-sm font-medium text-neutral-700 mb-1.5">Members ({selectedStudents.size + 1})</label>
+                                                            <div className="flex flex-wrap gap-2">
+                                                                <span className="px-2 py-1 bg-neutral-100 rounded text-xs text-neutral-600 border border-neutral-200">You (Owner)</span>
+                                                                {Array.from(selectedStudents).map(id => {
+                                                                    const s = students.find(stu => stu._id === id);
+                                                                    return s ? (
+                                                                        <span key={id} className="px-2 py-1 bg-indigo-50 rounded text-xs text-indigo-700 border border-indigo-100">{s.name}</span>
+                                                                    ) : null;
+                                                                })}
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="mt-4 p-4 border border-neutral-200 rounded-xl bg-neutral-50/50">
+                                                            <label className="flex items-center gap-2 text-sm font-medium text-neutral-700 cursor-pointer">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={isDropper}
+                                                                    onChange={(e) => setIsDropper(e.target.checked)}
+                                                                    className="rounded border-neutral-300 text-indigo-600 focus:ring-indigo-500"
+                                                                />
+                                                                Is anyone in this group a dropper / re-registering?
+                                                            </label>
+                                                            {isDropper && (
+                                                                <div className="mt-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                                                                    <label className="block text-xs font-bold text-neutral-400 uppercase tracking-widest mb-1.5 ml-1">Target Evaluation Batch</label>
+                                                                    <select
+                                                                        value={targetBatch}
+                                                                        onChange={(e) => setTargetBatch(e.target.value)}
+                                                                        className="w-full px-4 py-2 bg-white border border-neutral-200 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm"
+                                                                        disabled={isFetchingGroupNo}
+                                                                    >
+                                                                        <option value="">Select Batch Year</option>
+                                                                        {Array.from({ length: 7 }, (_, i) => (new Date().getFullYear() - 7) + i).reverse().map(year => (
+                                                                            <option key={year} value={year.toString()}>Batch {year}</option>
+                                                                        ))}
+                                                                    </select>
+                                                                    <p className="mt-1.5 text-[10px] text-neutral-400 leading-relaxed ml-1">
+                                                                        Selecting a target batch ensures your group is evaluated with the correct cohort members.
+                                                                    </p>
+                                                                </div>
+                                                            )}
+                                                        </div>
+
+                                                        <div className="flex justify-end gap-3 mt-8">
+                                                            <Dialog.Close asChild>
+                                                                <button className="px-4 py-2 text-sm font-semibold text-neutral-500 hover:bg-neutral-50 rounded-lg transition-colors">Cancel</button>
+                                                            </Dialog.Close>
+                                                            <button
+                                                                onClick={handleReviewGroup}
+                                                                disabled={isFetchingGroupNo || (isDropper && !targetBatch)}
+                                                                className="px-6 py-2 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg disabled:opacity-50 shadow-lg shadow-indigo-100 flex items-center gap-2"
+                                                            >
+                                                                {isFetchingGroupNo ? (
+                                                                    <>
+                                                                        <div className="w-3 h-3 border-2 border-white/50 border-t-white rounded-full animate-spin" />
+                                                                        Calculating...
+                                                                    </>
+                                                                ) : 'Review & Form Group'}
+                                                            </button>
+                                                        </div>
+                                                    </>
+                                                ) : (
+                                                    <div className="animate-in fade-in slide-in-from-right-4 duration-500">
+                                                        <div className="bg-indigo-50/50 p-6 rounded-2xl border-2 border-dashed border-indigo-200 mb-6 text-center">
+                                                            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-400 mb-2 block">Proposed Group Identity</span>
+                                                            <div className="text-5xl font-black text-indigo-600 tracking-tighter mb-2">
+                                                                {estimatedGroupNumber ? (
+                                                                    <span>G-{estimatedGroupNumber}</span>
+                                                                ) : 'G-??'}
+                                                            </div>
+                                                            <p className="text-xs font-bold text-indigo-400 uppercase tracking-widest">Batch {isDropper ? targetBatch : myBatch}</p>
+                                                        </div>
+
+                                                        <div className="space-y-4 mb-8">
+                                                            <div className="flex items-center justify-between p-3 bg-neutral-50 rounded-xl border border-neutral-100">
+                                                                <span className="text-xs font-bold text-neutral-400 uppercase">Team Size</span>
+                                                                <span className="text-sm font-black text-neutral-900">{selectedStudents.size + 1} Students</span>
+                                                            </div>
+                                                            <div className="p-4 bg-neutral-900 rounded-2xl text-white">
+                                                                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-500 mb-3 block">Confirmed Members</span>
+                                                                <div className="space-y-2">
+                                                                    <div className="flex items-center gap-2">
+                                                                        <div className="w-1.5 h-1.5 rounded-full bg-indigo-400" />
+                                                                        <span className="text-sm font-bold truncate">{user?.name} (You)</span>
+                                                                    </div>
+                                                                    {Array.from(selectedStudents).map(id => {
+                                                                        const s = students.find(stu => stu._id === id);
+                                                                        return s ? (
+                                                                            <div key={id} className="flex items-center gap-2 opacity-80">
+                                                                                <div className="w-1.5 h-1.5 rounded-full bg-neutral-600" />
+                                                                                <span className="text-sm font-medium truncate">{s.name}</span>
+                                                                            </div>
+                                                                        ) : null;
+                                                                    })}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="flex items-center gap-4">
+                                                            <button 
+                                                                onClick={() => setShowConfirmation(false)}
+                                                                className="flex-1 px-4 py-3 text-sm font-bold text-neutral-500 hover:text-neutral-900 transition-colors uppercase tracking-widest"
+                                                            >
+                                                                Back
+                                                            </button>
+                                                            <button 
+                                                                onClick={handleCreateGroup}
+                                                                disabled={creatingGroup}
+                                                                className="flex-[2] py-4 bg-indigo-600 text-white rounded-2xl font-black text-sm uppercase tracking-[0.1em] hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100 active:scale-95 disabled:opacity-50"
+                                                            >
+                                                                {creatingGroup ? 'Creating...' : 'Confirm & Create'}
+                                                            </button>
                                                         </div>
                                                     </div>
-
-                                                    <div className="mt-4 p-4 border border-neutral-200 rounded-lg bg-neutral-50/50">
-                                                        <label className="flex items-center gap-2 text-sm font-medium text-neutral-700 cursor-pointer">
-                                                            <input
-                                                                type="checkbox"
-                                                                checked={isDropper}
-                                                                onChange={(e) => setIsDropper(e.target.checked)}
-                                                                className="rounded border-neutral-300 text-indigo-600 focus:ring-indigo-500"
-                                                            />
-                                                            Is anyone in this group a dropper / re-registering?
-                                                        </label>
-                                                        {isDropper && (
-                                                            <div className="mt-3">
-                                                                <label className="block text-xs font-medium text-neutral-600 mb-1">Select Expected Batch Year (e.g. 2024)</label>
-                                                                <select
-                                                                    value={targetBatch}
-                                                                    onChange={(e) => setTargetBatch(e.target.value)}
-                                                                    className="w-full px-3 py-2 rounded-lg border border-neutral-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                                                                >
-                                                                    <option value="2023">2023</option>
-                                                                    <option value="2024">2024</option>
-                                                                    <option value="2025">2025</option>
-                                                                    <option value="2026">2026</option>
-                                                                </select>
-                                                            </div>
-                                                        )}
-                                                    </div>
-
-                                                    <div className="flex justify-end gap-3 mt-6">
-                                                        <Dialog.Close asChild>
-                                                            <button className="px-4 py-2 text-sm font-medium text-neutral-600 hover:bg-neutral-50 rounded-lg">Cancel</button>
-                                                        </Dialog.Close>
-                                                        <button
-                                                            onClick={handleCreateGroup}
-                                                            disabled={creatingGroup}
-                                                            className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg disabled:opacity-50"
-                                                        >
-                                                            {creatingGroup ? 'Creating...' : 'Create Group'}
-                                                        </button>
-                                                    </div>
-                                                </div>
+                                                )}
                                             </Dialog.Content>
                                         </Dialog.Portal>
                                     </Dialog.Root>
@@ -491,8 +664,13 @@ const Dashboard: React.FC = () => {
                                                                 </button>
                                                             )}
                                                         </td>
-                                                        <td className="px-6 py-4 font-mono text-neutral-600">{student.rollNumber}</td>
-                                                        <td className="px-6 py-4 font-medium text-neutral-900">
+                                                        <td className={`px-6 py-4 font-mono ${student.targetBatch && student.targetBatch !== getBatch(student.rollNumber) ? 'text-red-600 font-bold' : 'text-neutral-600'}`}>
+                                                            {student.rollNumber}
+                                                            {student.targetBatch && student.targetBatch !== getBatch(student.rollNumber) && (
+                                                                <span className="ml-2 text-[10px] bg-red-50 px-1.5 py-0.5 rounded border border-red-100 uppercase tracking-tighter shadow-sm w-fit font-bold">Dropper</span>
+                                                            )}
+                                                        </td>
+                                                        <td className={`px-6 py-4 font-medium ${student.targetBatch && student.targetBatch !== getBatch(student.rollNumber) ? 'text-red-700' : 'text-neutral-900'}`}>
                                                             {student.name} {isMe && <span className="ml-2 text-xs text-neutral-400">(You)</span>}
                                                         </td>
                                                         <td className="px-6 py-4 text-neutral-500">{student.branch || '-'}</td>
@@ -513,8 +691,10 @@ const Dashboard: React.FC = () => {
                                     </tbody>
                                 </table>
                             </div>
-                        </div>
+                        </>
                     )}
+                </div>
+            )}
 
                     {activeTab === 'project' && (
                         /* Project View */
@@ -533,329 +713,473 @@ const Dashboard: React.FC = () => {
                                         Go to Directory
                                     </button>
                                 </div>
-                            ) : !group.project ? (
+                            ) : (!group.project && (!group.projects || group.projects.length === 0)) ? (
                                 <div className="text-center py-20">
                                     <div className="w-16 h-16 bg-neutral-100 rounded-full flex items-center justify-center mx-auto mb-4 text-neutral-400">
                                         <FileText className="w-8 h-8" />
                                     </div>
                                     <h3 className="text-xl font-bold text-neutral-900">No Project Proposal</h3>
                                     <p className="text-neutral-500 mt-2">Your group hasn't submitted a project proposal yet.</p>
-                                    <button
-                                        onClick={() => navigate('/project/propose')}
-                                        className="mt-6 px-6 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 shadow-sm"
-                                    >
-                                        Create Proposal
-                                    </button>
+                                    {activeEvents?.some((e: any) => e.type === 'group_formation_project_proposal') ? (
+                                        <button
+                                            onClick={() => navigate('/project/propose')}
+                                            className="mt-6 px-6 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 shadow-sm"
+                                        >
+                                            Create Proposal
+                                        </button>
+                                    ) : (
+                                        <p className="mt-6 px-4 py-2 bg-neutral-100 text-neutral-600 rounded-lg inline-block text-sm font-medium">Project proposal submission is currently closed.</p>
+                                    )}
                                 </div>
-                            ) : (
-                                <div className="grid grid-cols-1 xl:grid-cols-4 gap-8">
-                                    {/* Main Content: 3 Cols */}
-                                    {/* Main Content: 3 Cols */}
-                                    <div className="xl:col-span-3 space-y-6">
-
-
-
-                                        {/* Project List */}
-                                        {(group.projects || (group.project ? [group.project] : [])).map((project: any) => (
-                                            <div key={project._id} className="space-y-6">
-                                                {/* Project Status Stats */}
-                                                <div className="bg-white p-8 rounded-2xl border border-neutral-100 shadow-xl shadow-neutral-100/50">
-                                                    <div className="flex justify-between items-start mb-6">
-                                                        <div>
-                                                            <div className="flex items-center gap-3">
-                                                                <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold tracking-wide uppercase ${project.status === 'Approved' ? 'bg-emerald-100 text-emerald-700' :
-                                                                    project.status === 'Rejected' ? 'bg-red-100 text-red-700' :
-                                                                        project.status === 'Archived' ? 'bg-gray-100 text-gray-700' :
-                                                                            'bg-indigo-100 text-indigo-700'
-                                                                    }`}>
-                                                                    <span className={`w-1.5 h-1.5 rounded-full ${project.status === 'Approved' ? 'bg-emerald-500' :
-                                                                        project.status === 'Rejected' ? 'bg-red-500' :
-                                                                            project.status === 'Archived' ? 'bg-gray-500' :
-                                                                                'bg-indigo-500'
-                                                                        }`} />
-                                                                    {project.status}
-                                                                </span>
-                                                                {project.semester && (
-                                                                    <span className="text-xs font-medium text-neutral-500 bg-neutral-100 px-2 py-0.5 rounded">
-                                                                        Semester {project.semester}
-                                                                    </span>
-                                                                )}
-                                                                {/* Show Faculty Name if available */}
-                                                                {project.faculty && (
-                                                                    <span className="text-xs font-medium text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100 flex items-center gap-1">
-                                                                        <Users className="w-3 h-3" /> {project.faculty.name || 'Faculty'}
-                                                                    </span>
-                                                                )}
-                                                            </div>
-                                                            <h3 className="text-2xl font-bold text-neutral-900 mt-3 capitalize">{project.title}</h3>
-                                                            <p className="text-neutral-500 mt-2 leading-relaxed max-w-2xl text-sm">{project.description}</p>
-                                                        </div>
-
-                                                        {(project.status === 'Rejected' || project.status === 'Draft' || project.status === 'Pending') && (
-                                                            <div className="flex gap-2">
-                                                                {(project.status === 'Rejected' || project.status === 'Draft' || project.status === 'Pending') && (
-                                                                    <button
-                                                                        onClick={() => navigate(`/project/propose?edit=${project._id}`)}
-                                                                        className="text-sm border border-neutral-200 text-neutral-600 px-4 py-2 rounded-lg hover:bg-neutral-50 font-medium transition-colors"
-                                                                    >
-                                                                        Edit
-                                                                    </button>
-                                                                )}
-                                                                {(project.status === 'Pending' || project.status === 'Draft') && (
-                                                                    <button
-                                                                        onClick={async () => {
-                                                                            if (confirm('Are you sure you want to delete this proposal?')) {
-                                                                                try {
-                                                                                    await api.delete(`/projects/${project._id}`);
-                                                                                    window.location.reload();
-                                                                                } catch (error) {
-                                                                                    alert('Failed to delete proposal');
-                                                                                }
-                                                                            }
-                                                                        }}
-                                                                        className="text-sm border border-red-200 text-red-600 px-4 py-2 rounded-lg hover:bg-red-50 font-medium transition-colors"
-                                                                    >
-                                                                        Delete
-                                                                    </button>
-                                                                )}
-                                                            </div>
-                                                        )}
-                                                    </div>
-
-                                                    {project.tags && project.tags.length > 0 && (
-                                                        <div className="flex flex-wrap gap-2 mb-6">
-                                                            {project.tags.map((tag: string, i: number) => (
-                                                                <span key={i} className="px-3 py-1 bg-neutral-50 text-neutral-600 rounded-md text-xs font-medium border border-neutral-100">
-                                                                    {tag}
-                                                                </span>
-                                                            ))}
-                                                        </div>
-                                                    )}
-
-                                                    {/* Attachments Section */}
-                                                    {project.attachments && project.attachments.length > 0 && (
-                                                        <div className="mb-6">
-                                                            <h5 className="text-sm font-semibold text-neutral-700 mb-2 flex items-center gap-2">
-                                                                <FileText className="w-4 h-4" /> Attachments
-                                                            </h5>
-                                                            <div className="flex flex-wrap gap-2">
-                                                                {project.attachments.map((url: string, index: number) => (
-                                                                    <FilePreview key={index} url={url} description={`Attachment ${index + 1}`} />
-                                                                ))}
-                                                            </div>
-                                                        </div>
-                                                    )}
-
-                                                    {project.feedback && (
-                                                        <div className="p-4 bg-orange-50 border border-orange-100 rounded-xl">
-                                                            <h5 className="text-sm font-semibold text-orange-800 mb-1 flex items-center gap-2">
-                                                                <MessageSquare className="w-4 h-4" /> Faculty Feedback
-                                                            </h5>
-                                                            <p className="text-sm text-orange-700">{project.feedback}</p>
-                                                        </div>
-                                                    )}
-                                                </div>
-
-                                                {/* Timeline Updates (Only show if this is the ACTIVE project or has specific updates?) 
-                                           Usually timeline is for the APPROVED project. 
-                                           But maybe we want to see updates for any? 
-                                           Lets show updates for this specific project card.
-                                        */}
-                                                {project.status === 'Approved' && (
+                            ) : (() => {
+                                const allGroupProjects = (group.projects || (group.project ? [group.project] : [])) as any[];
+                                const approvedProject = allGroupProjects.find(p => p.status === 'Approved');
+                                
+                                return (
+                                    <div className={`grid grid-cols-1 ${approvedProject ? 'xl:grid-cols-4' : 'xl:grid-cols-1'} gap-8`}>
+                                        {/* Main Content */}
+                                        <div className={`${approvedProject ? 'xl:col-span-3' : 'xl:col-span-1'} space-y-6`}>
+                                            {/* Project Tabs & Logic */}
+                                            {(() => {
+                                                if (approvedProject) {
+                                                    return (
                                                     <div className="space-y-6">
-                                                        <div className="flex items-center justify-between">
-                                                            <h3 className="text-lg font-bold text-neutral-900 flex items-center gap-2">
-                                                                <Clock className="w-5 h-5 text-indigo-600" /> Project Timeline
-                                                            </h3>
-                                                            <button
-                                                                onClick={() => setIsUpdateDialogOpen(true)}
-                                                                className="text-sm font-medium text-indigo-600 hover:text-indigo-700 flex items-center gap-1 bg-indigo-50 px-3 py-1.5 rounded-lg hover:bg-indigo-100 transition-colors"
-                                                            >
-                                                                <Plus className="w-4 h-4" /> New Update
-                                                            </button>
-                                                        </div>
-
-                                                        <div className="relative pl-4">
-                                                            {/* Vertical Line */}
-                                                            <div className="absolute left-6 top-6 bottom-6 w-0.5 bg-neutral-200/60" />
-
-                                                            {project.updates && project.updates.slice().reverse().map((update: any, i: number) => (
-                                                                <div key={i} className="relative pl-12 pb-8 group">
-                                                                    {/* Dot */}
-                                                                    <div className="absolute left-[20px] top-6 w-3 h-3 rounded-full bg-white border-2 border-indigo-600 ring-4 ring-neutral-50 z-10" />
-
-                                                                    <div className="bg-white p-5 rounded-xl border border-neutral-200 shadow-sm hover:shadow-md transition-shadow">
-                                                                        <div className="flex justify-between items-start mb-2">
-                                                                            <div>
-                                                                                {update.title && <h4 className="font-bold text-neutral-900">{update.title}</h4>}
-                                                                                <span className="text-xs text-neutral-400 flex items-center gap-1 mt-1">
-                                                                                    <Calendar className="w-3 h-3" />
-                                                                                    {new Date(update.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
-                                                                                    <span className="mx-1">•</span>
-                                                                                    {new Date(update.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                                                                </span>
-                                                                            </div>
-                                                                        </div>
-
-                                                                        <p className="text-sm text-neutral-600 mb-4 whitespace-pre-wrap leading-relaxed">
-                                                                            {update.content}
-                                                                        </p>
-
-                                                                        {/* Attachments & Links */}
-                                                                        {(update.links?.length > 0 || update.attachments?.length > 0) && (
-                                                                            <div className="flex flex-wrap gap-2 pt-3 border-t border-neutral-100 mt-2">
-                                                                                {update.links?.map((link: string, lIdx: number) => (
-                                                                                    <a key={`l-${lIdx}`} href={link} target="_blank" rel="noopener noreferrer"
-                                                                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-neutral-50 text-indigo-600 text-xs font-medium rounded-lg hover:bg-indigo-50 border border-neutral-200 hover:border-indigo-200 transition-colors">
-                                                                                        <FileText className="w-3 h-3" /> Link {lIdx + 1}
-                                                                                    </a>
-                                                                                ))}
-                                                                                {update.attachments?.map((url: string, aIdx: number) => (
-                                                                                    <FilePreview key={`a-${aIdx}`} url={url} description={`Attachment ${aIdx + 1}`} />
-                                                                                ))}
-                                                                            </div>
+                                                        {/* Project Status Stats */}
+                                                        <div className="bg-white p-8 rounded-2xl border border-neutral-100 shadow-xl shadow-neutral-100/50">
+                                                            <div className="flex justify-between items-start mb-6">
+                                                                <div>
+                                                                    <div className="flex items-center gap-3">
+                                                                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold tracking-wide uppercase bg-emerald-100 text-emerald-700">
+                                                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                                                            Active Project
+                                                                        </span>
+                                                                        {approvedProject.semester && (
+                                                                            <span className="text-xs font-medium text-neutral-500 bg-neutral-100 px-2 py-0.5 rounded">
+                                                                                Semester {approvedProject.semester}
+                                                                            </span>
+                                                                        )}
+                                                                        {approvedProject.faculty && (
+                                                                            <span className="text-xs font-medium text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100 flex items-center gap-1">
+                                                                                <Users className="w-3 h-3" /> {approvedProject.faculty.name || 'Faculty'}
+                                                                            </span>
                                                                         )}
                                                                     </div>
+                                                                    <h3 className="text-2xl font-bold text-neutral-900 mt-3 capitalize">{approvedProject.title}</h3>
+                                                                    <p className="text-neutral-500 mt-2 leading-relaxed max-w-2xl text-sm">{approvedProject.description}</p>
                                                                 </div>
-                                                            ))}
+                                                            </div>
 
-                                                            {(!project.updates || project.updates.length === 0) && (
-                                                                <div className="text-center py-12 ml-6 bg-white border border-dashed border-neutral-200 rounded-xl">
-                                                                    <div className="w-12 h-12 bg-neutral-50 rounded-full flex items-center justify-center mx-auto mb-3 text-neutral-400">
-                                                                        <Clock className="w-6 h-6" />
+                                                            {approvedProject.tags && approvedProject.tags.length > 0 && (
+                                                                <div className="flex flex-wrap gap-2 mb-6">
+                                                                    {approvedProject.tags.map((tag: string, i: number) => (
+                                                                        <span key={i} className="px-3 py-1 bg-neutral-50 text-neutral-600 rounded-md text-xs font-medium border border-neutral-100">
+                                                                            {tag}
+                                                                        </span>
+                                                                    ))}
+                                                                </div>
+                                                            )}
+
+                                                            {approvedProject.attachments && approvedProject.attachments.length > 0 && (
+                                                                <div className="mb-6">
+                                                                    <h5 className="text-sm font-semibold text-neutral-700 mb-2 flex items-center gap-2">
+                                                                        <FileText className="w-4 h-4" /> Attachments
+                                                                    </h5>
+                                                                    <div className="flex flex-wrap gap-2">
+                                                                        {approvedProject.attachments.map((url: string, index: number) => (
+                                                                            <FilePreview key={index} url={url} description={`Attachment ${index + 1}`} />
+                                                                        ))}
                                                                     </div>
-                                                                    <p className="text-neutral-500 font-medium">No updates posted yet.</p>
-                                                                    <p className="text-xs text-neutral-400 mt-1">Share your first progress update using the button above.</p>
                                                                 </div>
                                                             )}
                                                         </div>
+
+                                                        {/* Timeline Updates */}
+                                                        <div className="space-y-6">
+                                                            <div className="flex items-center justify-between">
+                                                                <h3 className="text-lg font-bold text-neutral-900 flex items-center gap-2">
+                                                                    <Clock className="w-5 h-5 text-indigo-600" /> Project Timeline
+                                                                </h3>
+                                                                <button
+                                                                    onClick={() => setIsUpdateDialogOpen(true)}
+                                                                    className="text-sm font-medium text-indigo-600 hover:text-indigo-700 flex items-center gap-1 bg-indigo-50 px-3 py-1.5 rounded-lg hover:bg-indigo-100 transition-colors"
+                                                                >
+                                                                    <Plus className="w-4 h-4" /> New Update
+                                                                </button>
+                                                            </div>
+
+                                                            <div className="relative pl-4">
+                                                                <div className="absolute left-6 top-6 bottom-6 w-0.5 bg-neutral-200/60" />
+
+                                                                {approvedProject.updates && approvedProject.updates.slice().reverse().map((update: any, i: number) => (
+                                                                    <div key={i} className="relative pl-12 pb-8 group">
+                                                                        <div className="absolute left-[20px] top-6 w-3 h-3 rounded-full bg-white border-2 border-indigo-600 ring-4 ring-neutral-50 z-10" />
+                                                                        <div className="bg-white p-5 rounded-xl border border-neutral-200 shadow-sm hover:shadow-md transition-shadow">
+                                                                            <div className="flex justify-between items-start mb-2">
+                                                                                <div>
+                                                                                    {update.title && <h4 className="font-bold text-neutral-900">{update.title}</h4>}
+                                                                                    <span className="text-xs text-neutral-400 flex items-center gap-1 mt-1">
+                                                                                        <Calendar className="w-3 h-3" />
+                                                                                        {new Date(update.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                                                                                    </span>
+                                                                                </div>
+                                                                            </div>
+                                                                            <p className="text-sm text-neutral-600 mb-4 whitespace-pre-wrap leading-relaxed">
+                                                                                {update.content}
+                                                                            </p>
+                                                                            {(update.links?.length > 0 || update.attachments?.length > 0) && (
+                                                                                <div className="flex flex-wrap gap-2 pt-3 border-t border-neutral-100 mt-2">
+                                                                                    {update.links?.map((link: string, lIdx: number) => (
+                                                                                        <a key={`l-${lIdx}`} href={link} target="_blank" rel="noopener noreferrer"
+                                                                                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-neutral-50 text-indigo-600 text-xs font-medium rounded-lg hover:bg-indigo-50 border border-neutral-200 hover:border-indigo-200 transition-colors">
+                                                                                            <FileText className="w-3 h-3" /> Link {lIdx + 1}
+                                                                                        </a>
+                                                                                    ))}
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
+                                                                ))}
+
+                                                                {(!approvedProject.updates || approvedProject.updates.length === 0) && (
+                                                                    <div className="text-center py-12 ml-6 bg-white border border-dashed border-neutral-200 rounded-xl">
+                                                                        <div className="w-12 h-12 bg-neutral-50 rounded-full flex items-center justify-center mx-auto mb-3 text-neutral-400">
+                                                                            <Clock className="w-6 h-6" />
+                                                                        </div>
+                                                                        <p className="text-neutral-500 font-medium">No updates posted yet.</p>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
                                                     </div>
-                                                )}
-                                            </div>
-                                        ))}
+                                                );
+                                            } else {
+                                                // PROPOSAL PHASE: Show Cards
+                                                return (
+                                                    <div className="space-y-8">
+                                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-3xl border border-indigo-100 shadow-sm shadow-indigo-500/5">
+                                                            <div>
+                                                                <h3 className="text-xl font-bold text-neutral-900">Project Proposals</h3>
+                                                                <p className="text-sm text-neutral-500 mt-1">Manage your drafts and sent proposals</p>
+                                                            </div>
+                                                            <button
+                                                                onClick={() => {
+                                                                    if (allGroupProjects.filter(p => p.status !== 'Rejected' && p.status !== 'Archived').length > 0) {
+                                                                        setIsProposalWarningOpen(true);
+                                                                    } else {
+                                                                        navigate('/project/propose');
+                                                                    }
+                                                                }}
+                                                                className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 active:scale-95 flex items-center gap-2 w-fit"
+                                                            >
+                                                                <Plus className="w-5 h-5" />
+                                                                Create New Proposal
+                                                            </button>
+                                                        </div>
+
+                                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                                                            {allGroupProjects.filter(p => !['Archived', 'Rejected'].includes(p.status)).map((project: any) => (
+                                                                <div key={project._id} className="group bg-white rounded-3xl border border-neutral-200 shadow-sm hover:shadow-xl hover:shadow-indigo-500/10 transition-all flex flex-col overflow-hidden relative aspect-square">
+                                                                    {/* Accent Top Bar */}
+                                                                    <div className={`h-1.5 w-full bg-indigo-600`} />
+                                                                    
+                                                                    <div className="p-8 flex-1 flex flex-col justify-between overflow-hidden">
+                                                                        <div>
+                                                                            {/* Top Status & Semester */}
+                                                                            <div className="flex justify-between items-center mb-6">
+                                                                                <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 ${project.status === 'Draft' ? 'bg-neutral-100 text-neutral-500' : 'bg-indigo-50 text-indigo-700'}`}>
+                                                                                    <Clock className="w-3 h-3" />
+                                                                                    {project.status === 'Draft' ? 'DRAFT • SAVED' : 'SENT • PENDING'}
+                                                                                </span>
+                                                                                <span className="px-2 py-1 bg-neutral-100 text-neutral-500 rounded text-[10px] font-bold">
+                                                                                    Sem {project.semester || '4'}
+                                                                                </span>
+                                                                            </div>
+
+                                                                            {/* Project Title */}
+                                                                            <h4 className="text-xl font-bold text-neutral-900 leading-tight mb-3 group-hover:text-indigo-600 transition-colors line-clamp-2">
+                                                                                {project.title || 'Untitled Project Idea'}
+                                                                            </h4>
+
+                                                                            {/* Description */}
+                                                                            <p className="text-sm text-neutral-500 line-clamp-2 mb-4 leading-relaxed">
+                                                                                {project.description || 'No description provided.'}
+                                                                            </p>
+
+                                                                            {/* Tag Badges */}
+                                                                            <div className="flex flex-wrap gap-1.5 mb-4">
+                                                                                {(project.tags || []).slice(0, 2).map((tag: string, i: number) => (
+                                                                                    <span key={i} className="px-2 py-0.5 bg-neutral-50 text-neutral-500 text-[10px] rounded border border-neutral-100 font-bold uppercase">
+                                                                                        {tag}
+                                                                                    </span>
+                                                                                ))}
+                                                                                {project.status === 'Draft' && (
+                                                                                    <span className="px-2 py-0.5 bg-amber-50 text-amber-600 text-[10px] rounded border border-amber-100 font-bold uppercase">
+                                                                                        Draft
+                                                                                    </span>
+                                                                                )}
+                                                                            </div>
+                                                                        </div>                                                                        {/* Footer Card */}
+                                                                        <div className="pt-4 border-t border-neutral-100 flex items-center justify-between mt-4">
+                                                                            <span className="text-[11px] text-neutral-400 font-bold">
+                                                                                {new Date(project.updatedAt || project.createdAt).toLocaleDateString()}
+                                                                            </span>
+                                                                            <div className="flex items-center gap-3">
+                                                                                <button 
+                                                                                    onClick={async (e) => {
+                                                                                        e.stopPropagation();
+                                                                                        if (confirm('Permanently delete this proposal?')) {
+                                                                                            try {
+                                                                                                await api.delete(`/projects/${project._id}`);
+                                                                                                window.location.reload();
+                                                                                            } catch (e) { alert('Delete failed'); }
+                                                                                        }
+                                                                                    }}
+                                                                                    className="p-2 text-neutral-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                                                                                    title="Delete Draft"
+                                                                                >
+                                                                                    <Trash2 className="w-4 h-4" />
+                                                                                </button>
+                                                                                <button 
+                                                                                     onClick={() => {
+                                                                                         if (project.status === 'Draft') {
+                                                                                             navigate(`/project/propose?edit=${project._id}`);
+                                                                                         } else {
+                                                                                             setSelectedProject(project);
+                                                                                         }
+                                                                                     }}
+                                                                                     className="text-[12px] font-black text-indigo-600 flex items-center gap-1 hover:translate-x-1 transition-transform"
+                                                                                 >
+                                                                                    {project.status === 'Draft' ? 'Finish' : 'View Details'} <ChevronRight className="w-4 h-4" />
+                                                                                 </button>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+
+                                                        {allGroupProjects.filter(p => p.status === 'Rejected').length > 0 && (
+                                                            <div className="space-y-4">
+                                                                <h4 className="text-sm font-bold text-neutral-400 uppercase tracking-[0.2em] ml-2">Rejected Proposals</h4>
+                                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 opacity-60 hover:opacity-100 transition-opacity">
+                                                                    {allGroupProjects.filter(p => p.status === 'Rejected').map((project: any) => (
+                                                                        <div key={project._id} className="bg-white p-6 rounded-3xl border border-red-100">
+                                                                            <span className="px-2 py-0.5 bg-red-100 text-red-600 text-[9px] font-black uppercase rounded mb-3 inline-block">Rejected</span>
+                                                                            <h4 className="font-bold text-neutral-900 mb-1">{project.title}</h4>
+                                                                            <p className="text-xs text-neutral-500 line-clamp-1 mb-3">{project.feedback}</p>
+                                                                            <button onClick={() => navigate(`/project/propose?edit=${project._id}`)} className="text-[10px] font-black text-indigo-600 uppercase tracking-widest hover:underline">Revise Proposal</button>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            }
+                                        })()}
                                     </div>
 
                                     {/* Sticky Sidebar: Team & Mentor & Help */}
-                                    <div className="xl:col-span-1 space-y-6">
-                                        <div className="sticky top-6 space-y-6">
-                                            {/* Team Members */}
-                                            <div className="bg-white p-6 rounded-2xl border border-neutral-200 shadow-sm relative">
-                                                <h4 className="font-bold text-neutral-900 mb-4 flex items-center gap-2">
-                                                    <Users className="w-4 h-4 text-indigo-600" /> Team Members
-                                                </h4>
-                                                <div className="space-y-3">
-                                                    {group.members.map((m: any) => (
-                                                        <div key={m._id} className="flex items-center gap-3 p-2 hover:bg-neutral-50 rounded-lg transition-colors cursor-default">
-                                                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center text-xs font-bold shadow-sm shrink-0">
-                                                                {m.name.charAt(0)}
+                                    {approvedProject && (
+                                        <div className="xl:col-span-1 space-y-6">
+                                            <div className="sticky top-6 space-y-6">
+                                                {/* Team Members */}
+                                                <div className="bg-white p-6 rounded-2xl border border-neutral-200 shadow-sm relative">
+                                                    <h4 className="font-bold text-neutral-900 mb-4 flex items-center gap-2">
+                                                        <Users className="w-4 h-4 text-indigo-600" /> Team Members
+                                                    </h4>
+                                                    <div className="space-y-3">
+                                                        {group.members.map((m: any) => (
+                                                            <div key={m._id} className="flex items-center gap-3 p-2 hover:bg-neutral-50 rounded-lg transition-colors cursor-default">
+                                                                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center text-xs font-bold shadow-sm shrink-0">
+                                                                    {m.name.charAt(0)}
+                                                                </div>
+                                                                <div className="overflow-hidden flex-1">
+                                                                    <p className="text-sm font-medium text-neutral-900 truncate">{m.name}</p>
+                                                                    <p className="text-xs text-neutral-500 truncate">{m.email}</p>
+                                                                </div>
                                                             </div>
-                                                            <div className="overflow-hidden flex-1">
-                                                                <p className="text-sm font-medium text-neutral-900 truncate">{m.name}</p>
-                                                                <p className="text-xs text-neutral-500 truncate">{m.email}</p>
+                                                        ))}
+                                                    </div>
+                                                </div>
+
+                                                {/* Mentor */}
+                                                <div className="bg-white p-6 rounded-2xl border border-neutral-200 shadow-sm relative">
+                                                    <h4 className="font-bold text-neutral-900 mb-4 text-sm flex items-center gap-2">
+                                                        <Users className="w-4 h-4 text-orange-600" /> Faculty Mentor
+                                                    </h4>
+                                                    {approvedProject.faculty ? (
+                                                        <div className="flex items-center gap-3 p-2 bg-orange-50/50 rounded-lg border border-orange-100 mb-4">
+                                                            <div className="w-8 h-8 rounded-full bg-orange-100 text-orange-700 flex items-center justify-center font-bold text-xs">
+                                                                {approvedProject.faculty.name?.charAt(0) || 'F'}
+                                                            </div>
+                                                            <div>
+                                                                <p className="text-sm font-medium text-neutral-900">{approvedProject.faculty.name || 'Assigned Faculty'}</p>
+                                                                <p className="text-xs text-neutral-500">{approvedProject.faculty.department || 'Department'}</p>
                                                             </div>
                                                         </div>
-                                                    ))}
+                                                    ) : (
+                                                        <div className="p-3 bg-neutral-50 rounded-lg border border-dashed border-neutral-200 text-center mb-4">
+                                                            <p className="text-xs text-neutral-500">No mentor assigned yet.</p>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             </div>
-
-                                            {/* Mentor */}
-                                            <div className="bg-white p-6 rounded-2xl border border-neutral-200 shadow-sm relative">
-                                                <h4 className="font-bold text-neutral-900 mb-4 text-sm flex items-center gap-2">
-                                                    <Users className="w-4 h-4 text-orange-600" /> Faculty Mentor
-                                                </h4>
-                                                {group.projects?.some((p: any) => p.faculty) ? (
-                                                    <div className="flex items-center gap-3 p-2 bg-orange-50/50 rounded-lg border border-orange-100 mb-4">
-                                                        <div className="w-8 h-8 rounded-full bg-orange-100 text-orange-700 flex items-center justify-center font-bold text-xs">
-                                                            {group.projects.find((p: any) => p.faculty)?.faculty?.name?.charAt(0) || 'F'}
-                                                        </div>
-                                                        <div>
-                                                            <p className="text-sm font-medium text-neutral-900">{group.projects.find((p: any) => p.faculty)?.faculty?.name || 'Assigned Faculty'}</p>
-                                                            <p className="text-xs text-neutral-500">{group.projects.find((p: any) => p.faculty)?.faculty?.department || 'Department'}</p>
-                                                        </div>
-                                                    </div>
-                                                ) : (
-                                                    <div className="p-3 bg-neutral-50 rounded-lg border border-dashed border-neutral-200 text-center mb-4">
-                                                        <p className="text-xs text-neutral-500">No mentor assigned yet.</p>
-                                                    </div>
-                                                )}
-
-                                                {/* Create New Proposal Button */}
-                                                {!group.projects?.some((p: any) => p.status === 'Approved') && (
-                                                    <button
-                                                        onClick={() => setIsProposalWarningOpen(true)}
-                                                        className="w-full flex items-center justify-start gap-3 px-4 py-3 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200 text-left"
-                                                    >
-                                                        <div className="p-1.5 bg-indigo-500/30 rounded-lg shrink-0">
-                                                            <Plus className="w-5 h-5" />
-                                                        </div>
-                                                        <span className="text-sm leading-snug">
-                                                            {group.projects?.some((p: any) => p.faculty)
-                                                                ? <>Create another proposal<br />under <span className="font-bold">{group.projects.find((p: any) => p.faculty)?.faculty?.name?.split(' ')[0]}</span>?</>
-                                                                : "Create New Proposal"
-                                                            }
-                                                        </span>
-                                                    </button>
-                                                )}
-                                            </div>
                                         </div>
-                                    </div>
+                                    )}
                                 </div>
-                            )}
-                        </div>
-                    )}
+                            );
+                        })()}
+                    </div>
+                )}
 
                     {activeTab === 'group' && (
-                        /* My Group View */
-                        <div className="max-w-5xl mx-auto space-y-6">
+                        /* My Group View - Revamped */
+                        <div className="max-w-6xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
                             {group ? (
-                                <div className="space-y-8">
-                                    <div className="bg-white p-6 rounded-xl border border-neutral-200 shadow-sm">
-                                        <div className="flex justify-between items-start">
-                                            <div>
-                                                <h2 className="text-2xl font-bold text-neutral-900">{group.name}</h2>
-                                                <p className="text-neutral-500 mt-1 text-sm">Group ID: <span className="font-mono bg-neutral-100 px-1 rounded">{group._id}</span></p>
-                                                <div className="flex items-center gap-2 mt-4">
-                                                    <span className="px-2 py-1 bg-indigo-50 text-indigo-700 text-xs rounded font-medium">
-                                                        Status: {group.status}
-                                                    </span>
-                                                    {group.project?.semester && (
-                                                        <span className="px-2 py-1 bg-neutral-100 text-neutral-600 text-xs rounded font-medium border border-neutral-200">
-                                                            Semester {group.project.semester}
+                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                                    {/* Left Column: Team & Details */}
+                                    <div className="lg:col-span-2 space-y-8">
+                                        {/* Hero Group Card */}
+                                        <div className="relative overflow-hidden bg-white p-8 rounded-3xl border border-neutral-200 shadow-sm">
+                                            <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-50 rounded-bl-[100px] -z-0 opacity-50" />
+                                            <div className="relative z-10">
+                                                <div className="flex items-start justify-between">
+                                                    <div>
+                                                        <h1 className="text-4xl font-black text-neutral-900 tracking-tight mb-2">
+                                                            G-{group.name}
+                                                        </h1>
+                                                        <div className="flex items-center gap-2 text-neutral-500 font-medium font-mono text-sm bg-neutral-50 px-3 py-1.5 rounded-full w-fit border border-neutral-100">
+                                                            <span className="opacity-50 text-[10px] font-bold uppercase tracking-widest">Team ID</span>
+                                                            {group._id}
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex flex-col items-end gap-2 text-right">
+                                                        <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-[0.2em] shadow-sm ring-1 ring-inset ${
+                                                            group.status === 'Approved' 
+                                                                ? 'bg-emerald-50 text-emerald-700 ring-emerald-600/20' 
+                                                                : (group.projects?.length && group.projects?.length > 0)
+                                                                    ? 'bg-indigo-50 text-indigo-700 ring-indigo-600/20'
+                                                                    : 'bg-amber-50 text-amber-700 ring-amber-600/20'
+                                                        }`}>
+                                                            {group.status === 'Approved' 
+                                                                ? 'Project Approved' 
+                                                                : (group.projects?.length && group.projects?.length > 0)
+                                                                    ? 'Group Formed • Proposal Submitted'
+                                                                    : 'Group Formed • Proposal Not Created'}
                                                         </span>
-                                                    )}
-                                                    <span className="text-neutral-400 text-sm">•</span>
-                                                    <span className="text-neutral-500 text-sm">{group.members.length} Members</span>
+                                                        {(!group.projects || group.projects.length === 0) && group.status !== 'Approved' && (
+                                                            <span className="text-[10px] font-bold text-amber-500 animate-pulse">Action Required: Create a Proposal</span>
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                <div className="grid grid-cols-2 gap-8 mt-8 pt-8 border-t border-neutral-100">
+                                                    <div>
+                                                        <p className="text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-1">Target Evaluation Batch</p>
+                                                        <p className="text-xl font-black text-neutral-900">Batch {group.targetBatch || getBatch(group.members[0]?.rollNumber)}</p>
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-1">Team Composition</p>
+                                                        <p className="text-xl font-black text-neutral-900">{group.members.length} / 3 Members</p>
+                                                    </div>
                                                 </div>
                                             </div>
-                                            <button
-                                                onClick={() => setIsLeaveDialogOpen(true)}
-                                                className="text-sm text-red-600 hover:text-red-700 font-medium px-4 py-2 rounded-lg hover:bg-red-50 transition-colors border border-red-200 bg-white"
-                                            >
-                                                Leave Group
-                                            </button>
                                         </div>
 
-                                        <div className="mt-8">
-                                            <h3 className="text-lg font-bold text-neutral-900 mb-4">Group Members</h3>
+                                        {/* Members Grid */}
+                                        <div>
+                                            <h3 className="text-sm font-black text-neutral-400 uppercase tracking-[0.2em] mb-4 ml-1">Team Roster</h3>
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                                 {group.members.map((m: any) => (
-                                                    <div key={m._id} className="flex items-center gap-4 p-4 bg-white border border-neutral-200 rounded-xl hover:border-indigo-200 transition-colors">
-                                                        <div className="w-12 h-12 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-lg font-bold shrink-0">
-                                                            {m.name.charAt(0)}
-                                                        </div>
-                                                        <div>
-                                                            <p className="font-bold text-neutral-900">{m.name}</p>
-                                                            <p className="text-sm text-neutral-500">{m.email}</p>
-                                                            <p className="text-xs text-neutral-400 mt-0.5">{m.rollNumber || 'No Roll No'}</p>
+                                                    <div key={m._id} className="group relative bg-white p-5 rounded-3xl border border-neutral-200 hover:border-indigo-500 hover:shadow-xl hover:shadow-indigo-500/10 transition-all duration-300">
+                                                        <div className="flex items-center gap-4">
+                                                            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center text-xl font-black shadow-lg shadow-indigo-200 transition-transform group-hover:scale-110">
+                                                                {m.name.charAt(0)}
+                                                            </div>
+                                                            <div className="flex-1 min-w-0">
+                                                                <div className="flex items-center gap-2 mb-1">
+                                                                    <p className="font-black text-neutral-900 truncate">{m.name}</p>
+                                                                    <span className="shrink-0 text-[9px] font-black bg-neutral-900 text-white px-2 py-0.5 rounded-full uppercase tracking-widest">
+                                                                        {m.branch || 'GEN'}
+                                                                    </span>
+                                                                    {(getBatch(m.rollNumber) !== (group.targetBatch || getBatch(group.members[0]?.rollNumber))) && (
+                                                                        <span className="shrink-0 text-[9px] font-black bg-red-100 text-red-600 px-2 py-0.5 rounded-full uppercase tracking-widest animate-pulse border border-red-200">
+                                                                            Dropper
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                                <p className="text-xs text-neutral-500 truncate mb-1">{m.email}</p>
+                                                                <p className="text-[10px] font-bold font-mono text-neutral-400">{m.rollNumber}</p>
+                                                            </div>
                                                         </div>
                                                     </div>
                                                 ))}
                                             </div>
                                         </div>
                                     </div>
+
+                                    {/* Right Column: Actions & Warnings */}
+                                    <div className="space-y-6">
+                                        {/* Leave Management */}
+                                        <div className="bg-white p-6 rounded-3xl border border-neutral-200 shadow-sm">
+                                            <h4 className="text-xs font-black text-neutral-400 uppercase tracking-widest mb-4">Team Management</h4>
+                                            <p className="text-xs text-neutral-500 mb-6 leading-relaxed">
+                                                Leaving the group will remove your access to the current project and materials. 
+                                                If you are the last member, the group will be dissolved.
+                                            </p>
+                                            
+                                            <button
+                                                onClick={() => setIsLeaveDialogOpen(true)}
+                                                disabled={!activeEvents?.some(e => e.type === 'group_formation_project_proposal' && new Date(e.extensionDate || e.endDate) > new Date())}
+                                                className={`w-full py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${
+                                                    activeEvents?.some(e => e.type === 'group_formation_project_proposal' && new Date(e.extensionDate || e.endDate) > new Date())
+                                                        ? 'bg-red-50 text-red-600 hover:bg-red-600 hover:text-white border-2 border-red-100 hover:border-red-600'
+                                                        : 'bg-neutral-50 text-neutral-400 border-2 border-neutral-100 cursor-not-allowed'
+                                                }`}
+                                            >
+                                                Leave Group
+                                            </button>
+                                        </div>
+
+                                        {/* Pro-tip Card */}
+                                        <div className="bg-neutral-900 p-6 rounded-3xl text-white relative overflow-hidden">
+                                            <div className="absolute -top-4 -right-4 w-24 h-24 bg-white/10 rounded-full blur-2xl" />
+                                            <h4 className="text-[10px] font-bold text-neutral-500 uppercase tracking-[0.2em] mb-3">Group Status</h4>
+                                            <div className="space-y-4">
+                                                <div className="flex gap-3">
+                                                    <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 mt-1.5 shrink-0" />
+                                                    <div className="flex-1">
+                                                        <p className="text-xs text-neutral-300 leading-relaxed font-bold">
+                                                            Team Status: <span className="text-white underline decoration-indigo-400 underline-offset-4">
+                                                                {group.status === 'Approved' ? 'Approved' : (group.projects?.length && group.projects?.length > 0 ? 'Submitted' : 'Drafting')}
+                                                            </span>
+                                                        </p>
+                                                        <p className="text-[10px] text-neutral-500 mt-1">
+                                                            {group.status === 'Approved' 
+                                                                ? 'Your project has been accepted by a mentor.' 
+                                                                : (group.projects?.length && group.projects?.length > 0)
+                                                                    ? 'Your proposal is waiting for faculty review.'
+                                                                    : 'Your team is formed but no proposal has been created.'}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                                <div className="flex gap-3">
+                                                    <div className="w-1.5 h-1.5 rounded-full bg-neutral-700 mt-1.5 shrink-0" />
+                                                    <p className="text-xs text-neutral-400 leading-relaxed">Ensure all members have verified their emails to receive system notifications.</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
                             ) : (
-                                <div className="text-center py-20">We couldn't find your group information.</div>
+                                <div className="text-center py-32 bg-white rounded-3xl border border-dashed border-neutral-200">
+                                    <div className="w-16 h-16 bg-neutral-50 rounded-full flex items-center justify-center mx-auto mb-4 text-neutral-300">
+                                        <Users className="w-8 h-8" />
+                                    </div>
+                                    <h2 className="text-xl font-bold text-neutral-900">No Group Found</h2>
+                                    <p className="text-neutral-500 mt-1 max-w-xs mx-auto">It seems you aren't part of any group yet or something went wrong while fetching data.</p>
+                                </div>
                             )}
                         </div>
                     )}
@@ -1044,6 +1368,102 @@ const Dashboard: React.FC = () => {
                                 className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg"
                             >
                                 Proceed
+                            </button>
+                        </div>
+                    </Dialog.Content>
+                </Dialog.Portal>
+            </Dialog.Root>
+
+            {/* Project Details Modal for Sent Projects */}
+            <Dialog.Root open={!!selectedProject} onOpenChange={(open) => !open && setSelectedProject(null)}>
+                <Dialog.Portal>
+                    <Dialog.Overlay className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[60]" />
+                    <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-2xl bg-white rounded-3xl shadow-2xl z-[70] overflow-hidden max-h-[90vh] flex flex-col focus:outline-none border border-neutral-100 font-jakarta">
+                        <div className="flex items-center justify-between p-6 border-b border-neutral-100 bg-neutral-50/50 shrink-0">
+                            <div className="flex items-center gap-4">
+                                <div className="p-3 bg-indigo-600 rounded-2xl text-white shadow-lg shadow-indigo-200">
+                                    <FileText className="w-6 h-6" />
+                                </div>
+                                <div>
+                                    <Dialog.Title className="text-xl font-bold text-neutral-900 leading-none mb-1">
+                                        {selectedProject?.title}
+                                    </Dialog.Title>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-xs font-bold text-indigo-600 uppercase tracking-widest bg-indigo-50 px-2 py-0.5 rounded">G-{group?.name || 'TBD'}</span>
+                                        <span className="text-[10px] text-neutral-400 font-medium">• Submitted {new Date(selectedProject?.createdAt || Date.now()).toLocaleDateString()}</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <Dialog.Close className="p-2 rounded-full hover:bg-neutral-100 transition-colors">
+                                <X className="w-5 h-5 text-neutral-500" />
+                            </Dialog.Close>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto p-8 space-y-8">
+                            <div>
+                                <h4 className="text-xs font-black text-neutral-400 uppercase tracking-widest mb-4">Project Overview</h4>
+                                <p className="text-neutral-700 leading-relaxed text-sm whitespace-pre-wrap">
+                                    {selectedProject?.description || "No description provided."}
+                                </p>
+                            </div>
+
+                            {selectedProject?.tags && selectedProject.tags.length > 0 && (
+                                <div>
+                                    <h4 className="text-xs font-black text-neutral-400 uppercase tracking-widest mb-3">Technologies & Focus</h4>
+                                    <div className="flex flex-wrap gap-2">
+                                        {selectedProject.tags.map((tag: string, i: number) => (
+                                            <span key={i} className="px-3 py-1 bg-neutral-50 border border-neutral-200 text-neutral-600 rounded-lg text-xs font-bold transition-colors hover:border-indigo-300">
+                                                {tag}
+                                            </span>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            <div>
+                                <h4 className="flex items-center gap-2 text-xs font-black text-neutral-400 uppercase tracking-widest mb-4">Project Assets</h4>
+                                {selectedProject?.attachments && selectedProject.attachments.length > 0 ? (
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                        {selectedProject.attachments.map((url: string, i: number) => {
+                                            const fileName = url.split('/').pop()?.split('-').pop() || `File ${i + 1}`;
+                                            const isLink = url.startsWith('http') && !url.includes('/uploads/');
+                                            return (
+                                                <a key={i} href={url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 p-3 bg-white border border-neutral-200 rounded-2xl hover:border-indigo-500 group transition-all shadow-sm">
+                                                    <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg group-hover:bg-indigo-600 group-hover:text-white transition-colors border border-indigo-100">
+                                                        {isLink ? <Layout className="w-4 h-4" /> : <FileText className="w-4 h-4" />}
+                                                    </div>
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="text-xs font-bold text-neutral-900 truncate">{isLink ? "Web Link" : fileName}</p>
+                                                        <p className="text-[9px] text-neutral-400 font-bold uppercase tracking-widest leading-none mt-0.5">{isLink ? "External Resource" : "Document Asset"}</p>
+                                                    </div>
+                                                </a>
+                                            );
+                                        })}
+                                    </div>
+                                ) : (
+                                    <div className="p-8 border-2 border-dashed border-neutral-200 rounded-3xl text-center bg-neutral-50/30">
+                                        <p className="text-xs text-neutral-400 font-medium">No attachments provided.</p>
+                                    </div>
+                                )}
+                            </div>
+
+                            {selectedProject?.feedback && (
+                                <div className="p-5 bg-amber-50 rounded-2xl border border-amber-100 shadow-sm">
+                                    <h4 className="text-xs font-black text-amber-600 uppercase tracking-widest mb-3 flex items-center gap-2">
+                                        <AlertCircle className="w-4 h-4" /> Faculty Feedback & Remarks
+                                    </h4>
+                                    <p className="text-xs text-amber-700 leading-relaxed font-medium bg-white/50 p-3 rounded-xl border border-amber-200/50">{selectedProject.feedback}</p>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="p-6 border-t border-neutral-100 bg-neutral-50 flex items-center justify-between shrink-0">
+                            <div className="flex items-center gap-2">
+                                <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+                                <span className="text-[10px] text-neutral-400 font-black uppercase tracking-widest">Read Only Mode — Integrity Protected</span>
+                            </div>
+                            <button onClick={() => setSelectedProject(null)} className="px-8 py-2.5 bg-neutral-900 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-black transition-all shadow-lg active:scale-95">
+                                Close
                             </button>
                         </div>
                     </Dialog.Content>

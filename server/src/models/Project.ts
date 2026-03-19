@@ -7,7 +7,7 @@ export interface IProject extends Document {
     faculty: mongoose.Types.ObjectId; // User ID
     group: mongoose.Types.ObjectId; // Group ID
     semester?: number;
-    status: 'Draft' | 'Pending' | 'Approved' | 'Rejected' | 'Archived';
+    status: 'Draft' | 'Pending' | 'Approved' | 'Rejected';
     attachments?: string[]; // URLs
     feedback?: string;
     createdAt: Date;
@@ -75,7 +75,7 @@ const ProjectSchema: Schema = new Schema({
     faculty: { type: Schema.Types.ObjectId, ref: 'User' }, // Optional now
     group: { type: Schema.Types.ObjectId, ref: 'Group', required: true },
     semester: { type: Number },
-    status: { type: String, enum: ['Draft', 'Pending', 'Approved', 'Rejected', 'Archived'], default: 'Draft' },
+    status: { type: String, enum: ['Draft', 'Pending', 'Approved', 'Rejected'], default: 'Draft' },
     attachments: [{ type: String }],
     feedback: { type: String },
     updates: [{

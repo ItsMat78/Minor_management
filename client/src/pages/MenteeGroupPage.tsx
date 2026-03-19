@@ -6,14 +6,15 @@ import { motion } from 'framer-motion';
 
 import {
     Clock, Users, FileText, Link as LinkIcon,
-    MessageSquare, Settings, LogOut, Menu, X, Plus, ChevronRight
+    MessageSquare, Settings, LogOut, Menu, X, Plus, ChevronRight, Layout, GraduationCap, Medal
 } from 'lucide-react';
 import FilePreview from '../components/FilePreview';
+import { GlobalEventBanner } from '../components/GlobalEventBanner';
 
 const MenteeGroupPage: React.FC = () => {
     const { groupId } = useParams<{ groupId: string }>();
     const navigate = useNavigate();
-    const { user, logout } = useAuth();
+    const { user, logout, activeEvents } = useAuth();
     const [group, setGroup] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -105,7 +106,7 @@ const MenteeGroupPage: React.FC = () => {
     );
 
     return (
-        <div className="flex h-screen bg-gray-50 font-jakarta text-neutral-900 overflow-hidden">
+        <div className="flex h-full bg-gray-50 font-jakarta text-neutral-900 overflow-hidden">
             {/* Sidebar */}
             <motion.aside
                 initial={{ x: -250 }}
@@ -125,6 +126,12 @@ const MenteeGroupPage: React.FC = () => {
                 </div>
                 <nav className="flex-1 p-4 space-y-2">
                     <SidebarItem
+                        icon={<Layout className="w-5 h-5" />}
+                        label="Student Directory"
+                        active={false}
+                        onClick={() => navigate('/dashboard?tab=directory')}
+                    />
+                    <SidebarItem
                         icon={<FileText className="w-5 h-5" />}
                         label="Project Proposals"
                         active={false}
@@ -142,6 +149,28 @@ const MenteeGroupPage: React.FC = () => {
                         active={false}
                         onClick={() => navigate('/dashboard?tab=profile')}
                     />
+
+                    {(activeEvents?.some(e => e.type === 'mid_term_evaluation') || activeEvents?.some(e => e.type === 'end_term_evaluation')) && (
+                        <div className="pt-4 border-t border-neutral-100 mt-4">
+                            <p className="px-4 text-xs font-bold text-neutral-400 uppercase tracking-wider mb-2">Evaluations</p>
+                            {activeEvents?.some(e => e.type === 'mid_term_evaluation') && (
+                                <SidebarItem
+                                    icon={<GraduationCap className="w-5 h-5" />}
+                                    label="Mid-Term Eval"
+                                    active={false}
+                                    onClick={() => navigate('/dashboard?tab=mid-term')}
+                                />
+                            )}
+                            {activeEvents?.some(e => e.type === 'end_term_evaluation') && (
+                                <SidebarItem
+                                    icon={<Medal className="w-5 h-5" />}
+                                    label="End-Term Eval"
+                                    active={false}
+                                    onClick={() => navigate('/dashboard?tab=end-term')}
+                                />
+                            )}
+                        </div>
+                    )}
                 </nav>
                 <div className="p-4 border-t border-neutral-100">
                     <div className="flex items-center gap-3 mb-4">
@@ -190,6 +219,7 @@ const MenteeGroupPage: React.FC = () => {
                             )}
                         </div>
                     </div>
+                    <GlobalEventBanner />
                 </header>
 
                 <main className="flex-1 overflow-y-auto p-8">

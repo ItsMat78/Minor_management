@@ -1,0 +1,147 @@
+--- Page 1 ---
+..
+Dr. Shyama Prasad Mukherjee International
+Institute of Information Technology, Naya
+Raipur
+Date:
+IIITNR Minor Project
+Management Portal
+Streamlining the Project Lifecycle for Students, Faculty, and Administrators.
+Supervisor: Dr. Vinay Kumar
+Date: 12/03/2026
+International Institute of Information Technology, Naya Raipur
+Shreyash Rai (241020269)
+Praveen Bajpai (241010254)
+Vinit Yadav (241010286)
+--- Page 2 ---
+Core Objective
+11/03/26 <number> International Institute of Information Technology, Naya Raipur
+A centralized web application built to automate group formation, project
+proposals, evaluations, and administrative oversight at IIIT-Naya Raipur.
+Currently, managing minor projects across different branches (CSE, ECE, DSAI)
+involves a lot of manual coordination—forming groups, assigning faculty
+guides, tracking proposals, and conducting evaluations.
+Our portal solves this by providing a unified, role-based platform. Whether you
+are a student looking to form a cross-branch team, a faculty member managing
+multiple project groups, or an admin overseeing deadlines and limits, our
+application digitalizes and automates the entire workflow from semester start
+to final grading.
+--- Page 3 ---
+Technology Stack & Core Architecture
+11/03/26 <number> International Institute of Information Technology, Naya Raipur
+Frontend (User Interface):
+React.js + TypeScript (Built with Vite for fast performance)
+Radix-UI (For accessible, clean, and minimalist components)
+Backend (Server & Logic):
+Node.js with Express.js
+Database (Data Storage):
+MongoDB (Storing Users, Groups, Projects, Proposals, and Evaluations)
+Key Integrations:
+Authentication: Passwordless Email OTP (Institute emails only: @iiitnr.edu.in)
+Real-time Features: Socket.io (For in-app chat, notifications, and progress updates)
+--- Page 4 ---
+Student Experience & Group Formation
+11/03/26 <number> International Institute of Information Technology, Naya Raipur
+The Student Journey (Flowchart/Steps):
+Onboarding: Secure login via Institute Email (auto-detects
+branch/details).
+Dashboard: Personalized view of deadlines and current
+status.
+Group Formation:
+Search for batchmates by name, roll number, or branch.
+Cross-branch teams are fully supported (up to 3
+members).
+Surplus Pool: Visibility of students without groups to ensure
+everyone finds a team.
+Key Features:
+Reversible groups (ability to dissolve a group before a
+proposal is approved).
+--- Page 5 ---
+Project Proposal & Mentor Allocation
+11/03/26 <number> International Institute of Information Technology, Naya Raipur
+The Proposal Process (Step-by-Step):
+Drafting: Group inputs Title, Objectives, Tags, & optional Attachments
+(e.g., PDFs).
+Faculty Selection: Browse available faculty showing their current load
+(e.g., "5/7 groups").
+Submission: Instant notification sent to the selected faculty member.
+Faculty Dashboard & Review:
+Review: Faculty views proposal details and group member profiles.
+Action Flow:
+✅ Approve (1-click approval).
+❌ Reject (Mandatory feedback required).
+Capacity Controls:
+Strict limits enforced (Max 21 students or 7 groups per faculty).
+--- Page 6 ---
+Administrative Controls & Global Oversight
+11/03/26 <number> International Institute of Information Technology, Naya Raipur
+Key Benefits (The Impact):
+Time-Saving: Replaces messy email threads with a single, centralized workflow.
+Transparency: Clear visibility into faculty availability, project status, and deadlines.
+Fairness: Enforces equitable faculty loads across departments.
+Future Scope (What happens next):
+Integrations: Connecting with the institute's primary LMS and Google Calendar for
+seamless scheduling.
+External Tools: Adding hooks for Plagiarism checkers or native GitHub integration for
+software projects.
+Scalability: Multi-semester archiving to track project history over years.
+--- Page 7 ---
+Database description
+11/03/26 International Institute of Information Technology, Naya Raipur <number>
+Collection (Table) Primary Purpose Key Fields Stored Why It’s Crucial for the System
+Users
+Authentication &
+Identity Management
+email (Institute only), role
+(Student/Faculty/Admin), profile details
+(Name, Branch, Roll No.)
+Acts as the single source of truth for Role￾Based Access Control (RBAC) and
+determines which dashboard the user
+sees.
+Groups
+Managing Student
+Teams
+group_id, members (Array of max 3
+User IDs), status (Pending/Locked),
+project_ref
+Enforces the "max 3 students" rule and
+enables the "Surplus Students" feature by
+quickly identifying students without a
+group.
+Projects & Proposals
+Project Tracking &
+Faculty Matching
+title, objective, tags, faculty_guide_ref
+(Faculty User ID), status, group_ref
+Enforces faculty limits. The system queries
+this to ensure a faculty member stays
+under the strict 7 group / 21 student cap
+before allowing new approvals.
+Evaluations
+Grading &
+Administrative
+Oversight
+project_ref, student_ref, marks
+(Numerical scores based on rubrics),
+evaluation_type (Mid/End term)
+Separates raw scores from final grades,
+allowing admins to apply Grading Methods
+(Absolute, Relative, Manual) before
+officially releasing results.
+Messages &
+Notifications
+Real-Time
+Communication Layer
+trigger_event (e.g., Deadline
+approaching), chat_logs, payload_data,
+timestamps
+Tied directly to Socket.io to push instant
+alerts and chat updates to users without
+requiring a page refresh.
+--- Page 8 ---
+..
+Thank You
+Dr. Shyama Prasad Mukherjee International
+Institute of Information Technology, Naya
+Raipur
+11/03/26 <number> International Institute of Information Technology, Naya Raipur

@@ -14,6 +14,7 @@ export interface IUser extends Document {
     branch?: string;
     rollNumber?: string; // For students
     semester?: number; // For students
+    targetBatch?: string; // For students (override batch)
     isVerified: boolean;
     department?: string; // For faculty
     expertise?: string[]; // For faculty
@@ -37,6 +38,7 @@ const UserSchema: Schema = new Schema({
     branch: { type: String },
     rollNumber: { type: String },
     semester: { type: Number },
+    targetBatch: { type: String },
     isVerified: { type: Boolean, default: false },
     department: { type: String },
     expertise: [{ type: String }],

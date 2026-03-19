@@ -6,6 +6,7 @@ import { Send, X, Check, ArrowRight } from 'lucide-react';
 import FilePreview from '../components/FilePreview';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
+// import { GlobalEventBanner } from '../components/GlobalEventBanner';
 
 interface Faculty {
     _id: string;
@@ -58,13 +59,13 @@ const ProjectProposal: React.FC = () => {
                 const existingProjectWithFaculty = projects.find((p: any) => p.faculty && (!editId || p._id !== editId));
 
                 if (existingProjectWithFaculty) {
-                    const fid = existingProjectWithFaculty.faculty._id || existingProjectWithFaculty.faculty;
+                    const fid = existingProjectWithFaculty.faculty?._id || existingProjectWithFaculty.faculty;
                     setLockedFacultyId(fid);
-                    // If creating new proposal, auto-select
                     if (!editId) {
                         setFormData(prev => ({ ...prev, facultyId: fid }));
                     }
                 }
+
 
                 if (editId) {
                     const p = projects.find((proj: any) => proj._id === editId);
@@ -188,19 +189,29 @@ const ProjectProposal: React.FC = () => {
     };
 
     return (
-        <div className="min-h-screen bg-gray-50 flex items-center justify-center font-jakarta p-4">
-            <div className="w-full max-w-2xl bg-white rounded-2xl shadow-xl overflow-hidden">
-                <div className="bg-indigo-600 px-8 py-6 flex justify-between items-center text-white">
-                    <div>
-                        <h2 className="text-2xl font-bold">{projectId ? 'Edit Project Proposal' : 'New Project Proposal'}</h2>
-                        <p className="text-indigo-200 text-sm">Step {step} of 2</p>
+        <>
+            <div className="fixed inset-0 bg-neutral-900/5 backdrop-blur-sm flex items-center justify-center font-jakarta p-4 z-10 overflow-hidden">
+
+            <motion.div 
+                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                className="w-full max-w-2xl h-full max-h-[90vh] bg-white rounded-3xl shadow-2xl flex flex-col overflow-hidden border border-neutral-100"
+            >
+                <div className="bg-indigo-600 px-8 py-5 flex justify-between items-center text-white shrink-0">
+
+                    <div className="flex items-center gap-6">
+                        <div>
+                            <h2 className="text-2xl font-bold">{projectId ? 'Edit Project Proposal' : 'New Project Proposal'}</h2>
+                            <p className="text-indigo-200 text-sm">Step {step} of 2</p>
+                        </div>
                     </div>
                     <button onClick={() => navigate('/')} className="p-2 bg-indigo-500 rounded-full hover:bg-indigo-400">
                         <X className="w-5 h-5" />
                     </button>
                 </div>
 
-                <div className="p-8">
+                <div className="flex-1 overflow-y-auto scroll-smooth custom-scrollbar">
+                    <div className="p-8">
                     {error && (
                         <div className="mb-6 p-4 bg-red-50 text-red-600 border border-red-100 rounded-lg text-sm flex items-center gap-2">
                             <span className="font-bold">Error:</span> {error}
@@ -401,13 +412,23 @@ const ProjectProposal: React.FC = () => {
                             )}
 
                             {step < 2 ? (
-                                <button
-                                    type="button"
-                                    onClick={nextStep}
-                                    className="px-6 py-3 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 shadow-lg shadow-indigo-200 flex items-center gap-2"
-                                >
-                                    Next Step <ArrowRight className="w-4 h-4" />
-                                </button>
+                                <div className="flex gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={(e) => handleSubmit(e, true)}
+                                        disabled={loading}
+                                        className="px-6 py-3 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 transition-colors"
+                                    >
+                                        Save as Draft
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={nextStep}
+                                        className="px-6 py-3 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 shadow-lg shadow-indigo-200 flex items-center gap-2"
+                                    >
+                                        Next Step <ArrowRight className="w-4 h-4" />
+                                    </button>
+                                </div>
                             ) : (
                                 <div className="flex gap-3">
                                     <button
@@ -432,7 +453,11 @@ const ProjectProposal: React.FC = () => {
                     </form>
                 </div>
             </div>
-        </div>
+        </motion.div>
+    </div>
+
+
+        </>
     );
 };
 

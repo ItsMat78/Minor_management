@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
-import { Search, Users, Clock, CheckCircle, FileText, X, LogOut, ChevronRight, ChevronDown, ChevronUp, Settings, Menu, Calendar, Download, AlertCircle, Save, Pencil, LayoutGrid, MoreVertical } from 'lucide-react';
+import { Search, Users, Clock, CheckCircle, FileText, X, LogOut, ChevronDown, ChevronUp, Settings, Menu, Calendar, Download, AlertCircle, AlertTriangle, Save, Pencil, LayoutGrid, MoreVertical, Plus, Trash2, Edit3 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import MenteeGroupDetails from '../components/MenteeGroupDetails';
 import AutoCreatePanelsModal from '../components/AutoCreatePanelsModal';
+import { GlobalEventBanner } from '../components/GlobalEventBanner';
 
 export const getGroupBatchYear = (group: any) => {
     if (group.targetBatch) return group.targetBatch.toString();
@@ -12,6 +13,11 @@ export const getGroupBatchYear = (group: any) => {
         return '20' + group.members[0].rollNumber.substring(0, 2);
     }
     return 'Unknown';
+};
+
+export const getBatch = (roll?: string) => {
+    if (!roll) return 'Unknown';
+    return '20' + roll.toString().substring(0, 2);
 };
 
 export const getOriginalGroupBatchYear = (group: any) => {
@@ -56,13 +62,29 @@ const AdminDashboard: React.FC = () => {
     const [sortOption, setSortOption] = useState<string>('Default'); // Added sort state
     const [collapsedPanelsBatches, setCollapsedPanelsBatches] = useState<Record<string, boolean>>({});
     const [configBatchGroup, setConfigBatchGroup] = useState<any>(null); // For configure batch modal
+    const [configStudentBatch, setConfigStudentBatch] = useState<any>(null); // For student batch override modal
     const [configBatchMenuOpen, setConfigBatchMenuOpen] = useState<string | null>(null); // To toggle menu per row
+    const [studentBatchMenuOpen, setStudentBatchMenuOpen] = useState<string | null>(null); // To toggle student menu per row
     const [expandedPanelGroups, setExpandedPanelGroups] = useState<Record<string, boolean>>({});
 
     // Limits State
     const [globalMaxStudents, setGlobalMaxStudents] = useState<number>(21);
     const [globalMaxGroups, setGlobalMaxGroups] = useState<number>(7);
     const [batchLimits, setBatchLimits] = useState<Record<number, { maxStudents: number, maxGroups: number }>>({});
+
+    // Events State
+    const [events, setEvents] = useState<any[]>([]);
+    const [showCreateEvent, setShowCreateEvent] = useState(false);
+    const [editingEvent, setEditingEvent] = useState<any>(null);
+    const [eventForm, setEventForm] = useState({
+        type: 'group_formation_project_proposal',
+        endDate: '',
+        extensionDate: '',
+        batchYear: ''
+    });
+
+    const [confirmDeleteEvent, setConfirmDeleteEvent] = useState<any>(null);
+    const [adminPassword, setAdminPassword] = useState('');
 
 
     useEffect(() => {
@@ -92,7 +114,7 @@ const AdminDashboard: React.FC = () => {
                         setFaculty(Array.isArray(facultyRes.data) ? facultyRes.data : []);
                     }
                 } else if (activeTab === 'panels') {
-                    const res = await api.get(`/panels?batchYear=${filterBatch}`);
+                    const res = await api.get(`/panels?batchYear=All`);
                     setPanels(Array.isArray(res.data) ? res.data : []);
 
                     if (faculty.length === 0) {
@@ -103,6 +125,9 @@ const AdminDashboard: React.FC = () => {
                         const groupsRes = await api.get('/groups');
                         setGroups(Array.isArray(groupsRes.data) ? groupsRes.data : []);
                     }
+                } else if (activeTab === 'events') {
+                    const res = await api.get('/events');
+                    setEvents(Array.isArray(res.data) ? res.data : []);
                 }
             } catch (error) {
                 console.error(`Failed to fetch ${activeTab}`, error);
@@ -316,7 +341,9 @@ const AdminDashboard: React.FC = () => {
             const matchesBranch = filterBranch === 'All' || s.branch === filterBranch;
             const matchesBatch = filterBatch === 'All' || (() => {
                 const batchSuffix = filterBatch.slice(2);
-                return s.rollNumber && s.rollNumber.startsWith(batchSuffix);
+                const isOriginal = s.rollNumber && s.rollNumber.toString().startsWith(batchSuffix);
+                const isOverridden = s.targetBatch === filterBatch;
+                return isOriginal || isOverridden;
             })();
             const matchesGroupStatus = filterGroupStatus === 'All' ||
                 (filterGroupStatus === 'Grouped' ? s.isGrouped : !s.isGrouped);
@@ -342,6 +369,20 @@ const AdminDashboard: React.FC = () => {
         } catch (error) {
             console.error('Failed to update targetBatch', error);
             alert('Failed to update batch');
+        }
+    };
+
+    const handleUpdateStudentBatch = async (newBatch: string) => {
+        if (!configStudentBatch) return;
+        try {
+            await api.put(`/users/${configStudentBatch._id}`, { targetBatch: newBatch });
+            const res = await api.get('/users/students');
+            setStudents(Array.isArray(res.data) ? res.data : []);
+            setConfigStudentBatch(null);
+            setStudentBatchMenuOpen(null);
+        } catch (error) {
+            console.error('Failed to update student targetBatch', error);
+            alert('Failed to update student batch');
         }
     };
 
@@ -437,7 +478,7 @@ const AdminDashboard: React.FC = () => {
 
 
     return (
-        <div className="flex h-screen bg-neutral-50 font-jakarta text-neutral-900 overflow-hidden">
+        <div className="flex h-full bg-neutral-50 font-jakarta text-neutral-900 overflow-hidden">
             {/* Sidebar */}
             <motion.aside
                 initial={{ x: -250 }}
@@ -530,6 +571,7 @@ const AdminDashboard: React.FC = () => {
                             {activeTab === 'exports' && 'Data Exports'}
                         </h1>
                     </div>
+                    {activeTab !== 'events' && <GlobalEventBanner />}
                 </header>
 
                 <main className="flex-1 overflow-auto p-6 md:p-8">
@@ -647,7 +689,7 @@ const AdminDashboard: React.FC = () => {
                         ) : (
                             <>
                                 {activeTab === 'students' && (
-                                    <div className="bg-white rounded-xl border border-neutral-200 overflow-hidden shadow-sm">
+                                    <div className="bg-white rounded-xl border border-neutral-200 shadow-sm overflow-visible">
                                         <table className="w-full text-left text-sm">
                                             <thead className="bg-neutral-50 border-b border-neutral-200">
                                                 <tr>
@@ -655,16 +697,34 @@ const AdminDashboard: React.FC = () => {
                                                     <th className="px-6 py-3 font-semibold text-neutral-500">Name</th>
                                                     <th className="px-6 py-3 font-semibold text-neutral-500">Email</th>
                                                     <th className="px-6 py-3 font-semibold text-neutral-500">Branch</th>
+                                                    <th className="px-6 py-3 font-semibold text-neutral-500">Batch</th>
                                                     <th className="px-6 py-3 font-semibold text-neutral-500">Status</th>
+                                                    <th className="px-6 py-3 font-semibold text-neutral-500 text-right">Action</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-neutral-100">
                                                 {getFilteredStudents().map((student) => (
                                                     <tr key={student._id} className="hover:bg-neutral-50">
-                                                        <td className="px-6 py-4 font-mono text-neutral-600">{student.rollNumber || '-'}</td>
-                                                        <td className="px-6 py-4 font-medium text-neutral-900">{student.name}</td>
-                                                        <td className="px-6 py-4 text-neutral-500">{student.email}</td>
+                                                        <td className="px-6 py-4 font-mono text-neutral-600 truncate">{student.rollNumber || '-'}</td>
+                                                        <td className="px-6 py-4">
+                                                             <div className="flex flex-col">
+                                                                 <span className={`font-medium ${getBatch(student.rollNumber) !== student.targetBatch && student.targetBatch ? 'text-red-700 font-bold' : 'text-neutral-900'}`}>
+                                                                     {student.name}
+                                                                 </span>
+                                                                 {student.targetBatch && getBatch(student.rollNumber) !== student.targetBatch && (
+                                                                     <span className="text-[10px] text-red-600 font-bold uppercase tracking-tighter bg-red-50 px-1.5 py-0.5 rounded border border-red-100 mt-1 w-fit shadow-sm">
+                                                                        {filterBatch === student.targetBatch 
+                                                                            ? `Dropper (Actually ${getBatch(student.rollNumber)})` 
+                                                                            : `Overridden to ${student.targetBatch}`}
+                                                                     </span>
+                                                                 )}
+                                                             </div>
+                                                        </td>
+                                                        <td className="px-6 py-4 text-neutral-500 truncate">{student.email}</td>
                                                         <td className="px-6 py-4 text-neutral-500">{student.branch || '-'}</td>
+                                                        <td className="px-6 py-4 text-neutral-500 font-bold">
+                                                            {student.targetBatch || getBatch(student.rollNumber)}
+                                                        </td>
                                                         <td className="px-6 py-4">
                                                             {student.isGrouped ? (
                                                                 <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
@@ -675,6 +735,35 @@ const AdminDashboard: React.FC = () => {
                                                                     Unassigned
                                                                 </span>
                                                             )}
+                                                        </td>
+                                                        <td className="px-6 py-4 text-right">
+                                                            <div className="relative">
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        setStudentBatchMenuOpen(studentBatchMenuOpen === student._id ? null : student._id);
+                                                                    }}
+                                                                    className="p-1 rounded-full hover:bg-neutral-100 text-neutral-500 transition-colors"
+                                                                >
+                                                                    <Settings className="w-5 h-5" />
+                                                                </button>
+                                                                {studentBatchMenuOpen === student._id && (
+                                                                    <div 
+                                                                        className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-lg border border-neutral-200 py-1 z-50 animate-in fade-in zoom-in duration-200"
+                                                                        onClick={e => e.stopPropagation()}
+                                                                    >
+                                                                        <button
+                                                                            onClick={() => {
+                                                                                setConfigStudentBatch(student);
+                                                                                setStudentBatchMenuOpen(null);
+                                                                            }}
+                                                                            className="w-full text-left px-4 py-2 text-sm text-neutral-700 hover:bg-indigo-50 hover:text-indigo-600 flex items-center gap-2 transition-colors"
+                                                                        >
+                                                                            <AlertCircle className="w-4 h-4" /> Override batch
+                                                                        </button>
+                                                                    </div>
+                                                                )}
+                                                            </div>
                                                         </td>
                                                     </tr>
                                                 ))}
@@ -687,7 +776,7 @@ const AdminDashboard: React.FC = () => {
                                 )}
 
                                 {activeTab === 'faculty' && (
-                                    <div className="bg-white rounded-xl border border-neutral-200 overflow-hidden shadow-sm">
+                                    <div className="bg-white rounded-xl border border-neutral-200 shadow-sm overflow-visible">
                                         <table className="w-full text-left text-sm">
                                             <thead className="bg-neutral-50 border-b border-neutral-200">
                                                 <tr>
@@ -788,7 +877,7 @@ const AdminDashboard: React.FC = () => {
                                                                 </div>
                                                             )}
 
-                                                            <div className="bg-white rounded-2xl border border-neutral-200 shadow-sm overflow-hidden">
+                                                            <div className="bg-white rounded-2xl border border-neutral-200 shadow-sm overflow-visible">
                                                                 <table className="w-full text-left">
                                                                     <thead className="bg-neutral-50 border-b border-neutral-100">
                                                                         <tr>
@@ -896,7 +985,9 @@ const AdminDashboard: React.FC = () => {
                                             </button>
                                         </div>
                                         {Object.entries(
-                                            panels.reduce((acc: any, panel: any) => {
+                                            panels
+                                                 .filter(p => filterBatch === 'All' || String(p.batchYear) === String(filterBatch))
+                                                 .reduce((acc: any, panel: any) => {
                                                 const year = panel.batchYear;
                                                 acc[year] = acc[year] || [];
                                                 acc[year].push(panel);
@@ -1050,21 +1141,6 @@ const AdminDashboard: React.FC = () => {
                                                                                     <p className="text-xs text-neutral-500">{panel.faculty.length} members • {panelGroupsCount} groups</p>
                                                                                 </div>
                                                                             </div>
-                                                                            <div className="flex items-center gap-1">
-                                                                                <button
-                                                                                    onClick={async () => {
-                                                                                        if (confirm('Delete panel?')) {
-                                                                                            await api.delete(`/panels/${panel._id}`);
-                                                                                            const res = await api.get(`/panels?batchYear=${filterBatch}`);
-                                                                                            setPanels(Array.isArray(res.data) ? res.data : []);
-                                                                                        }
-                                                                                    }}
-                                                                                    className="text-neutral-400 hover:text-red-600 hover:bg-neutral-100 p-2 rounded-full text-sm transition-colors"
-                                                                                    title="Delete Panel"
-                                                                                >
-                                                                                    <X className="w-4 h-4" />
-                                                                                </button>
-                                                                            </div>
                                                                         </div>
                                                                         <div className="space-y-2 min-h-[60px] mb-4">
                                                                             <h5 className="text-xs font-bold text-neutral-400 uppercase mb-2">Faculty Members</h5>
@@ -1144,45 +1220,154 @@ const AdminDashboard: React.FC = () => {
                                 )}
 
                                 {activeTab === 'events' && (
-                                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                                        {/* Event Card: Group Formation */}
-                                        <div className="bg-white rounded-3xl border border-neutral-200 p-8 shadow-sm hover:shadow-md transition-all">
-                                            <div className="h-12 w-12 bg-indigo-100 text-indigo-600 rounded-2xl flex items-center justify-center mb-6">
-                                                <Users className="w-6 h-6" />
-                                            </div>
-                                            <h3 className="text-xl font-bold text-neutral-900 mb-2">Group Formation</h3>
-                                            <p className="text-neutral-500 text-sm mb-6">Initiate the process for students to form groups and submit project proposals.</p>
-                                            <div className="flex items-center gap-2 mb-6 text-sm font-medium text-neutral-600">
-                                                <Clock className="w-4 h-4 text-orange-500" /> Duration: 2 Weeks
-                                            </div>
-                                            <button className="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200">
-                                                Start Process
+                                    <div className="space-y-8">
+                                        {/* Create Event Button */}
+                                        <div className="flex justify-end">
+                                            <button
+                                                onClick={() => {
+                                                    setEditingEvent(null);
+                                                    setEventForm({
+                                                        type: 'group_formation_project_proposal',
+                                                        endDate: '',
+                                                        extensionDate: '',
+                                                        batchYear: ''
+                                                    });
+                                                    setShowCreateEvent(true);
+                                                }}
+                                                className="px-5 py-2.5 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 flex items-center gap-2"
+                                            >
+                                                <Plus className="w-4 h-4" /> Create New Event
                                             </button>
                                         </div>
 
-                                        {/* Event Card: Mid-term */}
-                                        <div className="bg-white rounded-3xl border border-neutral-200 p-8 shadow-sm hover:shadow-md transition-all">
-                                            <div className="h-12 w-12 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center mb-6">
-                                                <AlertCircle className="w-6 h-6" />
+                                        {/* Events List */}
+                                        {events.length === 0 ? (
+                                            <div className="text-center py-16 bg-white rounded-2xl border border-dashed border-neutral-300">
+                                                <Calendar className="w-12 h-12 text-neutral-300 mx-auto mb-4" />
+                                                <h3 className="text-lg font-bold text-neutral-700 mb-2">No Events Created</h3>
+                                                <p className="text-neutral-500 text-sm">Create your first event to manage timelines for group formation, evaluations, and more.</p>
                                             </div>
-                                            <h3 className="text-xl font-bold text-neutral-900 mb-2">Mid-Term Evaluation</h3>
-                                            <p className="text-neutral-500 text-sm mb-6">Open the evaluation portal for faculty to grade mid-term progress. Results shown to students.</p>
-                                            <button className="w-full py-3 bg-amber-500 text-white rounded-xl font-bold hover:bg-amber-600 transition-colors shadow-lg shadow-amber-200">
-                                                Open Evaluations
-                                            </button>
-                                        </div>
+                                        ) : (
+                                            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+                                                {events.map((ev: any) => {
+                                                    const now = new Date();
+                                                    const end = new Date(ev.endDate);
+                                                    const ext = ev.extensionDate ? new Date(ev.extensionDate) : null;
+                                                    const effectiveEnd = ext || end;
+                                                     const isOngoing = now <= effectiveEnd;
+                                                    const isExpired = now > effectiveEnd;
+                                                    const daysLeft = Math.ceil((effectiveEnd.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
 
-                                        {/* Event Card: End-term */}
-                                        <div className="bg-white rounded-3xl border border-neutral-200 p-8 shadow-sm hover:shadow-md transition-all">
-                                            <div className="h-12 w-12 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center mb-6">
-                                                <CheckCircle className="w-6 h-6" />
+                                                    const typeColors: any = {
+                                                        group_formation_project_proposal: { bg: 'bg-indigo-50', border: 'border-indigo-200', icon: 'bg-indigo-100 text-indigo-600', badge: 'bg-indigo-100 text-indigo-700' },
+                                                        mid_term_evaluation: { bg: 'bg-amber-50', border: 'border-amber-200', icon: 'bg-amber-100 text-amber-600', badge: 'bg-amber-100 text-amber-700' },
+                                                        end_term_evaluation: { bg: 'bg-emerald-50', border: 'border-emerald-200', icon: 'bg-emerald-100 text-emerald-600', badge: 'bg-emerald-100 text-emerald-700' }
+                                                    };
+                                                    const colors = typeColors[ev.type] || typeColors.group_formation_project_proposal;
+                                                    const typeLabels: any = {
+                                                        group_formation_project_proposal: 'Group Formation & Project Proposal',
+                                                        mid_term_evaluation: 'Mid-Term Evaluation',
+                                                        end_term_evaluation: 'End-Term Evaluation'
+                                                    };
+                                                    const typeIcons: any = {
+                                                        group_formation_project_proposal: <Users className="w-6 h-6" />,
+                                                        mid_term_evaluation: <AlertCircle className="w-6 h-6" />,
+                                                        end_term_evaluation: <CheckCircle className="w-6 h-6" />
+                                                    };
+
+                                                    return (
+                                                        <motion.div
+                                                            key={ev._id}
+                                                            layout
+                                                            initial={{ opacity: 0, y: 10 }}
+                                                            animate={{ opacity: 1, y: 0 }}
+                                                            className={`bg-white rounded-2xl border-2 ${colors.border} p-6 shadow-sm hover:shadow-lg transition-all relative overflow-hidden`}
+                                                        >                                                            {/* Status indicator strip */}
+                                                            <div className={`absolute top-0 left-0 right-0 h-1 ${isOngoing ? 'bg-green-500' : isExpired ? 'bg-red-400' : 'bg-amber-400'}`} />
+
+                                                            <div className="flex items-start justify-between mb-4">
+                                                                <div className={`h-12 w-12 rounded-2xl flex items-center justify-center ${colors.icon}`}>
+                                                                    {typeIcons[ev.type]}
+                                                                </div>
+                                                                <div className="flex items-center gap-1.5">
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            setEditingEvent(ev);
+                                                                            setEventForm({
+                                                                                type: ev.type,
+                                                                                endDate: new Date(ev.endDate).toISOString().slice(0, 16),
+                                                                                extensionDate: ev.extensionDate ? new Date(ev.extensionDate).toISOString().slice(0, 16) : '',
+                                                                                batchYear: ev.batchYear || ''
+                                                                            });
+                                                                            setShowCreateEvent(true);
+                                                                         }}
+                                                                        className="p-2 rounded-lg bg-neutral-100 text-neutral-500 hover:bg-indigo-50 hover:text-indigo-600 transition-colors"
+                                                                        title="Edit event"
+                                                                    >
+                                                                        <Edit3 className="w-4 h-4" />
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => setConfirmDeleteEvent(ev)}
+                                                                        className="p-2 rounded-lg bg-neutral-100 text-neutral-400 hover:bg-red-50 hover:text-red-600 transition-colors"
+                                                                        title="Delete event"
+                                                                    >
+                                                                        <Trash2 className="w-4 h-4" />
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+
+                                                            <div className="mb-3">
+                                                                <span className={`inline-flex items-center px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider ${colors.badge}`}>
+                                                                    {typeLabels[ev.type] || ev.type.replace(/_/g, ' ').toUpperCase()}
+                                                                </span>
+                                                            </div>
+
+                                                            <h3 className="text-xl font-bold text-neutral-900 mb-1.5">{typeLabels[ev.type] || ev.type.replace(/_/g, ' ').toUpperCase()}</h3>
+                                                            
+                                                            {/* Status Badge */}
+                                                            <div className="mb-4 mt-4">
+                                                                {isOngoing ? (
+                                                                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-green-100 text-green-700">
+                                                                        <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" /> LIVE — {daysLeft > 0 ? `${daysLeft} days left` : 'Ends today'}
+                                                                    </span>
+                                                                ) : isExpired ? (
+                                                                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-red-100 text-red-700">
+                                                                        <span className="w-2 h-2 rounded-full bg-red-500" /> EXPIRED
+                                                                    </span>
+                                                                ) : (
+                                                                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-amber-100 text-amber-700">
+                                                                        <span className="w-2 h-2 rounded-full bg-amber-500" /> UPCOMING
+                                                                    </span>
+                                                                )}
+                                                            </div>
+
+                                                            {/* Timeline */}
+                                                            <div className="space-y-2 text-sm">
+                                                                <div className="flex items-center gap-2 text-neutral-600">
+                                                                    <Clock className="w-4 h-4 text-neutral-400" />
+                                                                    <span className="font-medium">Deadline:</span>
+                                                                    <span>{end.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })} at {end.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</span>
+                                                                </div>
+                                                                {ext && (
+                                                                    <div className="flex items-center gap-2 text-orange-600 font-medium">
+                                                                        <AlertTriangle className="w-4 h-4" />
+                                                                        <span>Extended to:</span>
+                                                                        <span>{ext.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })} at {ext.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</span>
+                                                                    </div>
+                                                                )}
+                                                                {ev.batchYear && (
+                                                                    <div className="flex items-center gap-2 text-neutral-600">
+                                                                        <Users className="w-4 h-4 text-neutral-400" />
+                                                                        <span className="font-medium">Batch:</span>
+                                                                        <span>{ev.batchYear}-{parseInt(ev.batchYear) + 4}</span>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </motion.div>
+                                                    );
+                                                })}
                                             </div>
-                                            <h3 className="text-xl font-bold text-neutral-900 mb-2">End-Term Evaluation</h3>
-                                            <p className="text-neutral-500 text-sm mb-6">Final evaluation phase. Allow marks entry and publish final results.</p>
-                                            <button className="w-full py-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 transition-colors shadow-lg shadow-emerald-200">
-                                                Start Final Exams
-                                            </button>
-                                        </div>
+                                        )}
                                     </div>
                                 )}
 
@@ -1288,7 +1473,7 @@ const AdminDashboard: React.FC = () => {
                                     <label className="block text-sm font-medium text-gray-700 mb-1">Select Faculty Members (Max 3)</label>
                                     <div className="max-h-48 overflow-y-auto border border-gray-200 rounded-lg p-2 space-y-1">
                                         {faculty.filter((f: any) => {
-                                            if (!newPanelBatch) return true;
+                                            if (!newPanelBatch) return false;
                                             const isAssigned = panels.some((p: any) =>
                                                 String(p.batchYear) === String(newPanelBatch) &&
                                                 p._id !== editingPanelId &&
@@ -1312,6 +1497,14 @@ const AdminDashboard: React.FC = () => {
                                                 <span className="text-sm">{f.name}</span>
                                             </label>
                                         ))}
+                                        {!newPanelBatch && (
+                                            <div className="flex flex-col items-center justify-center py-8 text-center bg-gray-50/50 rounded-xl border-2 border-dashed border-gray-100">
+                                                <Users className="w-8 h-8 text-gray-300 mb-2" />
+                                                <p className="text-xs font-bold text-gray-400 px-4 leading-relaxed">
+                                                    Please select a batch above first<br/>to show available faculty members.
+                                                </p>
+                                            </div>
+                                        )}
                                     </div>
                                     <p className="text-xs text-gray-500 mt-1">{newPanelFaculty.length}/3 selected</p>
                                 </div>
@@ -1660,14 +1853,202 @@ const AdminDashboard: React.FC = () => {
                             </div>
                             <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-3">
                                 <button onClick={() => setConfigBatchGroup(null)} className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition">Cancel</button>
-                                <button
-                                    onClick={() => handleUpdateBatchViaModal((document.getElementById('targetBatchUpdate') as HTMLSelectElement).value)}
-                                    className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition"
+                                <button onClick={() => handleUpdateBatchViaModal((document.getElementById('targetBatchUpdate') as HTMLSelectElement).value)} className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition">Save Batch</button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {configStudentBatch && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm">
+                        <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden flex flex-col animate-in fade-in zoom-in duration-200">
+                            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+                                <h3 className="text-lg font-bold text-gray-900">Override Student Batch</h3>
+                                <button onClick={() => setConfigStudentBatch(null)} className="text-gray-400 hover:text-gray-600">
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+                            <div className="p-6 space-y-4">
+                                <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3">
+                                    <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                                    <div>
+                                        <h4 className="text-sm font-bold text-amber-800 uppercase tracking-wider">Batch Override</h4>
+                                        <p className="text-xs text-amber-700 mt-0.5 leading-relaxed">
+                                            This action will only affect which cohort of students they see in their directory. It does not change their official roll number.
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="space-y-3">
+                                    <label className="block text-[10px] uppercase font-black tracking-widest text-neutral-400">Student Profile</label>
+                                    <div className="text-sm text-neutral-800 bg-neutral-50 p-4 rounded-xl border border-neutral-200 shadow-inner">
+                                        <div className="flex justify-between items-center mb-1">
+                                            <span className="text-xs text-neutral-400 font-bold uppercase tracking-tighter">Name</span>
+                                            <span className="font-black text-neutral-900">{configStudentBatch.name}</span>
+                                        </div>
+                                        <div className="flex justify-between items-center mb-1">
+                                            <span className="text-xs text-neutral-400 font-bold uppercase tracking-tighter">Roll No</span>
+                                            <span className="font-mono font-bold text-neutral-700">{configStudentBatch.rollNumber}</span>
+                                        </div>
+                                        <div className="flex justify-between items-center">
+                                            <span className="text-xs text-neutral-400 font-bold uppercase tracking-tighter">Original Batch</span>
+                                            <span className="bg-neutral-200 px-1.5 py-0.5 rounded text-[10px] font-black">{getBatch(configStudentBatch.rollNumber)}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="space-y-3 pt-2">
+                                    <label className="block text-[10px] uppercase font-black tracking-widest text-neutral-400">New Target Batch</label>
+                                    <select
+                                        defaultValue={configStudentBatch.targetBatch || getBatch(configStudentBatch.rollNumber)}
+                                        id="studentBatchUpdateSelect"
+                                        className="w-full px-4 py-3 bg-white border-2 border-neutral-100 rounded-xl font-bold text-sm focus:border-indigo-500 transition-all outline-none"
+                                    >
+                                        <option value="">Select Target Batch</option>
+                                        {Array.from({ length: 7 }, (_, i) => (new Date().getFullYear() - 7) + i).reverse().map(year => (
+                                            <option key={year} value={year.toString()}>Batch {year}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </div>
+                            <div className="px-6 py-5 bg-neutral-50 border-t border-neutral-100 flex justify-end gap-3">
+                                <button onClick={() => setConfigStudentBatch(null)} className="px-5 py-2.5 text-sm font-black uppercase tracking-widest text-neutral-500 hover:text-neutral-700 hover:bg-neutral-100 rounded-xl transition-all">Cancel</button>
+                                <button 
+                                    onClick={() => handleUpdateStudentBatch((document.getElementById('studentBatchUpdateSelect') as HTMLSelectElement).value)} 
+                                    className="px-6 py-2.5 bg-indigo-600 text-white text-sm font-black uppercase tracking-widest rounded-xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 active:scale-95"
                                 >
-                                    Save Batch
+                                    Apply Override
                                 </button>
                             </div>
                         </div>
+                    </div>
+                )}
+
+                {/* Create / Edit Event Modal */}
+                {showCreateEvent && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm">
+                        <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
+                            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-neutral-50">
+                                <h3 className="text-lg font-bold text-gray-900">{editingEvent ? 'Edit Event' : 'Create New Event'}</h3>
+                                <button onClick={() => { setShowCreateEvent(false); setEditingEvent(null); }} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+                            </div>
+                            <div className="p-6 space-y-5 overflow-y-auto">
+                                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3">
+                                    <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                                    <div>
+                                        <h4 className="text-sm font-bold text-amber-800">Important</h4>
+                                        <p className="text-xs text-amber-700 mt-0.5">Events control what features are visible to students and faculty. Activating an event will immediately show it across all dashboards.</p>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Event Type</label>
+                                    <select value={eventForm.type} onChange={(e) => setEventForm(prev => ({ ...prev, type: e.target.value }))} className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm">
+                                        <option value="group_formation_project_proposal">Group Formation & Project Proposal</option>
+                                        <option value="mid_term_evaluation">Mid-Term Evaluation</option>
+                                        <option value="end_term_evaluation">End-Term Evaluation</option>
+                                    </select>
+                                </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1.5">Deadline (End Date & Time)</label>
+                                        <input type="datetime-local" value={eventForm.endDate} onChange={(e) => setEventForm(prev => ({ ...prev, endDate: e.target.value }))} className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1.5">Extension Date (Optional)</label>
+                                        <input type="datetime-local" value={eventForm.extensionDate} onChange={(e) => setEventForm(prev => ({ ...prev, extensionDate: e.target.value }))} className="w-full px-3 py-2.5 border border-orange-200 rounded-xl text-sm bg-orange-50/30" />
+                                        {eventForm.extensionDate && (<button onClick={() => setEventForm(prev => ({ ...prev, extensionDate: '' }))} className="text-xs text-red-500 mt-1 hover:underline">Remove extension</button>)}
+                                    </div>
+                                </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-1.5">Batch Year (Optional)</label>
+                                            <select value={eventForm.batchYear} onChange={(e) => setEventForm(prev => ({ ...prev, batchYear: e.target.value }))} className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm">
+                                                <option value="">All Batches</option>
+                                                {Array.from({ length: 7 }, (_, i) => (new Date().getFullYear() - 7) + i).map(yr => (<option key={yr} value={yr.toString()}>{yr}-{yr + 4}</option>))}
+                                            </select>
+                                        </div>
+                                    </div>
+                                <div className="mt-4 pt-4 border-t border-gray-100">
+                                    <label className="block text-sm font-bold text-gray-700 mb-1.5 flex items-center gap-1.5">
+                                        <Settings className="w-4 h-4 text-indigo-500" /> Admin Password
+                                    </label>
+                                    <input 
+                                        type="password" 
+                                        value={adminPassword} 
+                                        onChange={(e) => setAdminPassword(e.target.value)} 
+                                        placeholder="Required to authorize this action" 
+                                        className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20" 
+                                    />
+                                </div>
+                            </div>
+                            <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-3">
+                                <button onClick={() => { setShowCreateEvent(false); setEditingEvent(null); setAdminPassword(''); }} className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition">Cancel</button>
+                                <button onClick={async () => { try { if (!eventForm.endDate || !adminPassword) { alert('Please fill in deadline and admin password.'); return; } const payload = { ...eventForm, password: adminPassword, extensionDate: eventForm.extensionDate || null, batchYear: eventForm.batchYear || undefined }; if (editingEvent) { await api.put(`/events/${editingEvent._id}`, payload); } else { await api.post('/events', payload); } setShowCreateEvent(false); setEditingEvent(null); setAdminPassword(''); const res = await api.get('/events'); setEvents(Array.isArray(res.data) ? res.data : []); } catch (e: any) { alert(e.response?.data?.message || 'Failed to save event'); } }} className="px-6 py-2 bg-indigo-600 text-white text-sm font-bold rounded-lg hover:bg-indigo-700 transition shadow-md flex items-center gap-2">
+                                    <Save className="w-4 h-4" /> {editingEvent ? 'Save Changes' : 'Create Event'}
+                                </button>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+
+
+                {/* Delete Event Confirmation */}
+                {confirmDeleteEvent && (
+                    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm">
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden"
+                        >
+                            <div className="p-6">
+                                <div className="h-14 w-14 rounded-2xl flex items-center justify-center mb-4 bg-red-100 text-red-600">
+                                    <Trash2 className="w-7 h-7" />
+                                </div>
+                                <h3 className="text-xl font-bold text-gray-900 mb-2">Delete Event Permanently?</h3>
+                                <p className="text-sm text-neutral-600 mb-4">
+                                    You are about to delete <strong className="text-neutral-900">{confirmDeleteEvent.type.replace(/_/g, ' ').toUpperCase()}</strong>.
+                                </p>
+                                <div className="p-4 bg-red-50 border border-red-200 rounded-xl mb-4">
+                                    <div className="flex items-start gap-3">
+                                        <AlertTriangle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                                        <div>
+                                            <h4 className="text-sm font-bold text-red-800">Destructive Action</h4>
+                                            <p className="text-xs text-red-700 mt-1">This action cannot be undone. The event and all associated data will be permanently removed.</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="mt-4 pt-4 border-t border-gray-100">
+                                    <label className="block text-sm font-bold text-gray-700 mb-1.5 flex items-center gap-1.5">
+                                        <Settings className="w-4 h-4 text-indigo-500" /> Admin Password
+                                    </label>
+                                    <input 
+                                        type="password" 
+                                        value={adminPassword} 
+                                        onChange={(e) => setAdminPassword(e.target.value)} 
+                                        placeholder="Required to authorize this action" 
+                                        className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20" 
+                                    />
+                                </div>
+                            </div>
+                            <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-3">
+                                <button onClick={() => { setConfirmDeleteEvent(null); setAdminPassword(''); }} className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition">Cancel</button>
+                                <button
+                                    onClick={async () => {
+                                        try {
+                                            if (!adminPassword) { alert('Admin password is required.'); return; }
+                                            await api.delete(`/events/${confirmDeleteEvent._id}`, { data: { password: adminPassword } });
+                                            setConfirmDeleteEvent(null);
+                                            setAdminPassword('');
+                                            const res = await api.get('/events');
+                                            setEvents(Array.isArray(res.data) ? res.data : []);
+                                        } catch (e: any) {
+                                            alert(e.response?.data?.message || 'Failed to delete event');
+                                        }
+                                    }}
+                                    className="px-6 py-2 bg-red-600 text-white text-sm font-bold rounded-lg hover:bg-red-700 transition shadow-md"
+                                >
+                                    Delete Permanently
+                                </button>
+                            </div>
+                        </motion.div>
                     </div>
                 )}
             </div>

@@ -188,14 +188,13 @@ export const updateProjectStatus = async (req: Request, res: Response) => {
             if (status === 'Approved') {
                 group.status = 'Approved';
 
-                // Archive all other proposals for this group
-                await Project.updateMany(
+                // Permanently delete all other proposals for this group
+                await Project.deleteMany(
                     {
                         group: project.group,
                         _id: { $ne: project._id },
-                        status: { $in: ['Pending', 'Draft', 'Rejected'] }
-                    },
-                    { status: 'Archived' }
+                        status: { $in: ['Draft', 'Pending', 'Rejected'] }
+                    }
                 );
 
             } else if (status === 'Rejected') {
