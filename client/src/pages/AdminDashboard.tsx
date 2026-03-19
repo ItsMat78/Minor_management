@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
-import { Search, Users, Clock, CheckCircle, FileText, X, LogOut, ChevronDown, ChevronUp, Settings, Menu, Calendar, Download, AlertCircle, AlertTriangle, Save, Pencil, LayoutGrid, MoreVertical, Plus, Trash2, Edit3 } from 'lucide-react';
+import { Search, Users, Clock, CheckCircle, FileText, X, LogOut, ChevronDown, ChevronUp, Settings, Menu, Calendar, Download, AlertCircle, AlertTriangle, Save, Pencil, LayoutGrid, MoreVertical, Plus, Edit3, Power, Info, Trash2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import MenteeGroupDetails from '../components/MenteeGroupDetails';
 import AutoCreatePanelsModal from '../components/AutoCreatePanelsModal';
@@ -83,6 +83,7 @@ const AdminDashboard: React.FC = () => {
         batchYear: ''
     });
 
+    const [confirmEndEvent, setConfirmEndEvent] = useState<any>(null);
     const [confirmDeleteEvent, setConfirmDeleteEvent] = useState<any>(null);
     const [adminPassword, setAdminPassword] = useState('');
 
@@ -1288,32 +1289,44 @@ const AdminDashboard: React.FC = () => {
                                                             <div className="flex items-start justify-between mb-4">
                                                                 <div className={`h-12 w-12 rounded-2xl flex items-center justify-center ${colors.icon}`}>
                                                                     {typeIcons[ev.type]}
+                                                                </div>                                                                 <div className="flex items-center gap-1.5">
+                                                                    {!isExpired && (
+                                                                        <button
+                                                                            onClick={() => {
+                                                                                setEditingEvent(ev);
+                                                                                setEventForm({
+                                                                                    type: ev.type,
+                                                                                    endDate: new Date(ev.endDate).toISOString().slice(0, 16),
+                                                                                    extensionDate: ev.extensionDate ? new Date(ev.extensionDate).toISOString().slice(0, 16) : '',
+                                                                                    batchYear: ev.batchYear || ''
+                                                                                });
+                                                                                setShowCreateEvent(true);
+                                                                            }}
+                                                                            className="p-2 rounded-lg bg-neutral-100 text-neutral-500 hover:bg-indigo-50 hover:text-indigo-600 transition-colors"
+                                                                            title="Edit event"
+                                                                        >
+                                                                            <Edit3 className="w-4 h-4" />
+                                                                        </button>
+                                                                    )}
+                                                                    {isExpired ? (
+                                                                        <button
+                                                                            onClick={() => setConfirmDeleteEvent(ev)}
+                                                                            className="p-2 rounded-lg bg-neutral-100 text-neutral-400 hover:bg-red-50 hover:text-red-600 transition-colors"
+                                                                            title="Delete event permanently"
+                                                                        >
+                                                                            <Trash2 className="w-4 h-4" />
+                                                                        </button>
+                                                                    ) : (
+                                                                        <button
+                                                                            onClick={() => setConfirmEndEvent(ev)}
+                                                                            className="p-2 rounded-lg bg-neutral-100 text-neutral-400 hover:bg-amber-50 hover:text-amber-600 transition-colors"
+                                                                            title="End event early"
+                                                                        >
+                                                                            <Power className="w-4 h-4" />
+                                                                        </button>
+                                                                    )}
                                                                 </div>
-                                                                <div className="flex items-center gap-1.5">
-                                                                    <button
-                                                                        onClick={() => {
-                                                                            setEditingEvent(ev);
-                                                                            setEventForm({
-                                                                                type: ev.type,
-                                                                                endDate: new Date(ev.endDate).toISOString().slice(0, 16),
-                                                                                extensionDate: ev.extensionDate ? new Date(ev.extensionDate).toISOString().slice(0, 16) : '',
-                                                                                batchYear: ev.batchYear || ''
-                                                                            });
-                                                                            setShowCreateEvent(true);
-                                                                         }}
-                                                                        className="p-2 rounded-lg bg-neutral-100 text-neutral-500 hover:bg-indigo-50 hover:text-indigo-600 transition-colors"
-                                                                        title="Edit event"
-                                                                    >
-                                                                        <Edit3 className="w-4 h-4" />
-                                                                    </button>
-                                                                    <button
-                                                                        onClick={() => setConfirmDeleteEvent(ev)}
-                                                                        className="p-2 rounded-lg bg-neutral-100 text-neutral-400 hover:bg-red-50 hover:text-red-600 transition-colors"
-                                                                        title="Delete event"
-                                                                    >
-                                                                        <Trash2 className="w-4 h-4" />
-                                                                    </button>
-                                                                </div>
+
                                                             </div>
 
                                                             <div className="mb-3">
@@ -1940,11 +1953,16 @@ const AdminDashboard: React.FC = () => {
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-1.5">Event Type</label>
-                                    <select value={eventForm.type} onChange={(e) => setEventForm(prev => ({ ...prev, type: e.target.value }))} className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm">
+                                    <select value={eventForm.type} onChange={(e) => setEventForm(prev => ({ ...prev, type: e.target.value }))} className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm transition-all focus:ring-2 focus:ring-indigo-500/20">
                                         <option value="group_formation_project_proposal">Group Formation & Project Proposal</option>
                                         <option value="mid_term_evaluation">Mid-Term Evaluation</option>
                                         <option value="end_term_evaluation">End-Term Evaluation</option>
                                     </select>
+                                    {eventForm.type === 'mid_term_evaluation' && events.some(ev => ev.type === 'group_formation_project_proposal' && (ev.batchYear === eventForm.batchYear || !ev.batchYear || !eventForm.batchYear) && new Date(ev.extensionDate || ev.endDate) > new Date()) && (
+                                        <div className="mt-2 text-[10px] text-red-500 font-bold uppercase tracking-wider flex items-center gap-1.5 animate-pulse">
+                                            <AlertCircle className="w-3.5 h-3.5" /> Requirement: Group Formation phase must end first
+                                        </div>
+                                    )}
                                 </div>
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
@@ -1981,7 +1999,41 @@ const AdminDashboard: React.FC = () => {
                             </div>
                             <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-3">
                                 <button onClick={() => { setShowCreateEvent(false); setEditingEvent(null); setAdminPassword(''); }} className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition">Cancel</button>
-                                <button onClick={async () => { try { if (!eventForm.endDate || !adminPassword) { alert('Please fill in deadline and admin password.'); return; } const payload = { ...eventForm, password: adminPassword, extensionDate: eventForm.extensionDate || null, batchYear: eventForm.batchYear || undefined }; if (editingEvent) { await api.put(`/events/${editingEvent._id}`, payload); } else { await api.post('/events', payload); } setShowCreateEvent(false); setEditingEvent(null); setAdminPassword(''); const res = await api.get('/events'); setEvents(Array.isArray(res.data) ? res.data : []); } catch (e: any) { alert(e.response?.data?.message || 'Failed to save event'); } }} className="px-6 py-2 bg-indigo-600 text-white text-sm font-bold rounded-lg hover:bg-indigo-700 transition shadow-md flex items-center gap-2">
+                                <button onClick={async () => {
+                                    try {
+                                        if (!eventForm.endDate || !adminPassword) {
+                                            alert('Please fill in deadline and admin password.');
+                                            return;
+                                        }
+
+                                        // Business Logic: Block Mid-Term until Group Formation ends
+                                        if (eventForm.type === 'mid_term_evaluation') {
+                                            const hasOngoingGroupFormation = events.some(ev =>
+                                                ev.type === 'group_formation_project_proposal' &&
+                                                (ev.batchYear === eventForm.batchYear || !ev.batchYear || !eventForm.batchYear) &&
+                                                new Date(ev.extensionDate || ev.endDate) > new Date()
+                                            );
+                                            if (hasOngoingGroupFormation) {
+                                                alert('Action Restricted: Cannot schedule Mid-Term Evaluation until the Group Formation phase has officially ended for the selected batch.');
+                                                return;
+                                            }
+                                        }
+
+                                        const payload = { ...eventForm, password: adminPassword, extensionDate: eventForm.extensionDate || null, batchYear: eventForm.batchYear || undefined };
+                                        if (editingEvent) {
+                                            await api.put(`/events/${editingEvent._id}`, payload);
+                                        } else {
+                                            await api.post('/events', payload);
+                                        }
+                                        setShowCreateEvent(false);
+                                        setEditingEvent(null);
+                                        setAdminPassword('');
+                                        const res = await api.get('/events');
+                                        setEvents(Array.isArray(res.data) ? res.data : []);
+                                    } catch (e: any) {
+                                        alert(e.response?.data?.message || 'Failed to save event');
+                                    }
+                                }} className="px-6 py-2 bg-indigo-600 text-white text-sm font-bold rounded-lg hover:bg-indigo-700 transition shadow-md flex items-center gap-2">
                                     <Save className="w-4 h-4" /> {editingEvent ? 'Save Changes' : 'Create Event'}
                                 </button>
                             </div>
@@ -1990,8 +2042,8 @@ const AdminDashboard: React.FC = () => {
                 )}
 
 
-                {/* Delete Event Confirmation */}
-                {confirmDeleteEvent && (
+                {/* End Event Confirmation */}
+                {confirmEndEvent && (
                     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm">
                         <motion.div
                             initial={{ opacity: 0, scale: 0.95 }}
@@ -1999,19 +2051,19 @@ const AdminDashboard: React.FC = () => {
                             className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden"
                         >
                             <div className="p-6">
-                                <div className="h-14 w-14 rounded-2xl flex items-center justify-center mb-4 bg-red-100 text-red-600">
-                                    <Trash2 className="w-7 h-7" />
+                                <div className="h-14 w-14 rounded-2xl flex items-center justify-center mb-4 bg-amber-100 text-amber-600">
+                                    <Power className="w-7 h-7" />
                                 </div>
-                                <h3 className="text-xl font-bold text-gray-900 mb-2">Delete Event Permanently?</h3>
+                                <h3 className="text-xl font-bold text-gray-900 mb-2">End Event Early?</h3>
                                 <p className="text-sm text-neutral-600 mb-4">
-                                    You are about to delete <strong className="text-neutral-900">{confirmDeleteEvent.type.replace(/_/g, ' ').toUpperCase()}</strong>.
+                                    You are about to force end <strong className="text-neutral-900">{confirmEndEvent.type.replace(/_/g, ' ').toUpperCase()}</strong>.
                                 </p>
-                                <div className="p-4 bg-red-50 border border-red-200 rounded-xl mb-4">
+                                <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl mb-4">
                                     <div className="flex items-start gap-3">
-                                        <AlertTriangle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                                        <Info className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
                                         <div>
-                                            <h4 className="text-sm font-bold text-red-800">Destructive Action</h4>
-                                            <p className="text-xs text-red-700 mt-1">This action cannot be undone. The event and all associated data will be permanently removed.</p>
+                                            <h4 className="text-sm font-bold text-amber-800">Status Change</h4>
+                                            <p className="text-xs text-amber-700 mt-1">This will set the deadline to right now, effectively expiring the event for all users immediately.</p>
                                         </div>
                                     </div>
                                 </div>
@@ -2024,6 +2076,69 @@ const AdminDashboard: React.FC = () => {
                                         value={adminPassword} 
                                         onChange={(e) => setAdminPassword(e.target.value)} 
                                         placeholder="Required to authorize this action" 
+                                        className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20" 
+                                    />
+                                </div>
+                            </div>
+                            <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-3">
+                                <button onClick={() => { setConfirmEndEvent(null); setAdminPassword(''); }} className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition">Cancel</button>
+                                <button
+                                    onClick={async () => {
+                                        try {
+                                            if (!adminPassword) { alert('Admin password is required.'); return; }
+                                            
+                                            // Expire event by setting endDate to now
+                                            const payload = { 
+                                                type: confirmEndEvent.type,
+                                                endDate: new Date().toISOString(),
+                                                batchYear: confirmEndEvent.batchYear,
+                                                password: adminPassword 
+                                            };
+                                            
+                                            await api.put(`/events/${confirmEndEvent._id}`, payload);
+                                            setConfirmEndEvent(null);
+                                            setAdminPassword('');
+                                            const res = await api.get('/events');
+                                            setEvents(Array.isArray(res.data) ? res.data : []);
+                                        } catch (e: any) {
+                                            alert(e.response?.data?.message || 'Failed to end event');
+                                        }
+                                    }}
+                                    className="px-6 py-2 bg-amber-600 text-white text-sm font-bold rounded-lg hover:bg-amber-700 transition shadow-md flex items-center gap-2"
+                                >
+                                    <Power className="w-4 h-4" /> End Event Now
+                                </button>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+
+                {/* Delete Event Confirmation (Final Cleanup) */}
+                {confirmDeleteEvent && (
+                    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm">
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden"
+                        >
+                            <div className="p-6">
+                                <div className="h-14 w-14 rounded-2xl flex items-center justify-center mb-4 bg-red-100 text-red-600">
+                                    <Trash2 className="w-7 h-7" />
+                                </div>
+                                <h3 className="text-xl font-bold text-gray-900 mb-2">Delete Event Permanently?</h3>
+                                <div className="p-4 bg-red-50 border border-red-200 rounded-xl mb-4 text-xs text-red-700 flex items-start gap-2">
+                                    <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                                    This will delete all traces of this event from the system. This cannot be undone.
+                                </div>
+                                <div className="mt-4 pt-4 border-t border-gray-100">
+                                    <label className="block text-sm font-bold text-gray-700 mb-1.5 flex items-center gap-1.5">
+                                        <Settings className="w-4 h-4 text-indigo-500" /> Admin Password
+                                    </label>
+                                    <input 
+                                        type="password" 
+                                        value={adminPassword} 
+                                        onChange={(e) => setAdminPassword(e.target.value)} 
+                                        placeholder="Authorize deletion" 
                                         className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20" 
                                     />
                                 </div>

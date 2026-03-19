@@ -857,8 +857,8 @@ const FacultyDashboard: React.FC = () => {
                         onClick={() => { setActiveTab('profile'); setViewGroup(null); }}
                     />
 
-                    {(activeEvents?.some(e => e.type === 'mid_term_evaluation') || activeEvents?.some(e => e.type === 'end_term_evaluation')) && (
-                        <div className="pt-4 border-t border-neutral-100 mt-4">
+                    {!activeEvents?.some(e => e.type === 'group_formation_project_proposal' && new Date(e.extensionDate || e.endDate) > new Date()) && (activeEvents?.some(e => e.type === 'mid_term_evaluation') || activeEvents?.some(e => e.type === 'end_term_evaluation')) && (
+                        <div className="pt-4 border-t border-neutral-100 mt-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
                             <p className="px-4 text-xs font-bold text-neutral-400 uppercase tracking-wider mb-2">Evaluations</p>
                             {activeEvents?.some(e => e.type === 'mid_term_evaluation') && (
                                 <SidebarItem
