@@ -10,6 +10,8 @@ const Login: React.FC = () => {
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
     const [isLoading, setIsLoading] = useState(false);
+    const [isOtpMode, setIsOtpMode] = useState(false);
+    const [otp, setOtp] = useState('');
     const { login, isAuthenticated, user } = useAuth();
     const navigate = useNavigate();
 
@@ -33,13 +35,31 @@ const Login: React.FC = () => {
         setError('');
 
         try {
-            const res = await axios.post('http://localhost:5000/api/auth/login', { email, password });
-            login(res.data.token, res.data.user);
+            if (isOtpMode) {
+                const res = await axios.post('http://localhost:5000/api/auth/verify-otp', { email, otp });
+                login(res.data.token, res.data.user);
 
-            if (res.data.user.role === 'Admin') {
-                navigate('/admin');
+                if (res.data.user.role === 'Admin') {
+                    navigate('/admin');
+                } else {
+                    navigate('/dashboard');
+                }
             } else {
-                navigate('/dashboard');
+                const res = await axios.post('http://localhost:5000/api/auth/login', { email, password });
+                
+                if (res.data.requiresActivation) {
+                    setIsOtpMode(true);
+                    setError(res.data.message || 'Please enter the OTP sent to your email.');
+                    return;
+                }
+
+                login(res.data.token, res.data.user);
+
+                if (res.data.user.role === 'Admin') {
+                    navigate('/admin');
+                } else {
+                    navigate('/dashboard');
+                }
             }
         } catch (err: any) {
             setError(err.response?.data?.message || 'Invalid credentials. Please try again.');
@@ -97,43 +117,64 @@ const Login: React.FC = () => {
                         </AnimatePresence>
 
                         <div className="space-y-4">
-                            <div className="relative">
-                                <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-gray-500">
-                                    <User size={18} />
+                            {!isOtpMode ? (
+                                <>
+                                    <div className="relative">
+                                        <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-gray-500">
+                                            <User size={18} />
+                                        </div>
+                                        <input
+                                            type="email"
+                                            required
+                                            value={email}
+                                            onChange={(e) => setEmail(e.target.value)}
+                                            className="block w-full rounded-lg border border-gray-300 bg-gray-50 py-3 pl-10 pr-3 text-gray-900 placeholder-gray-500 transition-all focus:border-blue-600 focus:bg-white focus:ring-2 focus:ring-blue-600/20 focus:outline-none"
+                                            placeholder="Institute Email ID"
+                                        />
+                                    </div>
+                                    <div className="relative">
+                                        <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-gray-500">
+                                            <Lock size={18} />
+                                        </div>
+                                        <input
+                                            type="password"
+                                            required
+                                            value={password}
+                                            onChange={(e) => setPassword(e.target.value)}
+                                            className="block w-full rounded-lg border border-gray-300 bg-gray-50 py-3 pl-10 pr-3 text-gray-900 placeholder-gray-500 transition-all focus:border-blue-600 focus:bg-white focus:ring-2 focus:ring-blue-600/20 focus:outline-none"
+                                            placeholder="Password"
+                                        />
+                                    </div>
+                                </>
+                            ) : (
+                                <div className="relative">
+                                    <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-gray-500">
+                                        <Lock size={18} />
+                                    </div>
+                                    <input
+                                        type="text"
+                                        required
+                                        value={otp}
+                                        onChange={(e) => setOtp(e.target.value)}
+                                        className="block w-full rounded-lg border border-gray-300 bg-gray-50 py-3 pl-10 pr-3 text-gray-900 placeholder-gray-500 transition-all focus:border-blue-600 focus:bg-white focus:ring-2 focus:ring-blue-600/20 focus:outline-none tracking-widest text-center text-lg font-bold"
+                                        placeholder="Enter 6-digit OTP"
+                                        maxLength={6}
+                                    />
                                 </div>
-                                <input
-                                    type="email"
-                                    required
-                                    value={email}
-                                    onChange={(e) => setEmail(e.target.value)}
-                                    className="block w-full rounded-lg border border-gray-300 bg-gray-50 py-3 pl-10 pr-3 text-gray-900 placeholder-gray-500 transition-all focus:border-blue-600 focus:bg-white focus:ring-2 focus:ring-blue-600/20 focus:outline-none"
-                                    placeholder="Institute Email ID"
-                                />
-                            </div>
-                            <div className="relative">
-                                <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-gray-500">
-                                    <Lock size={18} />
-                                </div>
-                                <input
-                                    type="password"
-                                    required
-                                    value={password}
-                                    onChange={(e) => setPassword(e.target.value)}
-                                    className="block w-full rounded-lg border border-gray-300 bg-gray-50 py-3 pl-10 pr-3 text-gray-900 placeholder-gray-500 transition-all focus:border-blue-600 focus:bg-white focus:ring-2 focus:ring-blue-600/20 focus:outline-none"
-                                    placeholder="Password"
-                                />
-                            </div>
+                            )}
                         </div>
 
-                        <div className="flex items-center justify-between text-sm">
-                            <label className="flex items-center space-x-2 text-gray-600 cursor-pointer">
-                                <input type="checkbox" className="h-4 w-4 rounded border-gray-300 text-blue-800 focus:ring-blue-800" />
-                                <span>Remember me</span>
-                            </label>
-                            <a href="#" className="font-medium text-blue-700 hover:text-blue-900 hover:underline">
-                                Forgot Password?
-                            </a>
-                        </div>
+                        {!isOtpMode && (
+                            <div className="flex items-center justify-between text-sm">
+                                <label className="flex items-center space-x-2 text-gray-600 cursor-pointer">
+                                    <input type="checkbox" className="h-4 w-4 rounded border-gray-300 text-blue-800 focus:ring-blue-800" />
+                                    <span>Remember me</span>
+                                </label>
+                                <a href="#" className="font-medium text-blue-700 hover:text-blue-900 hover:underline">
+                                    Forgot Password?
+                                </a>
+                            </div>
+                        )}
 
                         <button
                             type="submit"
@@ -144,7 +185,7 @@ const Login: React.FC = () => {
                                 <Loader2 className="mr-2 h-5 w-5 animate-spin" />
                             ) : (
                                 <>
-                                    Sign In
+                                    {isOtpMode ? 'Verify & Activate' : 'Sign In'}
                                     <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
                                 </>
                             )}

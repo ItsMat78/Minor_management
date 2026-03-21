@@ -19,12 +19,19 @@ const storage = multer.diskStorage({
 });
 
 const fileFilter = (req: any, file: any, cb: any) => {
-    // Accept images, docs, pdfs
+    // Accept images, docs, pdfs, ppts, zips, spreadsheets
     if (file.mimetype.startsWith('image/') ||
         file.mimetype === 'application/pdf' ||
         file.mimetype === 'application/msword' ||
         file.mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
-        file.mimetype === 'text/plain') {
+        file.mimetype === 'application/vnd.ms-powerpoint' ||
+        file.mimetype === 'application/vnd.openxmlformats-officedocument.presentationml.presentation' ||
+        file.mimetype === 'application/zip' ||
+        file.mimetype === 'application/x-zip-compressed' ||
+        file.mimetype === 'text/plain' ||
+        file.mimetype === 'text/csv' ||
+        file.mimetype === 'application/vnd.ms-excel' ||
+        file.mimetype === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') {
         cb(null, true);
     } else {
         cb(new Error('Invalid file type'), false);

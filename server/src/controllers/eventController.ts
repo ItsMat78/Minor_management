@@ -2,6 +2,9 @@ import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import Event, { EventType } from '../models/Event';
 import User from '../models/User';
+import Group from '../models/Group';
+import Project from '../models/Project';
+import { sendEventNotificationEmail } from '../utils/emailService';
 
 const verifyAdminPassword = async (userId: string, passwordToVerify: string) => {
     if (!passwordToVerify) return false;
@@ -48,7 +51,7 @@ export const getActiveEvents = async (req: Request, res: Response) => {
 // Create a new event
 export const createEvent = async (req: Request, res: Response) => {
     try {
-        const { type, endDate, extensionDate, batchYear, isActive, password } = req.body;
+        const { type, endDate, extensionDate, batchYear, password, rubricParams } = req.body;
         const adminId = (req as any).user?.id;
 
         if (!await verifyAdminPassword(adminId, password)) {
@@ -64,17 +67,47 @@ export const createEvent = async (req: Request, res: Response) => {
             return res.status(400).json({ message: 'Invalid event type' });
         }
 
-        const event = new Event({
+        // Archiving Logic for Group Formation
+        if (type === EventType.GROUP_FORMATION_AND_PROJECT_PROPOSAL) {
+            // Archive all current Groups
+            await Group.updateMany(
+                { isArchived: { $ne: true } },
+                { $set: { isArchived: true, status: 'Dissolved' } }
+            );
+
+            // Archive all current Projects and set archivedMentorName
+            const activeProjects = await Project.find({ isArchived: { $ne: true } }).populate('faculty', 'name');
+            for (const project of activeProjects) {
+                const mentorName = project.faculty ? (project.faculty as any).name : undefined;
+                await Project.findByIdAndUpdate(project._id, {
+                    $set: {
+                        isArchived: true,
+                        archivedMentorName: mentorName,
+                        faculty: null // Detach current mentor
+                    }
+                });
+            }
+        }
+
+        const newEvent = new Event({
             type,
             endDate: new Date(endDate),
             extensionDate: extensionDate ? new Date(extensionDate) : undefined,
             batchYear: batchYear || undefined,
-            isActive: isActive !== undefined ? isActive : true, // Events start inherently active usually if created like this, but fallback to provided prop
+            isActive: true,
+            rubricParams,
             createdBy: adminId
         });
 
-        await event.save();
-        res.status(201).json(event);
+        await newEvent.save();
+
+        // Send Email to all active students
+        const allStudents = await User.find({ role: 'Student', isActive: true }).select('email');
+        const emails = allStudents.map(u => u.email).filter(e => e);
+        if (emails.length > 0) {
+            sendEventNotificationEmail(emails, type.replace(/_/g, ' ').toUpperCase(), type, new Date(endDate)).catch(err => console.error("Email failed:", err));
+        }
+        res.status(201).json(newEvent);
     } catch (error) {
         res.status(500).json({ message: 'Server error', error });
     }
@@ -84,15 +117,12 @@ export const createEvent = async (req: Request, res: Response) => {
 export const updateEvent = async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
-        const updates = req.body;
+        const { password, ...updates } = req.body; // Extract password and keep the rest in updates
         const adminId = (req as any).user?.id;
 
-        if (!await verifyAdminPassword(adminId, updates.password)) {
+        if (!await verifyAdminPassword(adminId, password)) {
             return res.status(401).json({ message: 'Invalid admin password provided.' });
         }
-
-        // Clean out auth components from updates
-        delete updates.password;
 
         if (updates.endDate) updates.endDate = new Date(updates.endDate);
         if (updates.extensionDate) updates.extensionDate = new Date(updates.extensionDate);

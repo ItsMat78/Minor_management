@@ -287,7 +287,16 @@ function getOriginalGroupBatchYear(group: any) {
     return 'Unknown';
 }
 
-const renderEvalCard = (item: any, activeTab: string, handleOpenEvaluation: any, isPanel: boolean = false, viewMode: 'grid' | 'list' = 'grid') => {
+const getRubricConfig = (activeEvents: any[], activeTab: string) => {
+    const eventType = activeTab === 'mid-term' ? 'mid_term_evaluation' : 'end_term_evaluation';
+    const event = activeEvents?.find(e => e.type === eventType);
+    if (event?.rubricParams) {
+        return event.rubricParams;
+    }
+    return RUBRIC_CONFIG[activeTab];
+};
+
+const renderEvalCard = (item: any, activeTab: string, handleOpenEvaluation: any, activeEvents: any[], isPanel: boolean = false, viewMode: 'grid' | 'list' = 'grid') => {
     const projectData = item.project || item;
     const evalData = activeTab === 'mid-term' ? projectData?.midTermEvaluation :
         projectData?.endTermEvaluation; // Removed finalReportEvaluation
@@ -295,10 +304,7 @@ const renderEvalCard = (item: any, activeTab: string, handleOpenEvaluation: any,
     const isDropper = groupData.targetBatch && groupData.targetBatch !== getOriginalGroupBatchYear(groupData);
 
     const isEvaluated = !!evalData && !!evalData.marks;
-    const RUBRIC_CONFIG_LOCAL = { // Renamed to avoid conflict with global RUBRIC_CONFIG
-        'mid-term': { maxMarks: 30 },
-        'end-term': { maxMarks: 70 }, // Updated maxMarks for end-term
-    } as any;
+    const RUBRIC_CONFIG_LOCAL = getRubricConfig(activeEvents, activeTab);
 
     if (viewMode === 'list') {
         return (
@@ -341,7 +347,7 @@ const renderEvalCard = (item: any, activeTab: string, handleOpenEvaluation: any,
                             <span className={`text-2xl leading-none font-bold ${isEvaluated ? 'text-indigo-600' : 'text-neutral-300'}`}>
                                 {isEvaluated ? evalData.marks : '--'}
                             </span>
-                            <span className="text-sm font-medium text-neutral-400 leading-none pb-0.5">/ {RUBRIC_CONFIG_LOCAL[activeTab]?.maxMarks || 100}</span>
+                            <span className="text-sm font-medium text-neutral-400 leading-none pb-0.5">/ {RUBRIC_CONFIG_LOCAL?.maxMarks || 100}</span>
                         </div>
                     </div>
                     <div className="w-px h-10 bg-neutral-200 hidden md:block"></div>
@@ -391,7 +397,7 @@ const renderEvalCard = (item: any, activeTab: string, handleOpenEvaluation: any,
                 <div className="flex justify-between items-center">
                     <span className={`text-xs font-bold uppercase tracking-wider ${isDropper ? 'text-red-400' : 'text-neutral-400'}`}>Score</span>
                     <span className={`text-xl font-bold ${isEvaluated ? 'text-indigo-600' : 'text-neutral-300'}`}>
-                        {isEvaluated ? evalData.marks : '--'} <span className={`text-sm font-medium ${isDropper ? 'text-red-400' : 'text-neutral-400'}`}>/ {RUBRIC_CONFIG_LOCAL[activeTab]?.maxMarks || 100}</span>
+                        {isEvaluated ? evalData.marks : '--'} <span className={`text-sm font-medium ${isDropper ? 'text-red-400' : 'text-neutral-400'}`}>/ {RUBRIC_CONFIG_LOCAL?.maxMarks || 100}</span>
                     </span>
                 </div>
                 <button
@@ -602,7 +608,7 @@ const FacultyDashboard: React.FC = () => {
         else if (type === 'end-term') existingEval = projectData.endTermEvaluation;
 
         // Initialize details from rubric config
-        const config = RUBRIC_CONFIG[type];
+        const config = getRubricConfig(activeEvents, type);
         const initialDetails: any = { guide: {}, panel: {}, facultyScores: {} };
 
         // Initialize facultyScores for all panel members
@@ -640,7 +646,8 @@ const FacultyDashboard: React.FC = () => {
 
     // Auto-calculate marks when details change
     useEffect(() => {
-        if (!evaluationType || !RUBRIC_CONFIG[evaluationType]) return;
+        const config = evaluationType ? getRubricConfig(activeEvents, evaluationType) : null;
+        if (!evaluationType || !config) return;
 
         if (manualMarksMode) {
             let guideScore = 0;
@@ -663,7 +670,7 @@ const FacultyDashboard: React.FC = () => {
             setEvaluationMarks(Math.round(totalMarks));
         } else {
             let total = 0;
-            RUBRIC_CONFIG[evaluationType].sections.forEach((sect: any) => {
+            config.sections.forEach((sect: any) => {
                 sect.fields.forEach((f: any) => {
                     const val = evaluationDetails[sect.key]?.[f.key];
                     total += Number(val || 0);
@@ -671,7 +678,7 @@ const FacultyDashboard: React.FC = () => {
             });
             setEvaluationMarks(total);
         }
-    }, [evaluationDetails, evaluationType, manualMarksMode, panelMembers, projectGuideId]);
+    }, [evaluationDetails, evaluationType, manualMarksMode, panelMembers, projectGuideId, activeEvents]);
 
     const handleSubmitEvaluation = async () => {
         if (!evaluatingProject || !evaluationType) return;
@@ -1471,7 +1478,7 @@ const FacultyDashboard: React.FC = () => {
                                                                                                 </div>
                                                                                                 {!isCollapsed && (
                                                                                                     <div className={`p-6 ${viewMode === 'grid' ? 'grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-6 auto-rows-fr' : 'flex flex-col gap-4'}`}>
-                                                                                                        {facInfo.groups.map((item: any) => renderEvalCard(item, activeTab, handleOpenEvaluation, true, viewMode))}
+                                                                                                        {facInfo.groups.map((item: any) => renderEvalCard(item, activeTab, handleOpenEvaluation, activeEvents, true, viewMode))}
                                                                                                     </div>
                                                                                                 )}
                                                                                             </div>

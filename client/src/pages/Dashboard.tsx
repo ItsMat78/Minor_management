@@ -85,6 +85,43 @@ const Dashboard: React.FC = () => {
     const [isUpdateSubmitting, setIsUpdateSubmitting] = useState(false);
     const [selectedProject, setSelectedProject] = useState<any>(null);
 
+    // Submission State
+    const [isSubmitDialogOpen, setIsSubmitDialogOpen] = useState(false);
+    const [submitEvalType, setSubmitEvalType] = useState('mid_term_evaluation');
+    const [submitReport, setSubmitReport] = useState<File | null>(null);
+    const [submitPPT, setSubmitPPT] = useState<File | null>(null);
+    const [submitPlagiarism, setSubmitPlagiarism] = useState<File | null>(null);
+    const [isSubmittingFiles, setIsSubmittingFiles] = useState(false);
+
+    const handleSubmitFiles = async () => {
+        if (!submitReport && !submitPPT) {
+            alert('Please select at least one file to submit.');
+            return;
+        }
+        setIsSubmittingFiles(true);
+        const formData = new FormData();
+        formData.append('evalType', submitEvalType);
+        if (submitReport) formData.append('report', submitReport);
+        if (submitPPT) formData.append('ppt', submitPPT);
+        if (submitPlagiarism) formData.append('plagiarismReport', submitPlagiarism);
+
+        try {
+            await api.put(`/projects/${group?.projects?.[0]?._id}/submissions`, formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
+            alert('Files submitted successfully!');
+            setIsSubmitDialogOpen(false);
+            setSubmitReport(null);
+            setSubmitPPT(null);
+            setSubmitPlagiarism(null);
+            window.location.reload();
+        } catch (error: any) {
+            alert(error.response?.data?.message || 'Failed to submit files.');
+        } finally {
+            setIsSubmittingFiles(false);
+        }
+    };
+
     const fetchStudents = async () => {
         setLoadingStudents(true);
         try {
@@ -749,10 +786,17 @@ const Dashboard: React.FC = () => {
                                                             <div className="flex justify-between items-start mb-6">
                                                                 <div>
                                                                     <div className="flex items-center gap-3">
-                                                                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold tracking-wide uppercase bg-emerald-100 text-emerald-700">
-                                                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                                                                            Active Project
-                                                                        </span>
+                                                                        {approvedProject.isArchived ? (
+                                                                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold tracking-wide uppercase bg-amber-100 text-amber-700">
+                                                                                <Archive className="w-3 h-3" />
+                                                                                Archived Project
+                                                                            </span>
+                                                                        ) : (
+                                                                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold tracking-wide uppercase bg-emerald-100 text-emerald-700">
+                                                                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                                                                Active Project
+                                                                            </span>
+                                                                        )}
                                                                         {approvedProject.semester && (
                                                                             <span className="text-xs font-medium text-neutral-500 bg-neutral-100 px-2 py-0.5 rounded">
                                                                                 Semester {approvedProject.semester}
@@ -793,18 +837,27 @@ const Dashboard: React.FC = () => {
                                                             )}
                                                         </div>
 
-                                                        {/* Timeline Updates */}
                                                         <div className="space-y-6">
-                                                            <div className="flex items-center justify-between">
+                                                            <div className="flex flex-wrap items-center justify-between gap-4">
                                                                 <h3 className="text-lg font-bold text-neutral-900 flex items-center gap-2">
                                                                     <Clock className="w-5 h-5 text-indigo-600" /> Project Timeline
                                                                 </h3>
-                                                                <button
-                                                                    onClick={() => setIsUpdateDialogOpen(true)}
-                                                                    className="text-sm font-medium text-indigo-600 hover:text-indigo-700 flex items-center gap-1 bg-indigo-50 px-3 py-1.5 rounded-lg hover:bg-indigo-100 transition-colors"
-                                                                >
-                                                                    <Plus className="w-4 h-4" /> New Update
-                                                                </button>
+                                                                {!approvedProject.isArchived && (
+                                                                    <div className="flex gap-2">
+                                                                        <button
+                                                                            onClick={() => setIsSubmitDialogOpen(true)}
+                                                                            className="text-sm font-bold text-emerald-700 flex items-center gap-1.5 bg-emerald-50 px-4 py-2 rounded-xl hover:bg-emerald-100 transition-colors border border-emerald-200 shadow-sm"
+                                                                        >
+                                                                            <FileText className="w-4 h-4" /> Upload Files
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => setIsUpdateDialogOpen(true)}
+                                                                            className="text-sm font-bold text-indigo-700 flex items-center gap-1.5 bg-indigo-50 px-4 py-2 rounded-xl hover:bg-indigo-100 transition-colors border border-indigo-200 shadow-sm"
+                                                                        >
+                                                                            <Plus className="w-4 h-4" /> New Update
+                                                                        </button>
+                                                                    </div>
+                                                                )}
                                                             </div>
 
                                                             <div className="relative pl-4">
@@ -1016,6 +1069,16 @@ const Dashboard: React.FC = () => {
                                                             <div>
                                                                 <p className="text-sm font-medium text-neutral-900">{approvedProject.faculty.name || 'Assigned Faculty'}</p>
                                                                 <p className="text-xs text-neutral-500">{approvedProject.faculty.department || 'Department'}</p>
+                                                            </div>
+                                                        </div>
+                                                    ) : approvedProject.archivedMentorName ? (
+                                                        <div className="flex items-center gap-3 p-2 bg-neutral-50 rounded-lg border border-neutral-200 mb-4">
+                                                            <div className="w-8 h-8 rounded-full bg-neutral-200 text-neutral-600 flex items-center justify-center font-bold text-xs">
+                                                                {approvedProject.archivedMentorName.charAt(0)}
+                                                            </div>
+                                                            <div>
+                                                                <p className="text-sm font-medium text-neutral-900">{approvedProject.archivedMentorName}</p>
+                                                                <p className="text-xs text-neutral-500 font-bold uppercase tracking-widest mt-0.5">Former Mentor</p>
                                                             </div>
                                                         </div>
                                                     ) : (
@@ -1308,6 +1371,94 @@ const Dashboard: React.FC = () => {
                                 >
                                     {isUpdateSubmitting ? 'Posting...' : 'Post Update'}
                                 </button>
+                            </div>
+                        </div>
+                    </Dialog.Content>
+                </Dialog.Portal>
+            </Dialog.Root>
+
+            {/* File Submission Dialog */}
+            <Dialog.Root open={isSubmitDialogOpen} onOpenChange={setIsSubmitDialogOpen}>
+                <Dialog.Portal>
+                    <Dialog.Overlay className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] transition-all" />
+                    <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md bg-white p-8 rounded-3xl shadow-2xl z-[101] focus:outline-none border border-neutral-100 font-jakarta max-h-[90vh] overflow-y-auto">
+                        <div className="flex justify-between items-center mb-6">
+                            <Dialog.Title className="text-xl font-black text-neutral-900 tracking-tight flex items-center gap-2">
+                                <FileText className="w-6 h-6 text-emerald-600" />
+                                Submit Documents
+                            </Dialog.Title>
+                            <Dialog.Close className="p-2 text-neutral-400 hover:text-neutral-600 rounded-full hover:bg-neutral-100">
+                                <X className="w-5 h-5" />
+                            </Dialog.Close>
+                        </div>
+
+                        <div className="space-y-5">
+                            <div>
+                                <label className="block text-sm font-bold text-neutral-700 mb-2">Evaluation Type</label>
+                                <select
+                                    className="w-full px-4 py-3 rounded-xl border border-neutral-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-neutral-50"
+                                    value={submitEvalType}
+                                    onChange={(e) => setSubmitEvalType(e.target.value)}
+                                >
+                                    <option value="mid_term_evaluation">Mid-Term Evaluation</option>
+                                    <option value="end_term_evaluation">End-Term Evaluation</option>
+                                    <option value="final_evaluation">Final Submission</option>
+                                </select>
+                            </div>
+
+                            <div className="p-5 bg-neutral-50 rounded-2xl border border-neutral-200 border-dashed space-y-4">
+                                <div>
+                                    <label className="block text-sm font-bold text-neutral-700 mb-1">Project Report (PDF/Word)</label>
+                                    <input
+                                        type="file"
+                                        accept=".pdf,.doc,.docx"
+                                        onChange={(e) => setSubmitReport(e.target.files?.[0] || null)}
+                                        className="w-full text-sm text-neutral-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100"
+                                    />
+                                    {submitReport && <p className="text-[10px] mt-1 text-emerald-600 font-medium ml-2">Selected: {submitReport.name}</p>}
+                                </div>
+
+                                <div className="h-px bg-neutral-200 w-full" />
+
+                                <div>
+                                    <label className="block text-sm font-bold text-neutral-700 mb-1">Presentation (PPT/PDF)</label>
+                                    <input
+                                        type="file"
+                                        accept=".pdf,.ppt,.pptx"
+                                        onChange={(e) => setSubmitPPT(e.target.files?.[0] || null)}
+                                        className="w-full text-sm text-neutral-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
+                                    />
+                                    {submitPPT && <p className="text-[10px] mt-1 text-indigo-600 font-medium ml-2">Selected: {submitPPT.name}</p>}
+                                </div>
+
+                                {submitEvalType === 'final_evaluation' && (
+                                    <>
+                                        <div className="h-px bg-neutral-200 w-full" />
+                                        <div>
+                                            <label className="block text-sm font-bold text-neutral-700 mb-1">Plagiarism Report (PDF)</label>
+                                            <input
+                                                type="file"
+                                                accept=".pdf"
+                                                onChange={(e) => setSubmitPlagiarism(e.target.files?.[0] || null)}
+                                                className="w-full text-sm text-neutral-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-red-50 file:text-red-700 hover:file:bg-red-100"
+                                            />
+                                            {submitPlagiarism && <p className="text-[10px] mt-1 text-red-600 font-medium ml-2">Selected: {submitPlagiarism.name}</p>}
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                            
+                            <div className="pt-2">
+                                <button
+                                    onClick={handleSubmitFiles}
+                                    disabled={(!submitReport && !submitPPT) || isSubmittingFiles}
+                                    className="w-full py-3.5 bg-neutral-900 text-white rounded-xl font-bold uppercase tracking-widest text-sm shadow-xl shadow-neutral-200 hover:bg-black transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    {isSubmittingFiles ? 'Uploading...' : 'Submit Documents'}
+                                </button>
+                                <p className="text-[10px] text-center mt-3 text-neutral-400 font-medium px-4">
+                                    Files are securely uploaded and stored. You can overwrite them by submitting again before the evaluation.
+                                </p>
                             </div>
                         </div>
                     </Dialog.Content>

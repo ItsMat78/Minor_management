@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
-import { Search, Users, Clock, CheckCircle, FileText, X, LogOut, ChevronDown, ChevronUp, Settings, Menu, Calendar, Download, AlertCircle, AlertTriangle, Save, Pencil, LayoutGrid, MoreVertical, Plus, Edit3, Power, Info, Trash2 } from 'lucide-react';
+import { Search, Users, Clock, CheckCircle, FileText, X, LogOut, ChevronDown, ChevronUp, Settings, Menu, Calendar, Download, AlertCircle, AlertTriangle, Save, Pencil, LayoutGrid, MoreVertical, Plus, Edit3, Power, Info, Trash2, Upload } from 'lucide-react';
 import { motion } from 'framer-motion';
 import MenteeGroupDetails from '../components/MenteeGroupDetails';
 import AutoCreatePanelsModal from '../components/AutoCreatePanelsModal';
@@ -29,7 +29,7 @@ export const getOriginalGroupBatchYear = (group: any) => {
 
 const AdminDashboard: React.FC = () => {
     const { user, logout } = useAuth();
-    const [activeTab, setActiveTab] = useState<'students' | 'groups' | 'faculty' | 'events' | 'exports' | 'panels'>('students');
+    const [activeTab, setActiveTab] = useState<'overview' | 'students' | 'groups' | 'faculty' | 'events' | 'exports' | 'panels'>('overview');
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
     // Data State
@@ -80,12 +80,22 @@ const AdminDashboard: React.FC = () => {
         type: 'group_formation_project_proposal',
         endDate: '',
         extensionDate: '',
-        batchYear: ''
+        batchYear: '',
+        rubricParams: '' // For JSON stringified rubric
     });
 
     const [confirmEndEvent, setConfirmEndEvent] = useState<any>(null);
     const [confirmDeleteEvent, setConfirmDeleteEvent] = useState<any>(null);
     const [adminPassword, setAdminPassword] = useState('');
+
+    const [showCreateAdmin, setShowCreateAdmin] = useState(false);
+    const [adminForm, setAdminForm] = useState({ name: '', email: '', password: '' });
+
+    // Import State
+    const [showImportModal, setShowImportModal] = useState(false);
+    const [importFile, setImportFile] = useState<File | null>(null);
+    const [importPreview, setImportPreview] = useState<{validRows: any[], invalidRows: any[], totalRows: number} | null>(null);
+    const [importLoading, setImportLoading] = useState(false);
 
 
     useEffect(() => {
@@ -479,6 +489,17 @@ const AdminDashboard: React.FC = () => {
         }
     };
 
+    const handleCreateAdmin = async (e: React.FormEvent) => {
+        e.preventDefault();
+        try {
+            await api.post('/admin/create', adminForm);
+            alert('Admin account created successfully!');
+            setShowCreateAdmin(false);
+            setAdminForm({ name: '', email: '', password: '' });
+        } catch (error: any) {
+            alert(error.response?.data?.message || 'Failed to create admin');
+        }
+    };
 
     return (
         <div className="flex h-full bg-neutral-50 font-jakarta text-neutral-900 overflow-hidden">
@@ -500,6 +521,12 @@ const AdminDashboard: React.FC = () => {
                     </button>
                 </div>
                 <nav className="flex-1 p-4 space-y-2">
+                    <SidebarItem
+                        icon={<LayoutGrid className="w-5 h-5" />}
+                        label="Dashboard Overview"
+                        active={activeTab === 'overview'}
+                        onClick={() => setActiveTab('overview')}
+                    />
                     <SidebarItem
                         icon={<Users className="w-5 h-5" />}
                         label="Student Directory"
@@ -566,6 +593,7 @@ const AdminDashboard: React.FC = () => {
                             </button>
                         )}
                         <h1 className="text-xl font-bold text-neutral-800">
+                            {activeTab === 'overview' && 'Dashboard Overview'}
                             {activeTab === 'students' && 'Student Directory'}
                             {activeTab === 'groups' && 'Group Directory'}
                             {activeTab === 'faculty' && 'Faculty Directory'}
@@ -632,6 +660,20 @@ const AdminDashboard: React.FC = () => {
                                         </>
                                     )}
 
+                                    {/* Smart Import Button */}
+                                    {(activeTab === 'students' || activeTab === 'faculty') && (
+                                        <button 
+                                            onClick={() => {
+                                                setImportFile(null);
+                                                setImportPreview(null);
+                                                setShowImportModal(true);
+                                            }}
+                                            className="px-4 py-2 bg-indigo-50 text-indigo-700 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-indigo-100 transition-colors border border-indigo-100 shadow-sm"
+                                        >
+                                            <Upload className="w-4 h-4" /> Import Data
+                                        </button>
+                                    )}
+
                                     {activeTab === 'groups' && (
                                         <>
                                             {/* Faculty Filter Dropdown */}
@@ -691,6 +733,75 @@ const AdminDashboard: React.FC = () => {
                             </div>
                         ) : (
                             <>
+                                {activeTab === 'overview' && (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                                        <div className="bg-white p-6 rounded-3xl border border-neutral-200 shadow-sm relative overflow-hidden group">
+                                            <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                                                <Users className="w-16 h-16" />
+                                            </div>
+                                            <h3 className="text-neutral-500 font-bold text-sm tracking-wider uppercase mb-2">Total Students</h3>
+                                            <div className="flex items-end gap-3">
+                                                <span className="text-4xl font-black text-neutral-900">{getFilteredStudents().length}</span>
+                                                <span className="text-sm font-bold text-amber-500 mb-1">{getFilteredStudents().filter(s => !s.isGrouped).length} Unassigned</span>
+                                            </div>
+                                        </div>
+
+                                        <div className="bg-white p-6 rounded-3xl border border-neutral-200 shadow-sm relative overflow-hidden group">
+                                            <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                                                <LayoutGrid className="w-16 h-16" />
+                                            </div>
+                                            <h3 className="text-neutral-500 font-bold text-sm tracking-wider uppercase mb-2">Total Groups</h3>
+                                            <div className="flex items-end gap-3">
+                                                <span className="text-4xl font-black text-neutral-900">{getFilteredGroups().length}</span>
+                                                <span className="text-sm font-bold text-emerald-500 mb-1">{getFilteredGroups().filter(g => g.status === 'Approved').length} Approved</span>
+                                            </div>
+                                        </div>
+
+                                        <div className="bg-white p-6 rounded-3xl border border-neutral-200 shadow-sm relative overflow-hidden group">
+                                            <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                                                <Users className="w-16 h-16" />
+                                            </div>
+                                            <h3 className="text-neutral-500 font-bold text-sm tracking-wider uppercase mb-2">Total Faculty</h3>
+                                            <div className="flex items-end gap-3">
+                                                <span className="text-4xl font-black text-neutral-900">{faculty.length}</span>
+                                            </div>
+                                        </div>
+
+                                        <div className="bg-white p-6 rounded-3xl border border-neutral-200 shadow-sm relative overflow-hidden group">
+                                            <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                                                <Calendar className="w-16 h-16" />
+                                            </div>
+                                            <h3 className="text-neutral-500 font-bold text-sm tracking-wider uppercase mb-2">Active Events</h3>
+                                            <div className="flex items-end gap-3">
+                                                <span className="text-4xl font-black text-neutral-900">{events.filter(e => new Date(e.endDate) > new Date() || (e.extensionDate && new Date(e.extensionDate) > new Date())).length}</span>
+                                            </div>
+                                        </div>
+
+                                        {/* Quick Actions */}
+                                        <div className="md:col-span-2 lg:col-span-4 mt-6">
+                                            <div className="bg-white p-6 rounded-3xl border border-neutral-200 shadow-sm">
+                                                <h3 className="text-lg font-bold text-neutral-900 mb-4 flex items-center gap-2">
+                                                    <Settings className="w-5 h-5 text-indigo-600" /> Administrative Actions
+                                                </h3>
+                                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                                    <button
+                                                        onClick={() => setShowCreateAdmin(true)}
+                                                        className="flex items-center gap-3 p-4 rounded-2xl border border-neutral-200 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 transition-all text-left group"
+                                                    >
+                                                        <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 group-hover:scale-110 transition-transform">
+                                                            <Plus className="w-5 h-5" />
+                                                        </div>
+                                                        <div>
+                                                            <p className="font-bold text-neutral-900 group-hover:text-indigo-700">Add New Admin</p>
+                                                            <p className="text-xs text-neutral-500">Create a secondary admin account</p>
+                                                        </div>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
                                 {activeTab === 'students' && (
                                     <div className="bg-white rounded-xl border border-neutral-200 shadow-sm overflow-visible">
                                         <table className="w-full text-left text-sm">
@@ -1233,7 +1344,8 @@ const AdminDashboard: React.FC = () => {
                                                         type: '',
                                                         endDate: '',
                                                         extensionDate: '',
-                                                        batchYear: ''
+                                                        batchYear: '',
+                                                        rubricParams: ''
                                                     });
                                                     setShowCreateEvent(true);
                                                 }}
@@ -1300,7 +1412,8 @@ const AdminDashboard: React.FC = () => {
                                                                                     type: ev.type,
                                                                                     endDate: new Date(ev.endDate).toISOString().slice(0, 16),
                                                                                     extensionDate: ev.extensionDate ? new Date(ev.extensionDate).toISOString().slice(0, 16) : '',
-                                                                                    batchYear: ev.batchYear || ''
+                                                                                    batchYear: ev.batchYear || '',
+                                                                                    rubricParams: ev.rubricParams ? JSON.stringify(ev.rubricParams, null, 2) : ''
                                                                                 });
                                                                                 setShowCreateEvent(true);
                                                                             }}
@@ -1963,7 +2076,11 @@ const AdminDashboard: React.FC = () => {
                         <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
                             <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-neutral-50">
                                 <h3 className="text-lg font-bold text-gray-900">{editingEvent ? 'Edit Event' : 'Create New Event'}</h3>
-                                <button onClick={() => { setShowCreateEvent(false); setEditingEvent(null); }} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+                                <button onClick={() => { 
+                                    setShowCreateEvent(false); 
+                                    setEditingEvent(null); 
+                                    setEventForm({ type: 'group_formation_project_proposal', endDate: '', extensionDate: '', batchYear: '', rubricParams: '' });
+                                }} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
                             </div>
                             <div className="p-6 space-y-5 overflow-y-auto">
                                 <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3">
@@ -2017,6 +2134,37 @@ const AdminDashboard: React.FC = () => {
                                         {eventForm.extensionDate && (<button onClick={() => setEventForm(prev => ({ ...prev, extensionDate: '' }))} className="text-xs text-red-500 mt-1 hover:underline">Remove extension</button>)}
                                     </div>
                                 </div>
+                                
+                                {(eventForm.type === 'mid_term_evaluation' || eventForm.type === 'end_term_evaluation') && (
+                                    <div className="pt-2">
+                                        <label className="flex items-center justify-between text-sm font-medium text-gray-700 mb-1.5">
+                                            <span>Evaluation Rubric Configuration (Optional JSON)</span>
+                                            <div className="flex gap-2">
+                                            <button onClick={() => setEventForm(prev => ({ ...prev, rubricParams: JSON.stringify({
+                                                maxMarks: 30, sections: [
+                                                    { title: "Guide Evaluation", maxMarks: 15, key: "guide", fields: [{ key: "dataElicitation", label: "Data Elicitation", max: 5, description: "" }, { key: "problemDefinition", label: "Problem Definition", max: 5, description: "" }, { key: "planning", label: "Planning", max: 5, description: "" }] },
+                                                    { title: "Panel Evaluation", maxMarks: 15, key: "panel", fields: [{ key: "literatureSurvey", label: "Literature Survey", max: 5, description: "" }, { key: "presentationSkills", label: "Presentation Skills", max: 5, description: "" }, { key: "technicalUnderstanding", label: "Technical Understanding", max: 5, description: "" }] }
+                                                ]
+                                            }, null, 2)}))} className="text-[10px] text-indigo-600 bg-indigo-50 px-2 py-1 rounded hover:bg-indigo-100 transition">Template 1</button>
+                                            <button onClick={() => setEventForm(prev => ({ ...prev, rubricParams: JSON.stringify({
+                                                maxMarks: 70, sections: [
+                                                    { title: "Guide Evaluation", maxMarks: 35, key: "guide", fields: [{ key: "requirementSpecification", label: "Requirement", max: 7, description: "" }, { key: "systemDesign", label: "System Design", max: 7, description: "" }, { key: "implementation", label: "Implementation", max: 7, description: "" }, { key: "projectManagement", label: "Management", max: 7, description: "" }, { key: "planningVsExecution", label: "Planning", max: 7, description: "" }] },
+                                                    { title: "Panel Evaluation", maxMarks: 35, key: "panel", fields: [{ key: "testingAndResults", label: "Testing", max: 10, description: "" }, { key: "innovationAndRelevance", label: "Innovation", max: 5, description: "" }, { key: "presentationAndViva", label: "Presentation", max: 10, description: "" }, { key: "conceptualDepth", label: "Conceptual Depth", max: 10, description: "" }] }
+                                                ]
+                                            }, null, 2)}))} className="text-[10px] text-indigo-600 bg-indigo-50 px-2 py-1 rounded hover:bg-indigo-100 transition">Template 2</button>
+                                            </div>
+                                        </label>
+                                        <textarea 
+                                            value={eventForm.rubricParams} 
+                                            onChange={(e) => setEventForm(prev => ({ ...prev, rubricParams: e.target.value }))}
+                                            rows={6}
+                                            placeholder={`{\n  "maxMarks": 100,\n  "sections": []\n}`}
+                                            className="w-full px-3 py-2 border border-gray-300 rounded-xl text-xs font-mono focus:ring-2 focus:ring-indigo-500/20"
+                                        />
+                                        <p className="text-[10px] text-gray-500 mt-1">Leave empty to use hardcoded default rubrics. If provided, must be valid JSON.</p>
+                                    </div>
+                                )}
+
                                 <div className="mt-4 pt-4 border-t border-gray-100">
                                     <label className="block text-sm font-bold text-gray-700 mb-1.5 flex items-center gap-1.5">
                                         <Settings className="w-4 h-4 text-indigo-500" /> Admin Password
@@ -2052,7 +2200,24 @@ const AdminDashboard: React.FC = () => {
                                             }
                                         }
 
-                                        const payload = { ...eventForm, password: adminPassword, extensionDate: eventForm.extensionDate || null, batchYear: eventForm.batchYear || undefined };
+                                        // Validate JSON if provided
+                                        let parsedRubricParams = null;
+                                        if (eventForm.rubricParams && eventForm.rubricParams.trim() !== '') {
+                                            try {
+                                                parsedRubricParams = JSON.parse(eventForm.rubricParams);
+                                            } catch (err) {
+                                                alert("Invalid JSON in Rubric Configuration. Please fix it or leave it empty.");
+                                                return;
+                                            }
+                                        }
+
+                                        const payload = { 
+                                            ...eventForm, 
+                                            password: adminPassword, 
+                                            extensionDate: eventForm.extensionDate || null, 
+                                            batchYear: eventForm.batchYear || undefined,
+                                            rubricParams: parsedRubricParams 
+                                        };
                                         if (editingEvent) {
                                             await api.put(`/events/${editingEvent._id}`, payload);
                                         } else {
@@ -2073,8 +2238,6 @@ const AdminDashboard: React.FC = () => {
                         </motion.div>
                     </div>
                 )}
-
-
                 {/* End Event Confirmation */}
                 {confirmEndEvent && (
                     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm">
@@ -2198,6 +2361,281 @@ const AdminDashboard: React.FC = () => {
                             </div>
                         </motion.div>
                     </div>
+                )}
+
+                {showCreateAdmin && (
+                    <div className="fixed inset-0 bg-neutral-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 cursor-default">
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            className="bg-white rounded-2xl max-w-md w-full shadow-2xl overflow-hidden"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <div className="px-6 py-4 border-b border-neutral-100 flex justify-between items-center bg-indigo-50/50">
+                                <h3 className="text-lg font-bold text-neutral-900 flex items-center gap-2">
+                                    <Users className="w-5 h-5 text-indigo-600" /> Create Admin Account
+                                </h3>
+                                <button onClick={() => setShowCreateAdmin(false)} className="text-neutral-400 hover:text-neutral-600 transition-colors">
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+                            <form onSubmit={handleCreateAdmin} className="p-6 space-y-4">
+                                <div>
+                                    <label className="block text-sm font-bold text-neutral-700 mb-1.5">Full Name</label>
+                                    <input
+                                        type="text"
+                                        required
+                                        value={adminForm.name}
+                                        onChange={(e) => setAdminForm(prev => ({ ...prev, name: e.target.value }))}
+                                        className="w-full px-4 py-2.5 rounded-xl border border-neutral-200 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all"
+                                        placeholder="Admin Name"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-bold text-neutral-700 mb-1.5">Email Address</label>
+                                    <input
+                                        type="email"
+                                        required
+                                        value={adminForm.email}
+                                        onChange={(e) => setAdminForm(prev => ({ ...prev, email: e.target.value }))}
+                                        className="w-full px-4 py-2.5 rounded-xl border border-neutral-200 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all"
+                                        placeholder="admin@example.com"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-bold text-neutral-700 mb-1.5">Password</label>
+                                    <input
+                                        type="password"
+                                        required
+                                        value={adminForm.password}
+                                        onChange={(e) => setAdminForm(prev => ({ ...prev, password: e.target.value }))}
+                                        className="w-full px-4 py-2.5 rounded-xl border border-neutral-200 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all"
+                                        placeholder="Secure password"
+                                    />
+                                </div>
+                                <div className="pt-4 flex justify-end gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowCreateAdmin(false)}
+                                        className="px-5 py-2.5 text-sm font-bold text-neutral-600 hover:bg-neutral-100 rounded-xl transition-colors"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        className="px-5 py-2.5 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-colors shadow-sm"
+                                    >
+                                        Create Admin
+                                    </button>
+                                </div>
+                            </form>
+                        </motion.div>
+                    </div>
+                )}                {/* Smart Import Modal */}
+                {showImportModal && (
+                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                        <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+                            <div className="px-6 py-4 border-b border-neutral-100 flex items-center justify-between bg-neutral-50/50">
+                                <h3 className="text-xl font-bold text-neutral-800 flex items-center gap-2">
+                                    <Upload className="w-5 h-5 text-indigo-600" />
+                                    Smart Import - {activeTab === 'students' ? 'Students' : 'Faculty'}
+                                </h3>
+                                <button onClick={() => setShowImportModal(false)} className="p-2 text-neutral-400 hover:bg-neutral-100 rounded-full transition-colors">
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+                            
+                            <div className="p-6 overflow-y-auto flex-1 bg-neutral-50/30">
+                                {!importPreview ? (
+                                    <div className="max-w-xl mx-auto space-y-6">
+                                        <div className="bg-indigo-50 border border-indigo-100 p-4 rounded-xl text-sm text-indigo-800">
+                                            <strong>Instructions:</strong> Please upload an Excel (.xlsx, .xls) or CSV file. 
+                                            <br className="my-1"/>
+                                            Required columns for <b>Students</b>: Name (or FullName), Email, RollNumber, Branch. (Optional: Semester)
+                                            <br className="my-1"/>
+                                            Required columns for <b>Faculty</b>: Name (or FullName), Email, Department. (Optional: Expertise)
+                                        </div>
+
+                                        <div className="border-2 border-dashed border-neutral-300 rounded-2xl p-10 text-center hover:bg-indigo-50 hover:border-indigo-300 transition-colors w-full cursor-pointer relative">
+                                            <input 
+                                                type="file" 
+                                                accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel" 
+                                                onChange={async (e) => {
+                                                    const file = e.target.files?.[0];
+                                                    if (file) {
+                                                        setImportFile(file);
+                                                        setImportLoading(true);
+                                                        const formData = new FormData();
+                                                        formData.append('file', file);
+                                                        formData.append('importType', activeTab === 'students' ? 'student' : 'faculty');
+
+                                                        try {
+                                                            const res = await api.post('/users/import-preview', formData, {
+                                                                headers: { 'Content-Type': 'multipart/form-data' }
+                                                            });
+                                                            setImportPreview(res.data);
+                                                        } catch (error: any) {
+                                                            alert(error.response?.data?.message || 'Error processing file.');
+                                                            setImportFile(null);
+                                                        } finally {
+                                                            setImportLoading(false);
+                                                        }
+                                                    }
+                                                }}
+                                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                                disabled={importLoading}
+                                            />
+                                            {importLoading ? (
+                                                <div className="flex flex-col items-center gap-3">
+                                                    <div className="w-8 h-8 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div>
+                                                    <p className="font-bold text-neutral-600">Analyzing {importFile?.name || 'Data'}...</p>
+                                                </div>
+                                            ) : (
+                                                <div className="flex flex-col items-center gap-3">
+                                                    <div className="w-16 h-16 bg-white rounded-full bg-indigo-50 flex items-center justify-center text-indigo-500 mb-2 shadow-sm border border-indigo-100">
+                                                        <FileText className="w-8 h-8" />
+                                                    </div>
+                                                    <p className="font-bold text-neutral-700 text-lg">Click or drag file to upload</p>
+                                                    <p className="text-sm text-neutral-500">Supports .CSV, .XLSX, .XLS up to 10MB</p>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-6">
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                            <div className="bg-white p-4 rounded-xl border border-neutral-200 shadow-sm flex items-center justify-between">
+                                                <div>
+                                                    <p className="text-sm text-neutral-500 font-bold mb-1 uppercase tracking-wider">Total Rows</p>
+                                                    <p className="text-2xl font-black text-neutral-800">{importPreview.totalRows}</p>
+                                                </div>
+                                                <div className="w-10 h-10 bg-neutral-100 rounded-lg flex items-center justify-center text-neutral-500"><FileText className="w-5 h-5"/></div>
+                                            </div>
+                                            <div className="bg-white p-4 rounded-xl border border-green-200 shadow-sm flex items-center justify-between">
+                                                <div>
+                                                    <p className="text-sm text-green-600 font-bold mb-1 uppercase tracking-wider">Ready to Import</p>
+                                                    <p className="text-2xl font-black text-green-700">{importPreview.validRows.length}</p>
+                                                </div>
+                                                <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center text-green-600"><CheckCircle className="w-5 h-5"/></div>
+                                            </div>
+                                            <div className="bg-white p-4 rounded-xl border border-red-200 shadow-sm flex items-center justify-between">
+                                                <div>
+                                                    <p className="text-sm text-red-600 font-bold mb-1 uppercase tracking-wider">Invalid Rows</p>
+                                                    <p className="text-2xl font-black text-red-700">{importPreview.invalidRows.length}</p>
+                                                </div>
+                                                <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center text-red-600"><AlertCircle className="w-5 h-5"/></div>
+                                            </div>
+                                        </div>
+
+                                        {importPreview.invalidRows.length > 0 && (
+                                            <div className="bg-white rounded-xl border border-red-200 shadow-sm overflow-hidden">
+                                                <div className="bg-red-50 px-4 py-3 border-b border-red-100">
+                                                    <h4 className="font-bold text-red-800 flex items-center gap-2"><AlertTriangle className="w-4 h-4"/> Validation Errors</h4>
+                                                    <p className="text-xs text-red-600 mt-1">These rows will be skipped during import.</p>
+                                                </div>
+                                                <div className="max-h-64 overflow-y-auto">
+                                                    <table className="w-full text-left text-sm">
+                                                        <thead className="bg-neutral-50 sticky top-0">
+                                                            <tr>
+                                                                <th className="px-4 py-2 font-bold text-neutral-500">Row</th>
+                                                                <th className="px-4 py-2 font-bold text-neutral-500">Reason</th>
+                                                                <th className="px-4 py-2 font-bold text-neutral-500">Data Extract</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody className="divide-y divide-neutral-100">
+                                                            {importPreview.invalidRows.map((invalid: any, idx: number) => (
+                                                                <tr key={idx} className="bg-white">
+                                                                    <td className="px-4 py-2 font-bold text-neutral-600 w-16">#{invalid.rowNumber}</td>
+                                                                    <td className="px-4 py-2 text-red-600 font-medium">{invalid.reason}</td>
+                                                                    <td className="px-4 py-2 text-neutral-500 font-mono text-xs">{JSON.stringify(invalid.data).substring(0, 100)}...</td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        <div className="bg-white rounded-xl border border-green-200 shadow-sm overflow-hidden">
+                                            <div className="bg-green-50 px-4 py-3 border-b border-green-100">
+                                                <h4 className="font-bold text-green-800 flex items-center gap-2"><CheckCircle className="w-4 h-4"/> Valid Entries Preview (Showing first 5)</h4>
+                                            </div>
+                                            <div className="overflow-x-auto">
+                                                <table className="w-full text-left text-sm">
+                                                    <thead className="bg-neutral-50">
+                                                        <tr>
+                                                            <th className="px-4 py-2 font-bold text-neutral-500">Name</th>
+                                                            <th className="px-4 py-2 font-bold text-neutral-500">Email</th>
+                                                            <th className="px-4 py-2 font-bold text-neutral-500">Branch/Dept</th>
+                                                            {activeTab === 'students' && <th className="px-4 py-2 font-bold text-neutral-500">Roll No</th>}
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-neutral-100">
+                                                        {importPreview.validRows.slice(0, 5).map((row: any, idx: number) => (
+                                                            <tr key={idx} className="bg-white">
+                                                                <td className="px-4 py-2 font-medium text-neutral-900">{row.name}</td>
+                                                                <td className="px-4 py-2 text-neutral-500">{row.email}</td>
+                                                                <td className="px-4 py-2 text-neutral-500">{row.branch || row.department}</td>
+                                                                {activeTab === 'students' && <td className="px-4 py-2 font-mono text-neutral-600 pt-1">{row.rollNumber}</td>}
+                                                            </tr>
+                                                        ))}
+                                                        {importPreview.validRows.length === 0 && (
+                                                            <tr><td colSpan={4} className="px-4 py-6 text-center text-neutral-400">No valid rows found to import.</td></tr>
+                                                        )}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+
+                                    </div>
+                                )}
+                            </div>
+                            
+                            <div className="px-6 py-4 border-t border-neutral-100 flex justify-end gap-3 bg-white">
+                                <button
+                                    onClick={() => {
+                                        if (importPreview) {
+                                            setImportPreview(null);
+                                            setImportFile(null);
+                                        } else {
+                                            setShowImportModal(false);
+                                        }
+                                    }}
+                                    className="px-5 py-2.5 text-neutral-600 font-bold hover:bg-neutral-100 rounded-xl transition-colors"
+                                >
+                                    {importPreview ? 'Start Over' : 'Cancel'}
+                                </button>
+                                {importPreview && importPreview.validRows.length > 0 && (
+                                    <button
+                                        onClick={async () => {
+                                            setImportLoading(true);
+                                            try {
+                                                const res = await api.post('/users/import-commit', { validRows: importPreview.validRows });
+                                                alert(res.data.message);
+                                                setShowImportModal(false);
+                                                // Refresh data
+                                                if (activeTab === 'students') {
+                                                    const resStudents = await api.get('/users/students');
+                                                    setStudents(Array.isArray(resStudents.data) ? resStudents.data : []);
+                                                } else {
+                                                    const resFaculty = await api.get('/users/faculty');
+                                                    setFaculty(Array.isArray(resFaculty.data) ? resFaculty.data : []);
+                                                }
+                                            } catch (error: any) {
+                                                alert(error.response?.data?.message || 'Error committing import.');
+                                            } finally {
+                                                setImportLoading(false);
+                                            }
+                                        }}
+                                        disabled={importLoading}
+                                        className="px-5 py-2.5 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition flex items-center gap-2 shadow-lg shadow-indigo-200"
+                                    >
+                                        {importLoading ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Importing...</> : <><Save className="w-4 h-4"/> Confirm & Import {importPreview.validRows.length} Users</>}
+                                    </button>
+                                )}
+                            </div>
+                        </motion.div>
+                    </motion.div>
                 )}
             </div>
         </div>

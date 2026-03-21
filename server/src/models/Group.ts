@@ -8,6 +8,7 @@ export interface IGroup extends Document {
     inviteCode?: string;
     createdAt: Date;
     targetBatch?: string;
+    isArchived?: boolean;
 }
 
 const GroupSchema: Schema = new Schema({
@@ -16,7 +17,8 @@ const GroupSchema: Schema = new Schema({
     project: { type: Schema.Types.ObjectId, ref: 'Project' },
     status: { type: String, enum: ['Forming', 'ProposalPending', 'Approved', 'Dissolved'], default: 'Forming' },
     inviteCode: { type: String },
-    targetBatch: { type: String }
+    targetBatch: { type: String },
+    isArchived: { type: Boolean, default: false }
 }, {
     timestamps: true
 });

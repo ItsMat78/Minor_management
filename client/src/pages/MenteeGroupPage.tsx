@@ -27,6 +27,11 @@ const MenteeGroupPage: React.FC = () => {
     const [updateFiles, setUpdateFiles] = useState<File[]>([]);
     const [submittingUpdate, setSubmittingUpdate] = useState(false);
 
+    // Feedback Modal State
+    const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
+    const [feedbackContent, setFeedbackContent] = useState('');
+    const [submittingFeedback, setSubmittingFeedback] = useState(false);
+
     useEffect(() => {
         fetchGroupDetails();
     }, [groupId]);
@@ -61,6 +66,24 @@ const MenteeGroupPage: React.FC = () => {
             alert("Failed to submit update. Please try again.");
         } finally {
             setSubmittingUpdate(false);
+        }
+    };
+
+    const handleAddFeedback = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!group?.project?._id) return;
+        setSubmittingFeedback(true);
+
+        try {
+            await api.put(`/projects/${group.project._id}/feedback`, { feedback: feedbackContent });
+            await fetchGroupDetails();
+            setIsFeedbackModalOpen(false);
+            setFeedbackContent('');
+        } catch (error) {
+            console.error("Failed to submit feedback", error);
+            alert("Failed to submit feedback. Please try again.");
+        } finally {
+            setSubmittingFeedback(false);
         }
     };
 
@@ -288,14 +311,42 @@ const MenteeGroupPage: React.FC = () => {
                                 )}
 
                                 {/* Faculty Feedback Box */}
-                                {group.project?.feedback && (
-                                    <div className="mt-8 p-6 bg-orange-50 rounded-2xl border border-orange-100">
-                                        <h5 className="text-sm font-bold text-orange-800 mb-2 flex items-center gap-2">
-                                            <MessageSquare className="w-4 h-4" /> Faculty Feedback
-                                        </h5>
-                                        <p className="text-sm text-orange-700 leading-relaxed">
+                                {group.project?.feedback ? (
+                                    <div className="mt-8 p-6 bg-orange-50 rounded-2xl border border-orange-100 relative group/feedback">
+                                        <div className="flex items-center justify-between mb-2">
+                                            <h5 className="text-sm font-bold text-orange-800 flex items-center gap-2">
+                                                <MessageSquare className="w-4 h-4" /> Faculty Feedback
+                                            </h5>
+                                            {(user?.role === 'Admin' || user?._id === group.project.faculty) && (
+                                                <button
+                                                    onClick={() => {
+                                                        setFeedbackContent(group.project.feedback);
+                                                        setIsFeedbackModalOpen(true);
+                                                    }}
+                                                    className="opacity-0 group-hover/feedback:opacity-100 transition-opacity text-xs font-bold text-orange-600 hover:text-orange-800 bg-white/50 px-2.5 py-1 rounded-md"
+                                                >
+                                                    Edit Feedback
+                                                </button>
+                                            )}
+                                        </div>
+                                        <p className="text-sm text-orange-700 leading-relaxed whitespace-pre-wrap">
                                             {group.project.feedback}
                                         </p>
+                                    </div>
+                                ) : (
+                                    <div className="mt-8 p-6 bg-orange-50/50 rounded-2xl border border-dashed border-orange-200 flex flex-col items-center justify-center text-center">
+                                        <p className="text-sm text-orange-600/70 mb-3 font-medium">No feedback provided yet.</p>
+                                        {(user?.role === 'Admin' || user?._id === group.project.faculty) && (
+                                            <button
+                                                onClick={() => {
+                                                    setFeedbackContent('');
+                                                    setIsFeedbackModalOpen(true);
+                                                }}
+                                                className="text-xs font-bold text-orange-700 bg-orange-100 px-4 py-2 rounded-xl transition-colors hover:bg-orange-200 shadow-sm"
+                                            >
+                                                Add Feedback
+                                            </button>
+                                        )}
                                     </div>
                                 )}
                             </div>
@@ -474,6 +525,58 @@ const MenteeGroupPage: React.FC = () => {
                                     className="px-4 py-2 text-sm font-bold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 shadow-md disabled:opacity-50"
                                 >
                                     {submittingUpdate ? 'Posting...' : 'Post Update'}
+                                </button>
+                            </div>
+                        </form>
+                    </motion.div>
+                </div>
+            )}
+
+            {/* Feedback Modal */}
+            {isFeedbackModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm">
+                    <motion.div
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden"
+                    >
+                        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+                            <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                                <MessageSquare className="w-5 h-5 text-orange-600" />
+                                {group.project?.feedback ? 'Edit Feedback' : 'Add Feedback'}
+                            </h3>
+                            <button onClick={() => setIsFeedbackModalOpen(false)} className="text-gray-400 hover:text-gray-600">
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+                        <form onSubmit={handleAddFeedback} className="p-6 space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-600 mb-2">
+                                    Provide constructive feedback or remarks for the <span className="font-bold text-gray-900">{group.name}</span> team project.
+                                </label>
+                                <textarea
+                                    value={feedbackContent}
+                                    onChange={(e) => setFeedbackContent(e.target.value)}
+                                    required
+                                    rows={5}
+                                    placeholder="Write your feedback here..."
+                                    className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:border-orange-500 focus:ring-1 focus:ring-orange-500 outline-none"
+                                />
+                            </div>
+                            <div className="flex justify-end gap-3 pt-4 border-t border-gray-50">
+                                <button
+                                    type="button"
+                                    onClick={() => setIsFeedbackModalOpen(false)}
+                                    className="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-100 rounded-xl hover:bg-gray-200"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={submittingFeedback || !feedbackContent.trim()}
+                                    className="px-6 py-2 text-sm font-bold text-white bg-orange-600 rounded-xl hover:bg-orange-700 shadow-md disabled:opacity-50"
+                                >
+                                    {submittingFeedback ? 'Saving...' : 'Save Feedback'}
                                 </button>
                             </div>
                         </form>

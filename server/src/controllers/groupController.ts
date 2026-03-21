@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import Group from '../models/Group';
 import User from '../models/User';
 import Project from '../models/Project';
+import { sendGroupCreationEmail } from '../utils/emailService';
 
 // Create a group
 export const createGroup = async (req: Request, res: Response) => {
@@ -13,7 +14,7 @@ export const createGroup = async (req: Request, res: Response) => {
         const user = await User.findById(userId);
         if (!user) return res.status(404).json({ message: 'User not found' });
 
-        const existingGroup = await Group.findOne({ members: userId });
+        const existingGroup = await Group.findOne({ members: userId, isArchived: { $ne: true } });
         if (existingGroup) return res.status(400).json({ message: 'You are already in a group' });
 
         // Validate other members
@@ -32,7 +33,7 @@ export const createGroup = async (req: Request, res: Response) => {
                 if (!member) return res.status(404).json({ message: `User ${memberId} not found` });
                 if (member.role !== 'Student') return res.status(400).json({ message: `User ${member.name} is not a student` });
 
-                const memberGroup = await Group.findOne({ members: memberId });
+                const memberGroup = await Group.findOne({ members: memberId, isArchived: { $ne: true } });
                 if (memberGroup) return res.status(400).json({ message: `User ${member.name} is already in a group` });
 
                 groupMembers.push(memberId);
@@ -80,6 +81,13 @@ export const createGroup = async (req: Request, res: Response) => {
 
         await newGroup.save();
 
+        // Send Email
+        const memberUsers = await User.find({ _id: { $in: groupMembers } }).select('email');
+        const emails = memberUsers.map(u => u.email).filter(e => e);
+        if (emails.length > 0) {
+            sendGroupCreationEmail(emails, newGroup.name || 'Unnamed Group').catch(err => console.error("Email failed:", err));
+        }
+
         // Update user status if needed (optional based on schema design)
 
         res.status(201).json(newGroup);
@@ -92,6 +100,7 @@ export const getMyGroup = async (req: Request, res: Response) => {
     try {
         const userId = (req as any).user.id;
         const group = await Group.findOne({ members: userId })
+            .sort({ isArchived: 1, createdAt: -1 })
             .populate('members', 'name email role branch rollNumber')
             .populate({
                 path: 'project',
@@ -130,7 +139,7 @@ export const leaveGroup = async (req: Request, res: Response) => {
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) return res.status(400).json({ message: 'Invalid password' });
 
-        const group = await Group.findOne({ members: userId });
+        const group = await Group.findOne({ members: userId, isArchived: { $ne: true } });
         if (!group) return res.status(404).json({ message: 'Not in a group' });
 
         // Remove user from group

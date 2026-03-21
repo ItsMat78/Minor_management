@@ -2,7 +2,9 @@ import { Request, Response } from 'express';
 import Panel, { IPanel } from '../models/Panel';
 import Group from '../models/Group';
 import Project from '../models/Project';
+import User from '../models/User';
 import ExcelJS from 'exceljs';
+import { sendPanelAssignmentEmail } from '../utils/emailService';
 export const exportEvaluations = async (req: any, res: Response) => {
     try {
         const { batchYear, evalType } = req.query; // evalType: 'midterm' or 'full'
@@ -228,6 +230,14 @@ export const createPanel = async (req: any, res: Response) => {
         }
         const newPanel = new Panel({ faculty, batchYear });
         await newPanel.save();
+
+        // Send Email to Faculty Panel Members
+        const panelFaculty = await User.find({ _id: { $in: faculty } }).select('email');
+        const emails = panelFaculty.map(f => f.email).filter(e => e);
+        if (emails.length > 0) {
+            sendPanelAssignmentEmail(emails, `Batch ${batchYear} Evaluations`).catch(err => console.error("Email failed:", err));
+        }
+
         res.status(201).json(newPanel);
     } catch (error: any) {
         res.status(500).json({ message: 'Error creating panel', error: error.message });

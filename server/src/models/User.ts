@@ -16,6 +16,9 @@ export interface IUser extends Document {
     semester?: number; // For students
     targetBatch?: string; // For students (override batch)
     isVerified: boolean;
+    isActive: boolean; // For migration flow activation
+    otp?: string;
+    otpExpires?: Date;
     department?: string; // For faculty
     expertise?: string[]; // For faculty
     maxStudents?: number; // For faculty, default 21
@@ -40,6 +43,9 @@ const UserSchema: Schema = new Schema({
     semester: { type: Number },
     targetBatch: { type: String },
     isVerified: { type: Boolean, default: false },
+    isActive: { type: Boolean, default: true },
+    otp: { type: String },
+    otpExpires: { type: Date },
     department: { type: String },
     expertise: [{ type: String }],
     maxStudents: { type: Number, default: 21 },

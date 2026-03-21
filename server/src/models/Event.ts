@@ -13,6 +13,7 @@ export interface IEvent extends Document {
     endDate: Date;
     extensionDate?: Date;
     batchYear?: string;
+    rubricParams?: any;
     createdBy: mongoose.Types.ObjectId;
     createdAt: Date;
     updatedAt: Date;
@@ -29,6 +30,7 @@ const EventSchema: Schema = new Schema({
     endDate: { type: Date, required: true },
     extensionDate: { type: Date },
     batchYear: { type: String },
+    rubricParams: { type: Schema.Types.Mixed },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User' }
 }, {
     timestamps: true

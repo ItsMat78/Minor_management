@@ -1,5 +1,5 @@
 import express from 'express';
-import { createProject, getProjects, getFacultyProjects, updateProjectStatus, addUpdate, markUpdatesRead, deleteProject, updateProject, submitEvaluation } from '../controllers/projectController';
+import { createProject, getProjects, getFacultyProjects, updateProjectStatus, addUpdate, markUpdatesRead, deleteProject, updateProject, submitEvaluation, uploadSubmissions, addFeedback } from '../controllers/projectController';
 import { auth } from '../middleware/authMiddleware';
 import { upload } from '../middleware/uploadMiddleware';
 
@@ -15,6 +15,8 @@ router.put('/:id/updates/read', markUpdatesRead);
 router.delete('/:id', deleteProject);
 router.put('/:id', upload.array('files', 5), updateProject);
 router.put('/:id/evaluation', submitEvaluation); // Add evaluation route
+router.put('/:id/submissions', upload.fields([{ name: 'report', maxCount: 1 }, { name: 'ppt', maxCount: 1 }, { name: 'plagiarismReport', maxCount: 1 }]), uploadSubmissions);
+router.put('/:id/feedback', addFeedback);
 router.get('/', getProjects);
 
 export default router;

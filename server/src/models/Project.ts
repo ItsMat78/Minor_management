@@ -11,6 +11,8 @@ export interface IProject extends Document {
     attachments?: string[]; // URLs
     feedback?: string;
     createdAt: Date;
+    isArchived?: boolean;
+    archivedMentorName?: string;
     updates: {
         title?: string;
         content: string;
@@ -19,6 +21,15 @@ export interface IProject extends Document {
         links?: string[];
     }[];
     hasNewUpdate: boolean;
+    submissions?: {
+        midTermReport?: string;
+        midTermPPT?: string;
+        endTermReport?: string;
+        endTermPPT?: string;
+        finalReport?: string;
+        finalPPT?: string;
+        plagiarismReport?: string;
+    };
     midTermEvaluation?: {
         marks: number;
         remarks: string;
@@ -86,9 +97,20 @@ const ProjectSchema: Schema = new Schema({
         links: [{ type: String }]
     }],
     hasNewUpdate: { type: Boolean, default: false }, // Flag for faculty notification
+    submissions: {
+        midTermReport: { type: String },
+        midTermPPT: { type: String },
+        endTermReport: { type: String },
+        endTermPPT: { type: String },
+        finalReport: { type: String },
+        finalPPT: { type: String },
+        plagiarismReport: { type: String }
+    },
     midTermEvaluation: { type: Schema.Types.Mixed },
     endTermEvaluation: { type: Schema.Types.Mixed },
-    finalReportEvaluation: { type: Schema.Types.Mixed }
+    finalReportEvaluation: { type: Schema.Types.Mixed },
+    isArchived: { type: Boolean, default: false },
+    archivedMentorName: { type: String }
 }, {
     timestamps: true
 });

@@ -1,7 +1,8 @@
 
 import express from 'express';
-import { getFaculty, getAllStudents, updateUser, exportStudents } from '../controllers/userController';
+import { getFaculty, getAllStudents, updateUser, exportStudents, previewImport, commitImport } from '../controllers/userController';
 import { auth } from '../middleware/authMiddleware';
+import { upload } from '../middleware/uploadMiddleware';
 
 const router = express.Router();
 
@@ -26,5 +27,9 @@ router.get('/faculty', getFaculty);
 router.get('/students/export', exportStudents);
 router.get('/students', getAllStudents);
 router.put('/:id', updateUser);
+
+// Import Routes
+router.post('/import-preview', upload.single('file'), previewImport);
+router.post('/import-commit', commitImport);
 
 export default router;

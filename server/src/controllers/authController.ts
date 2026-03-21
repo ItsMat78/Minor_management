@@ -59,6 +59,22 @@ export const login = async (req: Request, res: Response) => {
             return res.status(400).json({ message: 'Invalid credentials' });
         }
 
+        if (user.isActive === false) {
+            const otp = Math.floor(100000 + Math.random() * 900000).toString();
+            user.otp = otp;
+            user.otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 mins
+            await user.save();
+            
+            // TODO: Replace with actual email service
+            console.log(`[DEV MODE] OTP for ${user.email} is ${otp}`);
+
+            return res.status(200).json({ 
+                requiresActivation: true, 
+                email: user.email, 
+                message: 'Account inactive. OTP sent to your email.' 
+            });
+        }
+
         const token = jwt.sign({ id: user._id, role: user.role }, JWT_SECRET, { expiresIn: '1d' });
 
         const userObj = user.toObject() as any;
@@ -78,6 +94,34 @@ export const getMe = async (req: Request, res: Response) => {
             return res.status(404).json({ message: 'User not found' });
         }
         res.json(user);
+    } catch (error) {
+        res.status(500).json({ message: 'Server error', error });
+    }
+};
+
+export const verifyOtp = async (req: Request, res: Response) => {
+    try {
+        const { email, otp } = req.body;
+        const user = await User.findOne({ email });
+        
+        if (!user) return res.status(400).json({ message: 'User not found' });
+        
+        if (user.isActive) return res.status(400).json({ message: 'User is already active' });
+        
+        if (!user.otp || user.otp !== otp || !user.otpExpires || user.otpExpires < new Date()) {
+            return res.status(400).json({ message: 'Invalid or expired OTP' });
+        }
+        
+        user.isActive = true;
+        user.otp = undefined;
+        user.otpExpires = undefined;
+        await user.save();
+        
+        const token = jwt.sign({ id: user._id, role: user.role }, JWT_SECRET, { expiresIn: '1d' });
+        const userObj = user.toObject() as any;
+        delete userObj.password;
+        
+        res.json({ token, user: userObj, message: 'Account activated successfully' });
     } catch (error) {
         res.status(500).json({ message: 'Server error', error });
     }

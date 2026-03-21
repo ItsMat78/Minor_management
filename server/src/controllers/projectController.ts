@@ -2,6 +2,8 @@ import { Request, Response } from 'express';
 import Project from '../models/Project';
 import Group from '../models/Group';
 import User, { UserRole } from '../models/User';
+import mongoose from 'mongoose';
+import { sendProposalStatusEmail, sendProposalSubmissionEmail } from '../utils/emailService';
 import Panel from '../models/Panel';
 
 // ... (imports)
@@ -74,6 +76,14 @@ export const createProject = async (req: Request, res: Response) => {
         if (status === 'Pending') {
             group.status = 'ProposalPending';
             group.project = newProject._id;
+            
+            // Send email to faculty
+            if (faculty) {
+                const facUser = await User.findById(faculty).select('email');
+                if (facUser && facUser.email) {
+                    sendProposalSubmissionEmail([facUser.email], title, group.name || 'Unnamed Group').catch(err => console.error("Email failed:", err));
+                }
+            }
         }
         await group.save();
 
@@ -106,6 +116,7 @@ export const updateProjectStatus = async (req: Request, res: Response) => {
 
         const project = await Project.findById(id);
         if (!project) return res.status(404).json({ message: 'Project not found' });
+        if (project.isArchived) return res.status(400).json({ message: 'Cannot update status of an archived project' });
 
         // Verify faculty (security check)
         const userId = (req as any).user.id;
@@ -182,6 +193,20 @@ export const updateProjectStatus = async (req: Request, res: Response) => {
         if (feedback) project.feedback = feedback;
         await project.save();
 
+        // Send email notification to students
+        try {
+            const groupForEmail = await Group.findById(project.group);
+            if (groupForEmail && groupForEmail.members.length > 0) {
+                const memberUsers = await User.find({ _id: { $in: groupForEmail.members } }).select('email');
+                const emails = memberUsers.map(u => u.email).filter(e => e);
+                if (emails.length > 0 && (status === 'Approved' || status === 'Rejected')) {
+                    sendProposalStatusEmail(emails, project.title, status as any, feedback).catch(err => console.error("Email failed:", err));
+                }
+            }
+        } catch (emailErr) {
+            console.error("Failed to prepare proposal status email", emailErr);
+        }
+
         // Update Group status
         const group = await Group.findById(project.group);
         if (group) {
@@ -230,6 +255,7 @@ export const addUpdate = async (req: Request, res: Response) => {
 
         const project = await Project.findById(id);
         if (!project) return res.status(404).json({ message: 'Project not found' });
+        if (project.isArchived) return res.status(400).json({ message: 'Cannot add updates to an archived project' });
 
         // Verify user is member of the project's group OR is the assigned faculty
         const group = await Group.findById(project.group);
@@ -308,6 +334,7 @@ export const updateProject = async (req: Request, res: Response) => {
 
         const project = await Project.findById(id);
         if (!project) return res.status(404).json({ message: 'Project not found' });
+        if (project.isArchived) return res.status(400).json({ message: 'Cannot edit an archived project' });
 
         // Verify membership
         const group = await Group.findById(project.group);
@@ -400,6 +427,7 @@ export const deleteProject = async (req: Request, res: Response) => {
 
         const project = await Project.findById(id);
         if (!project) return res.status(404).json({ message: 'Project not found' });
+        if (project.isArchived) return res.status(400).json({ message: 'Cannot delete an archived project' });
 
         // Verify membership in the group that owns the project
         const group = await Group.findById(project.group);
@@ -484,6 +512,84 @@ export const submitEvaluation = async (req: Request, res: Response) => {
         res.json(savedProject);
     } catch (error) {
         console.error("Evaluation error:", error);
+        res.status(500).json({ message: 'Server error', error });
+    }
+};
+
+export const uploadSubmissions = async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const { evalType } = req.body;
+        const userId = (req as any).user.id;
+
+        const project = await Project.findById(id);
+        if (!project) return res.status(404).json({ message: 'Project not found' });
+
+        if (project.isArchived) {
+            return res.status(403).json({ message: 'Cannot submit to an archived project' });
+        }
+
+        // Authorization: Only group members can upload
+        const group = await Group.findById(project.group);
+        if (!group) return res.status(404).json({ message: 'Group not found' });
+        
+        const isMember = group.members.some(member => String(member) === userId);
+        if (!isMember && (req as any).user.role !== 'Admin') {
+            return res.status(403).json({ message: 'Not authorized to submit for this project' });
+        }
+
+        const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+        
+        if (!project.submissions) {
+            project.submissions = {};
+        }
+
+        if (evalType === 'mid_term_evaluation') {
+            if (files?.report) project.submissions.midTermReport = `/uploads/${files.report[0].filename}`;
+            if (files?.ppt) project.submissions.midTermPPT = `/uploads/${files.ppt[0].filename}`;
+        } else if (evalType === 'end_term_evaluation') {
+            if (files?.report) project.submissions.endTermReport = `/uploads/${files.report[0].filename}`;
+            if (files?.ppt) project.submissions.endTermPPT = `/uploads/${files.ppt[0].filename}`;
+        } else if (evalType === 'final_evaluation') {
+            if (files?.report) project.submissions.finalReport = `/uploads/${files.report[0].filename}`;
+            if (files?.ppt) project.submissions.finalPPT = `/uploads/${files.ppt[0].filename}`;
+            if (files?.plagiarismReport) project.submissions.plagiarismReport = `/uploads/${files.plagiarismReport[0].filename}`;
+        } else {
+            return res.status(400).json({ message: 'Invalid evaluation type for submission' });
+        }
+
+        project.markModified('submissions');
+        await project.save();
+        
+        res.json({ message: 'Submissions uploaded successfully', project });
+    } catch (error) {
+        console.error("Submission upload error:", error);
+        res.status(500).json({ message: 'Server error', error });
+    }
+};
+
+export const addFeedback = async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const { feedback } = req.body;
+        const userId = (req as any).user.id;
+
+        const project = await Project.findById(id);
+        if (!project) return res.status(404).json({ message: 'Project not found' });
+
+        // Authorization: Only assigned faculty
+        let isAuthorized = String(project.faculty) === userId || (req as any).user.role === 'Admin';
+        
+        if (!isAuthorized) {
+            return res.status(403).json({ message: 'Not authorized to add feedback to this project' });
+        }
+
+        project.feedback = feedback;
+        await project.save();
+
+        res.json({ message: 'Feedback added successfully', project });
+    } catch (error) {
+        console.error("Feedback error:", error);
         res.status(500).json({ message: 'Server error', error });
     }
 };

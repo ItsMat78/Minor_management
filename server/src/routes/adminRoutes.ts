@@ -1,5 +1,5 @@
 import express from 'express';
-import { getStats } from '../controllers/adminController';
+import { getStats, createAdmin } from '../controllers/adminController';
 import { auth } from '../middleware/authMiddleware';
 import { UserRole } from '../models/User';
 
@@ -17,5 +17,6 @@ router.use(auth);
 router.use(adminAuth);
 
 router.get('/stats', getStats);
+router.post('/create', createAdmin);
 
 export default router;

@@ -3,6 +3,8 @@ import User, { UserRole } from '../models/User';
 import Group from '../models/Group';
 import Project from '../models/Project';
 import * as XLSX from 'xlsx';
+import fs from 'fs';
+import bcrypt from 'bcryptjs';
 
 export const getFaculty = async (req: Request, res: Response) => {
     try {
@@ -227,5 +229,123 @@ export const exportStudents = async (req: Request, res: Response) => {
     } catch (error) {
         console.error("Error exporting students:", error);
         res.status(500).json({ message: 'Server error', error });
+    }
+};
+
+export const previewImport = async (req: Request, res: Response) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ message: 'No file uploaded' });
+        }
+
+        const { importType } = req.body; // 'student' or 'faculty'
+        if (importType !== 'student' && importType !== 'faculty') {
+            return res.status(400).json({ message: 'Invalid import type' });
+        }
+
+        const workbook = XLSX.readFile(req.file.path);
+        const sheetName = workbook.SheetNames[0];
+        const data = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
+
+        // Clean up file immediately after reading
+        fs.unlinkSync(req.file.path);
+
+        const existingUsers = await User.find({}).select('email rollNumber');
+        const existingEmails = new Set(existingUsers.map(u => u.email.toLowerCase()));
+        const existingRolls = new Set(existingUsers.map(u => u.rollNumber?.toString().toLowerCase()).filter(Boolean));
+
+        const validRows: any[] = [];
+        const invalidRows: any[] = [];
+        const newEmails = new Set();
+        const newRolls = new Set();
+
+        data.forEach((row: any, index: number) => {
+            // Find key intuitively (case-insensitive)
+            const getVal = (keyStr: string) => {
+                const matchedKey = Object.keys(row).find(k => k.toLowerCase().replace(/[^a-z0-9]/g, '') === keyStr.toLowerCase().replace(/[^a-z0-9]/g, ''));
+                return matchedKey ? row[matchedKey]?.toString().trim() : '';
+            };
+
+            const name = getVal('name') || getVal('fullname');
+            const email = getVal('email') || getVal('emailid');
+            const rollNumber = importType === 'student' ? (getVal('rollnumber') || getVal('rollno') || getVal('roll')) : undefined;
+            const branch = getVal('branch') || getVal('department') || getVal('dept');
+            const semester = getVal('semester') || getVal('sem') || '1';
+
+            if (!name) {
+                invalidRows.push({ rowNumber: index + 2, data: row, reason: 'Name is required' });
+                return;
+            }
+            if (!email) {
+                invalidRows.push({ rowNumber: index + 2, data: row, reason: 'Email is required' });
+                return;
+            }
+            if (importType === 'student' && !rollNumber) {
+                invalidRows.push({ rowNumber: index + 2, data: row, reason: 'Roll Number is required for students' });
+                return;
+            }
+
+            const cleanEmail = email.toLowerCase();
+            if (existingEmails.has(cleanEmail) || newEmails.has(cleanEmail)) {
+                invalidRows.push({ rowNumber: index + 2, data: row, reason: 'Email already exists or duplicated in file' });
+                return;
+            }
+
+            if (importType === 'student') {
+                const cleanRoll = rollNumber.toLowerCase();
+                if (existingRolls.has(cleanRoll) || newRolls.has(cleanRoll)) {
+                    invalidRows.push({ rowNumber: index + 2, data: row, reason: 'Roll Number already exists or duplicated in file' });
+                    return;
+                }
+                newRolls.add(cleanRoll);
+            }
+
+            newEmails.add(cleanEmail);
+
+            validRows.push({
+                name,
+                email: cleanEmail,
+                role: importType === 'student' ? 'Student' : 'Faculty',
+                rollNumber,
+                branch: branch || 'CSE',
+                semester: importType === 'student' ? Number(semester) || 1 : undefined,
+                department: importType === 'faculty' ? branch || 'Computer Science' : undefined,
+                expertise: importType === 'faculty' ? getVal('expertise') || 'General' : undefined
+            });
+        });
+
+        res.json({
+            validRows,
+            invalidRows,
+            totalRows: data.length
+        });
+    } catch (error) {
+        console.error("Error previewing import:", error);
+        res.status(500).json({ message: 'Server error parsing file', error });
+    }
+};
+
+export const commitImport = async (req: Request, res: Response) => {
+    try {
+        const { validRows } = req.body;
+        if (!validRows || !Array.isArray(validRows) || validRows.length === 0) {
+            return res.status(400).json({ message: 'No valid rows provided' });
+        }
+
+        const defaultPassword = await bcrypt.hash('password123', 10);
+        
+        const usersToInsert = validRows.map(row => ({
+            ...row,
+            password: defaultPassword,
+            isActive: false, // Default to false until migration/OTP if student, or force password reset if faculty
+            isVerified: false
+        }));
+
+        await User.insertMany(usersToInsert);
+
+        res.status(201).json({ message: `Successfully imported ${usersToInsert.length} users` });
+    } catch (error) {
+        console.error("Error committing import:", error);
+        res.status(500).json({ message: 'Server error importing data', error });
     }
 };
