@@ -113,6 +113,7 @@ export const verifyOtp = async (req: Request, res: Response) => {
         }
         
         user.isActive = true;
+        user.isVerified = true;
         user.otp = undefined;
         user.otpExpires = undefined;
         await user.save();

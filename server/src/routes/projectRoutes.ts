@@ -1,5 +1,5 @@
 import express from 'express';
-import { createProject, getProjects, getFacultyProjects, updateProjectStatus, addUpdate, markUpdatesRead, deleteProject, updateProject, submitEvaluation, uploadSubmissions, addFeedback } from '../controllers/projectController';
+import { createProject, getProjects, getArchivedProjects, getFacultyProjects, updateProjectStatus, addUpdate, markUpdatesRead, deleteProject, updateProject, submitEvaluation, uploadSubmissions, addFeedback } from '../controllers/projectController';
 import { auth } from '../middleware/authMiddleware';
 import { upload } from '../middleware/uploadMiddleware';
 
@@ -8,6 +8,7 @@ const router = express.Router();
 router.use(auth);
 
 router.post('/', createProject);
+router.get('/archived', getArchivedProjects);
 router.get('/faculty', getFacultyProjects);
 router.put('/:id/status', updateProjectStatus);
 router.post('/:id/updates', upload.array('files', 5), addUpdate);

@@ -200,7 +200,7 @@ export const getMyMentees = async (req: Request, res: Response) => {
 
 export const getAllGroups = async (req: Request, res: Response) => {
     try {
-        const groups = await Group.find()
+        const groups = await Group.find({ isArchived: { $ne: true } })
             .populate('members', 'name email rollNumber branch')
             .populate({
                 path: 'project',

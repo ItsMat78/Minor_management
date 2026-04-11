@@ -628,10 +628,10 @@ const FacultyDashboard: React.FC = () => {
         }
 
         setEvaluationDetails(initialDetails);
-        setEvaluationMarks(existingEval?.marks || 0); // Total marks
+        setEvaluationMarks(existingEval?.marks || 0);
         setEvaluationRemarks(existingEval?.remarks || '');
-        // Always default to Direct Marks Entry
-        setManualMarksMode(true);
+        // Restore the mode that was last used, defaulting to Direct Entry for new evaluations
+        setManualMarksMode(existingEval ? existingEval.evaluationMode !== 'rubric' : true);
     };
 
     const handleDetailChange = (section: string, field: string, value: number | string) => {
@@ -650,6 +650,8 @@ const FacultyDashboard: React.FC = () => {
         if (!evaluationType || !config) return;
 
         if (manualMarksMode) {
+            const cfg = evaluationType ? getRubricConfig(activeEvents, evaluationType) : null;
+            const panelAggregation = cfg?.panelAggregation || 'average';
             let guideScore = 0;
             let evaluatorScores: number[] = [];
 
@@ -662,12 +664,13 @@ const FacultyDashboard: React.FC = () => {
                 }
             });
 
-            let totalMarks = guideScore;
+            let panelContribution = 0;
             if (evaluatorScores.length > 0) {
-                const avgEvaluatorScore = evaluatorScores.reduce((a, b) => a + b, 0) / evaluatorScores.length;
-                totalMarks += avgEvaluatorScore;
+                panelContribution = panelAggregation === 'sum'
+                    ? evaluatorScores.reduce((a, b) => a + b, 0)
+                    : evaluatorScores.reduce((a, b) => a + b, 0) / evaluatorScores.length;
             }
-            setEvaluationMarks(Math.round(totalMarks));
+            setEvaluationMarks(Math.round(guideScore + panelContribution));
         } else {
             let total = 0;
             config.sections.forEach((sect: any) => {
@@ -700,6 +703,7 @@ const FacultyDashboard: React.FC = () => {
                 type: evaluationType,
                 marks: evaluationMarks,
                 remarks: evaluationRemarks,
+                evaluationMode: manualMarksMode ? 'direct' : 'rubric',
             };
 
             if (manualMarksMode) {
@@ -1941,8 +1945,13 @@ const FacultyDashboard: React.FC = () => {
                                             <h4 className="font-bold text-indigo-100 text-sm uppercase tracking-wider mb-1">Total Score</h4>
                                             <div className="flex items-baseline gap-2">
                                                 <span className="text-4xl font-bold">{evaluationMarks}</span>
-                                                <span className="text-indigo-200 font-medium">/ {evaluationType ? RUBRIC_CONFIG[evaluationType]?.maxMarks : 100}</span>
+                                                <span className="text-indigo-200 font-medium">/ {evaluationType ? (getRubricConfig(activeEvents, evaluationType)?.maxMarks ?? 100) : 100}</span>
                                             </div>
+                                            {manualMarksMode && evaluationType && (
+                                                <p className="text-[10px] text-indigo-300 mt-1 uppercase tracking-wider">
+                                                    Guide total + {getRubricConfig(activeEvents, evaluationType)?.panelAggregation === 'sum' ? 'sum' : 'avg'} of panel scores
+                                                </p>
+                                            )}
                                         </div>
                                         <div className="text-right flex flex-col items-end">
                                             <div className="flex items-center gap-3 mb-4">
@@ -1964,7 +1973,10 @@ const FacultyDashboard: React.FC = () => {
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
                                                 {panelMembers.map((fac: any) => {
                                                     const isGuide = fac._id === projectGuideId;
-                                                    const maxMarks = evaluationType === 'mid-term' ? (isGuide ? RUBRIC_CONFIG['mid-term'].sections[0].maxMarks : RUBRIC_CONFIG['mid-term'].sections[1].maxMarks) : (isGuide ? RUBRIC_CONFIG['end-term'].sections[0].maxMarks : RUBRIC_CONFIG['end-term'].sections[1].maxMarks);
+                                                    const _cfg = evaluationType ? getRubricConfig(activeEvents, evaluationType) : null;
+                                                    const _guideSection = _cfg?.sections?.find((s: any) => s.key === 'guide');
+                                                    const _panelSection = _cfg?.sections?.find((s: any) => s.key === 'panel');
+                                                    const maxMarks = isGuide ? (_guideSection?.maxMarks ?? 15) : (_panelSection?.maxMarks ?? 15);
                                                     const facScore = evaluationDetails.facultyScores?.[fac._id] ?? '';
 
                                                     return (
@@ -2011,7 +2023,7 @@ const FacultyDashboard: React.FC = () => {
                                             </div>
                                         </div>
                                     ) : (
-                                        evaluationType && RUBRIC_CONFIG[evaluationType]?.sections.map((section: any, idx: number) => (
+                                        evaluationType && getRubricConfig(activeEvents, evaluationType)?.sections?.map((section: any, idx: number) => (
                                             <div key={idx} className="space-y-4">
                                                 <div className="flex items-center justify-between border-b border-neutral-100 pb-2">
                                                     <h4 className="text-lg font-bold text-neutral-900 flex items-center gap-2">

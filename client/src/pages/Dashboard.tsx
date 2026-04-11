@@ -85,6 +85,28 @@ const Dashboard: React.FC = () => {
     const [isUpdateSubmitting, setIsUpdateSubmitting] = useState(false);
     const [selectedProject, setSelectedProject] = useState<any>(null);
 
+    // Archive State
+    const [archivedGroups, setArchivedGroups] = useState<any[]>([]);
+    const [loadingArchive, setLoadingArchive] = useState(false);
+
+    const fetchArchivedProjects = async () => {
+        setLoadingArchive(true);
+        try {
+            const res = await api.get('/projects/archived');
+            setArchivedGroups(res.data);
+        } catch (error) {
+            console.error('Failed to fetch archived projects', error);
+        } finally {
+            setLoadingArchive(false);
+        }
+    };
+
+    useEffect(() => {
+        if (activeTab === 'archive' && user?.role === 'Student') {
+            fetchArchivedProjects();
+        }
+    }, [activeTab]);
+
     // Submission State
     const [isSubmitDialogOpen, setIsSubmitDialogOpen] = useState(false);
     const [submitEvalType, setSubmitEvalType] = useState('mid_term_evaluation');
@@ -1259,30 +1281,65 @@ const Dashboard: React.FC = () => {
                     )}
 
                     {activeTab === 'archive' && (
-                        /* Archive View */
                         <div className="max-w-5xl mx-auto space-y-6">
-                            <div className="bg-white p-8 rounded-2xl border border-neutral-200 shadow-sm text-center">
-                                <div className="w-16 h-16 bg-neutral-100 rounded-full flex items-center justify-center mx-auto mb-4 text-neutral-400">
-                                    <Archive className="w-8 h-8" />
+                            <div className="bg-white p-8 rounded-2xl border border-neutral-200 shadow-sm">
+                                <div className="flex items-center gap-4 mb-6">
+                                    <div className="w-12 h-12 bg-neutral-100 rounded-full flex items-center justify-center text-neutral-400">
+                                        <Archive className="w-6 h-6" />
+                                    </div>
+                                    <div>
+                                        <h2 className="text-xl font-bold text-neutral-900">Project Archive</h2>
+                                        <p className="text-sm text-neutral-500">Your past projects from previous academic cycles.</p>
+                                    </div>
                                 </div>
-                                <h2 className="text-2xl font-bold text-neutral-900 mb-2">Project Archive</h2>
-                                <p className="text-neutral-500 max-w-md mx-auto">
-                                    Access past projects and research papers. This section allows you to explore the history of projects submitted by students.
-                                </p>
 
-                                <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6 text-left">
-                                    {/* Placeholder Archive Items */}
-                                    {[1, 2, 3, 4].map((i) => (
-                                        <div key={i} className="p-4 rounded-xl border border-neutral-200 hover:border-indigo-200 hover:bg-neutral-50 transition-colors cursor-pointer group">
-                                            <div className="flex justify-between items-start mb-2">
-                                                <span className="px-2 py-0.5 bg-neutral-100 text-neutral-600 text-xs rounded">202{5 - i}</span>
-                                                <ChevronRight className="w-4 h-4 text-neutral-300 group-hover:text-indigo-400" />
-                                            </div>
-                                            <h4 className="font-bold text-neutral-900 mb-1">Archive Project Title {i}</h4>
-                                            <p className="text-sm text-neutral-500 line-clamp-2">This is a description of a past project that was completed in a previous academic year.</p>
-                                        </div>
-                                    ))}
-                                </div>
+                                {loadingArchive ? (
+                                    <div className="text-center py-12 text-neutral-400">Loading archive...</div>
+                                ) : archivedGroups.length === 0 ? (
+                                    <div className="text-center py-12 text-neutral-400">
+                                        <Archive className="w-10 h-10 mx-auto mb-3 opacity-40" />
+                                        <p className="font-medium">No archived projects yet.</p>
+                                        <p className="text-sm mt-1">Projects from past academic cycles will appear here.</p>
+                                    </div>
+                                ) : (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                                        {archivedGroups.map((g: any) => {
+                                            const project = g.project;
+                                            const batchLabel = g.targetBatch || (g.members?.[0]?.rollNumber ? '20' + String(g.members[0].rollNumber).substring(0, 2) : '—');
+                                            const mentorName = project?.archivedMentorName || project?.faculty?.name || 'No mentor';
+                                            return (
+                                                <div key={g._id} className="p-5 rounded-xl border border-neutral-200 hover:border-indigo-200 hover:bg-neutral-50 transition-colors">
+                                                    <div className="flex justify-between items-start mb-3">
+                                                        <div className="flex gap-2">
+                                                            <span className="px-2 py-0.5 bg-neutral-100 text-neutral-600 text-xs rounded font-medium">Batch {batchLabel}</span>
+                                                            {g.name && <span className="px-2 py-0.5 bg-indigo-50 text-indigo-600 text-xs rounded font-medium">Group {g.name}</span>}
+                                                        </div>
+                                                        <span className="px-2 py-0.5 bg-amber-50 text-amber-600 text-xs rounded font-medium">Archived</span>
+                                                    </div>
+                                                    {project ? (
+                                                        <>
+                                                            <h4 className="font-bold text-neutral-900 mb-1 line-clamp-2">{project.title}</h4>
+                                                            <p className="text-sm text-neutral-500 line-clamp-2 mb-3">{project.description || 'No description.'}</p>
+                                                            <div className="flex items-center gap-2 text-xs text-neutral-400">
+                                                                <Users className="w-3.5 h-3.5" />
+                                                                <span>{mentorName}</span>
+                                                            </div>
+                                                            {project.tags?.length > 0 && (
+                                                                <div className="flex flex-wrap gap-1 mt-3">
+                                                                    {project.tags.slice(0, 3).map((tag: string) => (
+                                                                        <span key={tag} className="px-2 py-0.5 bg-neutral-100 text-neutral-500 text-xs rounded">{tag}</span>
+                                                                    ))}
+                                                                </div>
+                                                            )}
+                                                        </>
+                                                    ) : (
+                                                        <p className="text-sm text-neutral-400 italic">No project associated with this group.</p>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
                             </div>
                         </div>
                     )}

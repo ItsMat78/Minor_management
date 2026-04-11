@@ -10,7 +10,7 @@ export const exportEvaluations = async (req: any, res: Response) => {
         const { batchYear, evalType } = req.query; // evalType: 'midterm' or 'full'
 
         // Get all groups and filter by batch
-        const allGroups = await Group.find({ status: { $in: ['Approved', 'Assigned', 'Pending'] } })
+        const allGroups = await Group.find({ status: { $in: ['Approved', 'Assigned', 'Pending'] }, isArchived: { $ne: true } })
             .populate('members', 'name rollNumber branch department')
             .populate({
                 path: 'project',
@@ -150,23 +150,25 @@ export const exportEvaluations = async (req: any, res: Response) => {
             const endEval = project?.endTermEvaluation;
 
             // Extract Mid-term marks
+            // The data model stores a single panel score (not per-evaluator).
+            // E1 holds that score; E2 is left blank to avoid duplicating the same value.
             let midE1 = '', midE2 = '', midGuide = '', midAvg = '';
             if (midEval) {
-                midGuide = String(midEval.guide?.dataElicitation + midEval.guide?.problemDefinition + midEval.guide?.planning || 0);
-                const panelSum = (midEval.panel?.literatureSurvey || 0) + (midEval.panel?.presentationSkills || 0) + (midEval.panel?.technicalUnderstanding || 0);
-                midE1 = String(panelSum); 
-                midE2 = String(panelSum); 
-                midAvg = String(Number(midGuide) + (Number(midE1) + Number(midE2)) / 2);
+                midGuide = String((midEval.guide?.dataElicitation || 0) + (midEval.guide?.problemDefinition || 0) + (midEval.guide?.planning || 0));
+                const midPanelSum = (midEval.panel?.literatureSurvey || 0) + (midEval.panel?.presentationSkills || 0) + (midEval.panel?.technicalUnderstanding || 0);
+                midE1 = String(midPanelSum);
+                midE2 = '';
+                midAvg = String(Number(midGuide) + midPanelSum);
             }
 
             // Extract End-term marks
             let endE1 = '', endE2 = '', endGuide = '', endAvg = '';
             if (endEval && evalType === 'full') {
                 endGuide = String((endEval.guide?.requirementSpecification || 0) + (endEval.guide?.systemDesign || 0) + (endEval.guide?.implementation || 0) + (endEval.guide?.projectManagement || 0) + (endEval.guide?.planningVsExecution || 0));
-                const panelSum = (endEval.panel?.testingAndResults || 0) + (endEval.panel?.innovationAndRelevance || 0) + (endEval.panel?.presentationAndViva || 0) + (endEval.panel?.conceptualDepth || 0);
-                endE1 = String(panelSum);
-                endE2 = String(panelSum);
-                endAvg = String(Number(endGuide) + (Number(endE1) + Number(endE2)) / 2);
+                const endPanelSum = (endEval.panel?.testingAndResults || 0) + (endEval.panel?.innovationAndRelevance || 0) + (endEval.panel?.presentationAndViva || 0) + (endEval.panel?.conceptualDepth || 0);
+                endE1 = String(endPanelSum);
+                endE2 = '';
+                endAvg = String(Number(endGuide) + endPanelSum);
             }
 
             const total = evalType === 'full' ? (Number(midAvg || 0) + Number(endAvg || 0)) : 0;
@@ -279,7 +281,7 @@ export const getPanels = async (req: any, res: Response) => {
         // Populate groups for each panel based on faculty
         const panelsWithGroups = await Promise.all(panels.map(async (panel: any) => {
             const panelFacultyIds = panel.faculty.map((f: any) => f._id.toString());
-            const groups = await Group.find({ status: 'Approved' })
+            const groups = await Group.find({ status: { $in: ['Approved', 'Assigned', 'Forming', 'Pending'] }, isArchived: { $ne: true } })
                 .populate('members', 'name rollNumber email branch')
                 .populate({ path: 'project', populate: { path: 'faculty', select: 'name email' } })
                 .lean();
@@ -338,7 +340,8 @@ export const getMyPanelEvaluationGroups = async (req: any, res: Response) => {
 
             // Get all groups allocated to these faculty members, specifically those with approved projects
             const groups = await Group.find({
-                status: 'Approved'
+                status: { $in: ['Approved', 'Assigned', 'Forming', 'Pending'] },
+                isArchived: { $ne: true }
             }).populate('members', 'name rollNumber email branch')
                 .populate({
                     path: 'project',
@@ -394,7 +397,7 @@ export const exportPanels = async (req: any, res: Response) => {
         const panels = await Panel.find(query).populate('faculty', 'name email').lean();
 
         // Get groups similarly, but cache groups
-        const groups = await Group.find({ status: { $in: ['Approved', 'Assigned', 'Pending'] } })
+        const groups = await Group.find({ status: { $in: ['Approved', 'Assigned', 'Pending'] }, isArchived: { $ne: true } })
             .populate('members', 'name rollNumber')
             .populate({
                 path: 'project',

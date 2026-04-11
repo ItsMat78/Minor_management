@@ -133,7 +133,7 @@ const seedFaculty = async () => {
                     role: UserRole.FACULTY,
                     department: department,
                     expertise: [],
-                    isVerified: true
+                    isVerified: false
                 };
             }
         }

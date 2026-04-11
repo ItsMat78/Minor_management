@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
-import { Search, Users, Clock, CheckCircle, FileText, X, LogOut, ChevronDown, ChevronUp, Settings, Menu, Calendar, Download, AlertCircle, AlertTriangle, Save, Pencil, LayoutGrid, MoreVertical, Plus, Edit3, Power, Info, Trash2, Upload } from 'lucide-react';
+import { Search, Users, Clock, CheckCircle, FileText, X, LogOut, ChevronDown, ChevronUp, Settings, Menu, Calendar, Download, AlertCircle, AlertTriangle, Save, Pencil, LayoutGrid, MoreVertical, Plus, Edit3, Power, Info, Trash2, Upload, Mail, Copy, Check, UserCheck, UserX, ShieldCheck, ShieldOff } from 'lucide-react';
 import { motion } from 'framer-motion';
 import MenteeGroupDetails from '../components/MenteeGroupDetails';
 import AutoCreatePanelsModal from '../components/AutoCreatePanelsModal';
@@ -36,6 +36,7 @@ const AdminDashboard: React.FC = () => {
     const [students, setStudents] = useState<any[]>([]);
     const [faculty, setFaculty] = useState<any[]>([]);
     const [groups, setGroups] = useState<any[]>([]);
+    const [stats, setStats] = useState<any>(null);
     const [loading, setLoading] = useState(false);
     const [panels, setPanels] = useState<any[]>([]);
     const [showAutoCreateModal, setShowAutoCreateModal] = useState(false);
@@ -54,6 +55,7 @@ const AdminDashboard: React.FC = () => {
     const [filterBatch, setFilterBatch] = useState<string>('All');
     const [filterBranch, setFilterBranch] = useState<string>('All');
     const [filterGroupStatus, setFilterGroupStatus] = useState<string>('All'); // Added group status filter
+    const [filterVerificationStatus, setFilterVerificationStatus] = useState<string>('All'); // Added verification filter
     const [filterFaculty, setFilterFaculty] = useState<string>('All'); // Added faculty filter
     const [viewGroup, setViewGroup] = useState<any>(null); // Re-added viewGroup state
     const [exportBatch, setExportBatch] = useState<string>(''); // For export filtering (Require selection)
@@ -88,6 +90,14 @@ const AdminDashboard: React.FC = () => {
     const [confirmDeleteEvent, setConfirmDeleteEvent] = useState<any>(null);
     const [adminPassword, setAdminPassword] = useState('');
 
+    // Rubric Builder State
+    const [rubricMode, setRubricMode] = useState<'builder' | 'json'>('builder');
+    const [rubricSections, setRubricSections] = useState<any[]>([]);
+    const [rubricPanelAggregation, setRubricPanelAggregation] = useState<'average' | 'sum'>('average');
+
+    // Copy emails state
+    const [emailsCopied, setEmailsCopied] = useState(false);
+
     const [showCreateAdmin, setShowCreateAdmin] = useState(false);
     const [adminForm, setAdminForm] = useState({ name: '', email: '', password: '' });
 
@@ -113,11 +123,12 @@ const AdminDashboard: React.FC = () => {
                     const groupsRes = await api.get('/groups');
                     setGroups(Array.isArray(groupsRes.data) ? groupsRes.data : []);
                 } else if (activeTab === 'groups') {
-                    // Assuming endpoint exists for admin to see all groups
-                    // If this fails, we might need a different endpoint, e.g., /groups
-                    const res = await api.get('/groups');
-                    const groupsData = Array.isArray(res.data) ? res.data : [];
-                    setGroups(groupsData);
+                    const [res, eventsRes] = await Promise.all([
+                        api.get('/groups'),
+                        api.get('/events'),
+                    ]);
+                    setGroups(Array.isArray(res.data) ? res.data : []);
+                    setEvents(Array.isArray(eventsRes.data) ? eventsRes.data : []);
 
                     // Also fetch faculty for the filter dropdown if not already loaded
                     if (faculty.length === 0) {
@@ -136,6 +147,9 @@ const AdminDashboard: React.FC = () => {
                         const groupsRes = await api.get('/groups');
                         setGroups(Array.isArray(groupsRes.data) ? groupsRes.data : []);
                     }
+                } else if (activeTab === 'overview') {
+                    const res = await api.get('/admin/stats');
+                    setStats(res.data);
                 } else if (activeTab === 'events') {
                     const res = await api.get('/events');
                     setEvents(Array.isArray(res.data) ? res.data : []);
@@ -359,7 +373,10 @@ const AdminDashboard: React.FC = () => {
             const matchesGroupStatus = filterGroupStatus === 'All' ||
                 (filterGroupStatus === 'Grouped' ? s.isGrouped : !s.isGrouped);
 
-            return matchesSearch && matchesBranch && matchesBatch && matchesGroupStatus;
+            const matchesVerificationStatus = filterVerificationStatus === 'All' || 
+                (filterVerificationStatus === 'Verified' ? s.isVerified : !s.isVerified);
+
+            return matchesSearch && matchesBranch && matchesBatch && matchesGroupStatus && matchesVerificationStatus;
         }).sort((a, b) => {
             if (sortOption === 'Name (A-Z)') return a.name.localeCompare(b.name);
             if (sortOption === 'Name (Z-A)') return b.name.localeCompare(a.name);
@@ -487,6 +504,119 @@ const AdminDashboard: React.FC = () => {
             console.error('Export failed', error);
             alert('Failed to export evaluations');
         }
+    };
+
+    const handleExportStudents = async () => {
+        if (!exportBatch || exportBatch === 'All') { alert('Please select a specific batch first.'); return; }
+        try {
+            const response = await api.get(`/users/students/export?batch=${exportBatch}`, {
+                responseType: 'blob',
+            });
+            const url = window.URL.createObjectURL(new Blob([response.data]));
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', `students_export_${exportBatch}.xlsx`);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+        } catch (error) {
+            console.error('Export failed', error);
+            alert('Failed to export students');
+        }
+    };
+
+    const DEFAULT_RUBRICS: Record<string, any[]> = {
+        mid_term_evaluation: [
+            { title: 'Guide Evaluation', key: 'guide', fields: [
+                { key: 'dataElicitation', label: 'Data Elicitation', max: 5 },
+                { key: 'problemDefinition', label: 'Problem Definition', max: 5 },
+                { key: 'planning', label: 'Planning', max: 5 },
+            ]},
+            { title: 'Panel Evaluation', key: 'panel', fields: [
+                { key: 'literatureSurvey', label: 'Literature Survey', max: 5 },
+                { key: 'presentationSkills', label: 'Presentation Skills', max: 5 },
+                { key: 'technicalUnderstanding', label: 'Technical Understanding', max: 5 },
+            ]},
+        ],
+        end_term_evaluation: [
+            { title: 'Guide Evaluation', key: 'guide', fields: [
+                { key: 'requirementSpecification', label: 'Requirement Specification', max: 7 },
+                { key: 'systemDesign', label: 'System Design', max: 7 },
+                { key: 'implementation', label: 'Implementation', max: 7 },
+                { key: 'projectManagement', label: 'Project Management', max: 7 },
+                { key: 'planningVsExecution', label: 'Planning vs Execution', max: 7 },
+            ]},
+            { title: 'Panel Evaluation', key: 'panel', fields: [
+                { key: 'testingAndResults', label: 'Testing & Results', max: 10 },
+                { key: 'innovationAndRelevance', label: 'Innovation & Relevance', max: 5 },
+                { key: 'presentationAndViva', label: 'Presentation & Viva', max: 10 },
+                { key: 'conceptualDepth', label: 'Conceptual Depth', max: 10 },
+            ]},
+        ],
+    };
+
+    const initRubricForType = (type: string, existingParams?: any) => {
+        if (existingParams) {
+            try {
+                const parsed = typeof existingParams === 'string' ? JSON.parse(existingParams) : existingParams;
+                if (parsed?.sections) {
+                    setRubricSections(JSON.parse(JSON.stringify(parsed.sections)));
+                    setRubricPanelAggregation(parsed.panelAggregation || 'average');
+                    return;
+                }
+            } catch {}
+        }
+        setRubricSections(JSON.parse(JSON.stringify(DEFAULT_RUBRICS[type] || [])));
+        setRubricPanelAggregation('average');
+    };
+
+    const rubricTotalMarks = rubricSections.reduce((sum, s) =>
+        sum + s.fields.reduce((fs: number, f: any) => fs + (Number(f.max) || 0), 0), 0);
+
+    const addRubricField = (sectionIdx: number) => {
+        setRubricSections(prev => prev.map((s, i) => i !== sectionIdx ? s : {
+            ...s, fields: [...s.fields, { key: `field_${Date.now()}`, label: '', max: 5 }]
+        }));
+    };
+
+    const removeRubricField = (sectionIdx: number, fieldIdx: number) => {
+        setRubricSections(prev => prev.map((s, i) => i !== sectionIdx ? s : {
+            ...s, fields: s.fields.filter((_: any, fi: number) => fi !== fieldIdx)
+        }));
+    };
+
+    const updateRubricField = (sectionIdx: number, fieldIdx: number, key: string, value: any) => {
+        setRubricSections(prev => prev.map((s, i) => i !== sectionIdx ? s : {
+            ...s, fields: s.fields.map((f: any, fi: number) => fi !== fieldIdx ? f : { ...f, [key]: value })
+        }));
+    };
+
+    const copyUngroupedEmails = async () => {
+        try {
+            const res = await api.get('/users/students');
+            const ungrouped: any[] = (res.data || []).filter((s: any) => !s.isGrouped);
+            const emails = ungrouped.map((s: any) => s.email).filter(Boolean).join(',');
+            await navigator.clipboard.writeText(emails);
+            setEmailsCopied(true);
+            setTimeout(() => setEmailsCopied(false), 2500);
+        } catch { alert('Failed to copy emails.'); }
+    };
+
+    const openGmailWithUngrouped = async () => {
+        try {
+            const res = await api.get('/users/students');
+            const ungrouped: any[] = (res.data || []).filter((s: any) => !s.isGrouped);
+            const emails = ungrouped.map((s: any) => s.email).filter(Boolean).join(',');
+            window.open(`https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(emails)}`, '_blank');
+        } catch { alert('Failed to fetch student emails.'); }
+    };
+
+    const handleToggleFacultyVerification = async (f: any) => {
+        try {
+            await api.put(`/users/${f._id}`, { isVerified: !f.isVerified });
+            const res = await api.get('/users/faculty');
+            setFaculty(Array.isArray(res.data) ? res.data : []);
+        } catch { alert('Failed to update faculty verification.'); }
     };
 
     const handleCreateAdmin = async (e: React.FormEvent) => {
@@ -649,6 +779,16 @@ const AdminDashboard: React.FC = () => {
 
                                             <select
                                                 className="px-3 py-2 bg-white rounded-xl border border-neutral-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer hover:border-indigo-300 transition-colors"
+                                                value={filterVerificationStatus}
+                                                onChange={(e) => setFilterVerificationStatus(e.target.value)}
+                                            >
+                                                <option value="All">Account: All</option>
+                                                <option value="Verified">Verified</option>
+                                                <option value="Unverified">Unverified</option>
+                                            </select>
+
+                                            <select
+                                                className="px-3 py-2 bg-white rounded-xl border border-neutral-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer hover:border-indigo-300 transition-colors"
                                                 value={filterBranch}
                                                 onChange={(e) => setFilterBranch(e.target.value)}
                                             >
@@ -733,47 +873,93 @@ const AdminDashboard: React.FC = () => {
                             </div>
                         ) : (
                             <>
-                                {activeTab === 'overview' && (
+                                                                {activeTab === 'overview' && (
                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                                        <div className="bg-white p-6 rounded-3xl border border-neutral-200 shadow-sm relative overflow-hidden group">
+                                        <div onClick={() => { setActiveTab('students'); setFilterGroupStatus('All'); setFilterVerificationStatus('All'); }} className="bg-white p-6 rounded-3xl border border-neutral-200 shadow-sm relative overflow-hidden group cursor-pointer hover:border-indigo-300 hover:shadow-lg transition-all active:scale-[0.98]">
                                             <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
                                                 <Users className="w-16 h-16" />
                                             </div>
                                             <h3 className="text-neutral-500 font-bold text-sm tracking-wider uppercase mb-2">Total Students</h3>
                                             <div className="flex items-end gap-3">
-                                                <span className="text-4xl font-black text-neutral-900">{getFilteredStudents().length}</span>
-                                                <span className="text-sm font-bold text-amber-500 mb-1">{getFilteredStudents().filter(s => !s.isGrouped).length} Unassigned</span>
+                                                <span className="text-4xl font-black text-neutral-900">{stats?.students || 0}</span>
                                             </div>
                                         </div>
 
-                                        <div className="bg-white p-6 rounded-3xl border border-neutral-200 shadow-sm relative overflow-hidden group">
+                                        <div className="bg-white p-6 rounded-3xl border border-neutral-200 shadow-sm relative overflow-hidden hover:border-amber-300 hover:shadow-lg transition-all">
+                                            <div className="absolute top-0 right-0 p-4 opacity-5">
+                                                <Users className="w-16 h-16" />
+                                            </div>
+                                            <h3 className="text-neutral-500 font-bold text-sm tracking-wider uppercase mb-2">Ungrouped Students</h3>
+                                            <div className="flex items-end gap-3 mb-4" onClick={() => { setActiveTab('students'); setFilterGroupStatus('Available'); setFilterVerificationStatus('All'); }} style={{ cursor: 'pointer' }}>
+                                                <span className="text-4xl font-black text-amber-600">{stats?.ungroupedStudents || 0}</span>
+                                                <span className="text-sm font-bold text-amber-500 mb-1">Available</span>
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); copyUngroupedEmails(); }}
+                                                    className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-bold rounded-xl bg-neutral-100 text-neutral-600 hover:bg-amber-50 hover:text-amber-700 transition-colors border border-neutral-200"
+                                                >
+                                                    {emailsCopied ? <><Check className="w-3.5 h-3.5" /> Copied!</> : <><Copy className="w-3.5 h-3.5" /> Copy Emails</>}
+                                                </button>
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); openGmailWithUngrouped(); }}
+                                                    className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-bold rounded-xl bg-neutral-100 text-neutral-600 hover:bg-blue-50 hover:text-blue-700 transition-colors border border-neutral-200"
+                                                >
+                                                    <Mail className="w-3.5 h-3.5" /> Gmail
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <div onClick={() => setActiveTab('groups')} className="bg-white p-6 rounded-3xl border border-neutral-200 shadow-sm relative overflow-hidden group cursor-pointer hover:border-emerald-300 hover:shadow-lg transition-all active:scale-[0.98]">
                                             <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
                                                 <LayoutGrid className="w-16 h-16" />
                                             </div>
                                             <h3 className="text-neutral-500 font-bold text-sm tracking-wider uppercase mb-2">Total Groups</h3>
                                             <div className="flex items-end gap-3">
-                                                <span className="text-4xl font-black text-neutral-900">{getFilteredGroups().length}</span>
-                                                <span className="text-sm font-bold text-emerald-500 mb-1">{getFilteredGroups().filter(g => g.status === 'Approved').length} Approved</span>
+                                                <span className="text-4xl font-black text-neutral-900">{stats?.groups || 0}</span>
                                             </div>
                                         </div>
 
-                                        <div className="bg-white p-6 rounded-3xl border border-neutral-200 shadow-sm relative overflow-hidden group">
+                                        <div onClick={() => setActiveTab('groups')} className="bg-white p-6 rounded-3xl border border-neutral-200 shadow-sm relative overflow-hidden group cursor-pointer hover:border-indigo-300 hover:shadow-lg transition-all active:scale-[0.98]">
+                                            <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                                                <FileText className="w-16 h-16" />
+                                            </div>
+                                            <h3 className="text-neutral-500 font-bold text-sm tracking-wider uppercase mb-2">Total Projects</h3>
+                                            <div className="flex items-end gap-3">
+                                                <span className="text-4xl font-black text-neutral-900">{stats?.projects || 0}</span>
+                                                <span className="text-sm font-bold text-indigo-500 mb-1">In System</span>
+                                            </div>
+                                        </div>
+
+                                        <div onClick={() => setActiveTab('faculty')} className="bg-white p-6 rounded-3xl border border-neutral-200 shadow-sm relative overflow-hidden group cursor-pointer hover:border-rose-300 hover:shadow-lg transition-all active:scale-[0.98]">
                                             <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
                                                 <Users className="w-16 h-16" />
                                             </div>
                                             <h3 className="text-neutral-500 font-bold text-sm tracking-wider uppercase mb-2">Total Faculty</h3>
                                             <div className="flex items-end gap-3">
-                                                <span className="text-4xl font-black text-neutral-900">{faculty.length}</span>
+                                                <span className="text-4xl font-black text-neutral-900">{stats?.faculty || 0}</span>
                                             </div>
                                         </div>
 
-                                        <div className="bg-white p-6 rounded-3xl border border-neutral-200 shadow-sm relative overflow-hidden group">
+                                        <div onClick={() => { setActiveTab('students'); setFilterVerificationStatus('Verified'); setFilterGroupStatus('All'); }} className="bg-white p-6 rounded-3xl border border-neutral-200 shadow-sm relative overflow-hidden group cursor-pointer hover:border-emerald-300 hover:shadow-lg transition-all active:scale-[0.98]">
                                             <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
-                                                <Calendar className="w-16 h-16" />
+                                                <CheckCircle className="w-16 h-16" />
                                             </div>
-                                            <h3 className="text-neutral-500 font-bold text-sm tracking-wider uppercase mb-2">Active Events</h3>
+                                            <h3 className="text-neutral-500 font-bold text-sm tracking-wider uppercase mb-2">Activated Accounts</h3>
                                             <div className="flex items-end gap-3">
-                                                <span className="text-4xl font-black text-neutral-900">{events.filter(e => new Date(e.endDate) > new Date() || (e.extensionDate && new Date(e.extensionDate) > new Date())).length}</span>
+                                                <span className="text-4xl font-black text-emerald-600">{stats?.activatedAccounts || 0}</span>
+                                                <span className="text-sm font-bold text-emerald-500 mb-1">Verified</span>
+                                            </div>
+                                        </div>
+
+                                        <div onClick={() => { setActiveTab('students'); setFilterVerificationStatus('Unverified'); setFilterGroupStatus('All'); }} className="bg-white p-6 rounded-3xl border border-neutral-200 shadow-sm relative overflow-hidden group cursor-pointer hover:border-rose-300 hover:shadow-lg transition-all active:scale-[0.98]">
+                                            <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                                                <Clock className="w-16 h-16" />
+                                            </div>
+                                            <h3 className="text-neutral-500 font-bold text-sm tracking-wider uppercase mb-2">Unactivated Accounts</h3>
+                                            <div className="flex items-end gap-3">
+                                                <span className="text-4xl font-black text-rose-600">{stats?.unactivatedAccounts || 0}</span>
+                                                <span className="text-sm font-bold text-rose-500 mb-1">Pending</span>
                                             </div>
                                         </div>
 
@@ -807,82 +993,98 @@ const AdminDashboard: React.FC = () => {
                                         <table className="w-full text-left text-sm">
                                             <thead className="bg-neutral-50 border-b border-neutral-200">
                                                 <tr>
-                                                    <th className="px-6 py-3 font-semibold text-neutral-500">Roll Number</th>
-                                                    <th className="px-6 py-3 font-semibold text-neutral-500">Name</th>
-                                                    <th className="px-6 py-3 font-semibold text-neutral-500">Email</th>
+                                                    <th className="px-6 py-3 font-semibold text-neutral-500">Student</th>
                                                     <th className="px-6 py-3 font-semibold text-neutral-500">Branch</th>
-                                                    <th className="px-6 py-3 font-semibold text-neutral-500">Batch</th>
-                                                    <th className="px-6 py-3 font-semibold text-neutral-500">Status</th>
-                                                    <th className="px-6 py-3 font-semibold text-neutral-500 text-right">Action</th>
+                                                    <th className="px-6 py-3 font-semibold text-neutral-500">Group</th>
+                                                    <th className="px-6 py-3 font-semibold text-neutral-500">Account</th>
+                                                    <th className="px-6 py-3 font-semibold text-neutral-500 text-right">Actions</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-neutral-100">
                                                 {getFilteredStudents().map((student) => (
                                                     <tr key={student._id} className="hover:bg-neutral-50">
-                                                        <td className="px-6 py-4 font-mono text-neutral-600 truncate">{student.rollNumber || '-'}</td>
                                                         <td className="px-6 py-4">
-                                                             <div className="flex flex-col">
-                                                                 <span className={`font-medium ${getBatch(student.rollNumber) !== student.targetBatch && student.targetBatch ? 'text-red-700 font-bold' : 'text-neutral-900'}`}>
-                                                                     {student.name}
-                                                                 </span>
-                                                                 {student.targetBatch && getBatch(student.rollNumber) !== student.targetBatch && (
-                                                                     <span className="text-[10px] text-red-600 font-bold uppercase tracking-tighter bg-red-50 px-1.5 py-0.5 rounded border border-red-100 mt-1 w-fit shadow-sm">
-                                                                        {filterBatch === student.targetBatch 
-                                                                            ? `Dropper (Actually ${getBatch(student.rollNumber)})` 
-                                                                            : `Overridden to ${student.targetBatch}`}
-                                                                     </span>
-                                                                 )}
-                                                             </div>
+                                                            <div className="flex flex-col gap-0.5">
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className={`font-semibold ${getBatch(student.rollNumber) !== student.targetBatch && student.targetBatch ? 'text-red-700' : 'text-neutral-900'}`}>
+                                                                        {student.name}
+                                                                    </span>
+                                                                    {student.targetBatch && getBatch(student.rollNumber) !== student.targetBatch && (
+                                                                        <span className="text-[10px] text-red-600 font-bold uppercase bg-red-50 px-1.5 py-0.5 rounded border border-red-100">
+                                                                            Dropper → {student.targetBatch}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                                <span className="font-mono text-xs text-neutral-500">{student.rollNumber || '—'}</span>
+                                                                <span className="text-xs text-neutral-400 truncate max-w-[220px]">{student.email}</span>
+                                                            </div>
                                                         </td>
-                                                        <td className="px-6 py-4 text-neutral-500 truncate">{student.email}</td>
-                                                        <td className="px-6 py-4 text-neutral-500">{student.branch || '-'}</td>
-                                                        <td className="px-6 py-4 text-neutral-500 font-bold">
-                                                            {student.targetBatch || getBatch(student.rollNumber)}
+                                                        <td className="px-6 py-4">
+                                                            <span className="px-2.5 py-1 bg-neutral-100 text-neutral-600 text-xs font-medium rounded-lg">{student.branch || '—'}</span>
                                                         </td>
                                                         <td className="px-6 py-4">
                                                             {student.isGrouped ? (
-                                                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                                                                    In Group
+                                                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-100">
+                                                                    <Check className="w-3 h-3" /> In Group
                                                                 </span>
                                                             ) : (
-                                                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                                                                    Unassigned
+                                                                <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-100">
+                                                                    Ungrouped
+                                                                </span>
+                                                            )}
+                                                        </td>
+                                                        <td className="px-6 py-4">
+                                                            {student.isVerified ? (
+                                                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-100">
+                                                                    <CheckCircle className="w-3 h-3" /> Activated
+                                                                </span>
+                                                            ) : (
+                                                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-rose-50 text-rose-700 border border-rose-100">
+                                                                    <Clock className="w-3 h-3" /> Pending
                                                                 </span>
                                                             )}
                                                         </td>
                                                         <td className="px-6 py-4 text-right">
-                                                            <div className="relative">
-                                                                <button
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        setStudentBatchMenuOpen(studentBatchMenuOpen === student._id ? null : student._id);
-                                                                    }}
-                                                                    className="p-1 rounded-full hover:bg-neutral-100 text-neutral-500 transition-colors"
+                                                            <div className="flex items-center justify-end gap-1">
+                                                                <a
+                                                                    href={`mailto:${student.email}`}
+                                                                    onClick={e => e.stopPropagation()}
+                                                                    className="p-1.5 rounded-lg hover:bg-blue-50 text-neutral-400 hover:text-blue-600 transition-colors"
+                                                                    title="Send email"
                                                                 >
-                                                                    <Settings className="w-5 h-5" />
-                                                                </button>
-                                                                {studentBatchMenuOpen === student._id && (
-                                                                    <div 
-                                                                        className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-lg border border-neutral-200 py-1 z-50 animate-in fade-in zoom-in duration-200"
-                                                                        onClick={e => e.stopPropagation()}
+                                                                    <Mail className="w-4 h-4" />
+                                                                </a>
+                                                                <div className="relative">
+                                                                    <button
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            setStudentBatchMenuOpen(studentBatchMenuOpen === student._id ? null : student._id);
+                                                                        }}
+                                                                        className="p-1.5 rounded-lg hover:bg-neutral-100 text-neutral-400 transition-colors"
+                                                                        title="More actions"
                                                                     >
-                                                                        <button
-                                                                            onClick={() => {
-                                                                                setConfigStudentBatch(student);
-                                                                                setStudentBatchMenuOpen(null);
-                                                                            }}
-                                                                            className="w-full text-left px-4 py-2 text-sm text-neutral-700 hover:bg-indigo-50 hover:text-indigo-600 flex items-center gap-2 transition-colors"
+                                                                        <Settings className="w-4 h-4" />
+                                                                    </button>
+                                                                    {studentBatchMenuOpen === student._id && (
+                                                                        <div
+                                                                            className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-lg border border-neutral-200 py-1 z-50 animate-in fade-in zoom-in duration-200"
+                                                                            onClick={e => e.stopPropagation()}
                                                                         >
-                                                                            <AlertCircle className="w-4 h-4" /> Override batch
-                                                                        </button>
-                                                                    </div>
-                                                                )}
+                                                                            <button
+                                                                                onClick={() => { setConfigStudentBatch(student); setStudentBatchMenuOpen(null); }}
+                                                                                className="w-full text-left px-4 py-2 text-sm text-neutral-700 hover:bg-indigo-50 hover:text-indigo-600 flex items-center gap-2 transition-colors"
+                                                                            >
+                                                                                <AlertCircle className="w-4 h-4" /> Override batch
+                                                                            </button>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
                                                             </div>
                                                         </td>
                                                     </tr>
                                                 ))}
                                                 {students.length === 0 && (
-                                                    <tr><td colSpan={4} className="px-6 py-8 text-center text-neutral-400">No students found.</td></tr>
+                                                    <tr><td colSpan={5} className="px-6 py-8 text-center text-neutral-400">No students found.</td></tr>
                                                 )}
                                             </tbody>
                                         </table>
@@ -894,66 +1096,76 @@ const AdminDashboard: React.FC = () => {
                                         <table className="w-full text-left text-sm">
                                             <thead className="bg-neutral-50 border-b border-neutral-200">
                                                 <tr>
-                                                    <th className="px-6 py-3 font-semibold text-neutral-500">Name</th>
-                                                    <th className="px-6 py-3 font-semibold text-neutral-500">Email</th>
-
-                                                    <th className="px-6 py-3 font-semibold text-neutral-500">Current Load</th>
-                                                    <th className="px-6 py-3 font-semibold text-neutral-500 text-right">Action</th>
+                                                    <th className="px-6 py-3 font-semibold text-neutral-500">Faculty</th>
+                                                    <th className="px-6 py-3 font-semibold text-neutral-500">Load</th>
+                                                    <th className="px-6 py-3 font-semibold text-neutral-500">Verified</th>
+                                                    <th className="px-6 py-3 font-semibold text-neutral-500 text-right">Actions</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-neutral-100">
                                                 {faculty
-                                                    .map((f: any) => {
-                                                        const load = groups.filter((g: any) => {
-                                                            if (!g.project) return false;
-
-                                                            // Handle faculty reference (id string or object)
-                                                            let facultyId = null;
-                                                            if (typeof g.project.faculty === 'string') {
-                                                                facultyId = g.project.faculty;
-                                                            } else if (g.project.faculty && g.project.faculty._id) {
-                                                                facultyId = g.project.faculty._id;
-                                                            }
-
-                                                            // Ensure ids are strings for comparison
-                                                            const isAssigned = facultyId && String(facultyId) === String(f._id);
-
-                                                            // Count approved groups/projects
-                                                            const isApproved = g.status === 'Approved' || g.project?.status === 'Approved';
-                                                            return isAssigned && isApproved;
-                                                        }).length;
-                                                        return { ...f, calculatedLoad: load };
-                                                    })
                                                     .filter((f: any) => f.name?.toLowerCase().includes(searchTerm.toLowerCase()) || f.email?.toLowerCase().includes(searchTerm.toLowerCase()))
                                                     .sort((a: any, b: any) => {
                                                         if (sortOption === 'Name (A-Z)') return a.name.localeCompare(b.name);
                                                         if (sortOption === 'Name (Z-A)') return b.name.localeCompare(a.name);
-                                                        if (sortOption === 'Load (High-Low)') return b.calculatedLoad - a.calculatedLoad;
-                                                        if (sortOption === 'Load (Low-High)') return a.calculatedLoad - b.calculatedLoad;
+                                                        if (sortOption === 'Load (High-Low)') return (b.currentGroups || 0) - (a.currentGroups || 0);
+                                                        if (sortOption === 'Load (Low-High)') return (a.currentGroups || 0) - (b.currentGroups || 0);
                                                         return 0;
                                                     })
                                                     .map((f: any) => (
-                                                        <tr key={f._id} className="hover:bg-neutral-50 px-6 py-4">
-                                                            <td className="px-6 py-4 font-medium text-neutral-900">{f.name}</td>
-                                                            <td className="px-6 py-4 text-neutral-500">{f.email}</td>
-
-                                                            <td className="px-6 py-4 text-neutral-500">
-                                                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${f.calculatedLoad > 0 ? 'bg-indigo-50 text-indigo-700 border-indigo-100' : 'bg-neutral-100 text-neutral-500 border-neutral-200'}`}>
-                                                                    {f.calculatedLoad} Groups
+                                                        <tr key={f._id} className="hover:bg-neutral-50">
+                                                            <td className="px-6 py-4">
+                                                                <div className="flex flex-col gap-0.5">
+                                                                    <span className="font-semibold text-neutral-900">{f.name}</span>
+                                                                    <span className="text-xs text-neutral-400">{f.email}</span>
+                                                                    {f.department && <span className="text-xs text-neutral-400">{f.department}</span>}
+                                                                </div>
+                                                            </td>
+                                                            <td className="px-6 py-4">
+                                                                <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold border ${(f.currentGroups || 0) > 0 ? 'bg-indigo-50 text-indigo-700 border-indigo-100' : 'bg-neutral-100 text-neutral-500 border-neutral-200'}`}>
+                                                                    {f.currentGroups || 0} Groups
                                                                 </span>
                                                             </td>
+                                                            <td className="px-6 py-4">
+                                                                {f.isVerified ? (
+                                                                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-100">
+                                                                        <ShieldCheck className="w-3.5 h-3.5" /> Verified
+                                                                    </span>
+                                                                ) : (
+                                                                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-rose-50 text-rose-700 border border-rose-100">
+                                                                        <ShieldOff className="w-3.5 h-3.5" /> Unverified
+                                                                    </span>
+                                                                )}
+                                                            </td>
                                                             <td className="px-6 py-4 text-right">
-                                                                <button
-                                                                    onClick={() => handleEditFaculty(f)}
-                                                                    className="text-indigo-600 hover:text-indigo-800 p-2 hover:bg-indigo-50 rounded-lg transition-colors flex items-center gap-1 ml-auto"
-                                                                >
-                                                                    <Settings className="w-4 h-4" /> Configure Profile
-                                                                </button>
+                                                                <div className="flex items-center justify-end gap-1">
+                                                                    <a
+                                                                        href={`mailto:${f.email}`}
+                                                                        className="p-1.5 rounded-lg hover:bg-blue-50 text-neutral-400 hover:text-blue-600 transition-colors"
+                                                                        title="Send email"
+                                                                    >
+                                                                        <Mail className="w-4 h-4" />
+                                                                    </a>
+                                                                    <button
+                                                                        onClick={() => handleToggleFacultyVerification(f)}
+                                                                        className={`p-1.5 rounded-lg transition-colors ${f.isVerified ? 'hover:bg-rose-50 text-neutral-400 hover:text-rose-600' : 'hover:bg-emerald-50 text-neutral-400 hover:text-emerald-600'}`}
+                                                                        title={f.isVerified ? 'Revoke verification' : 'Verify faculty'}
+                                                                    >
+                                                                        {f.isVerified ? <UserX className="w-4 h-4" /> : <UserCheck className="w-4 h-4" />}
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => handleEditFaculty(f)}
+                                                                        className="p-1.5 rounded-lg hover:bg-indigo-50 text-neutral-400 hover:text-indigo-600 transition-colors"
+                                                                        title="Configure limits"
+                                                                    >
+                                                                        <Settings className="w-4 h-4" />
+                                                                    </button>
+                                                                </div>
                                                             </td>
                                                         </tr>
                                                     ))}
                                                 {faculty.length === 0 && (
-                                                    <tr><td colSpan={3} className="px-6 py-8 text-center text-neutral-400">No faculty found.</td></tr>
+                                                    <tr><td colSpan={4} className="px-6 py-8 text-center text-neutral-400">No faculty found.</td></tr>
                                                 )}
                                             </tbody>
                                         </table>
@@ -991,89 +1203,126 @@ const AdminDashboard: React.FC = () => {
                                                                 </div>
                                                             )}
 
-                                                            <div className="bg-white rounded-2xl border border-neutral-200 shadow-sm overflow-visible">
-                                                                <table className="w-full text-left">
-                                                                    <thead className="bg-neutral-50 border-b border-neutral-100">
-                                                                        <tr>
-                                                                            <th className="px-6 py-4 text-xs font-bold text-neutral-400 uppercase tracking-wider">Group / Project</th>
-                                                                            <th className="px-6 py-4 text-xs font-bold text-neutral-400 uppercase tracking-wider">Faculty</th>
-                                                                            <th className="px-6 py-4 text-xs font-bold text-neutral-400 uppercase tracking-wider">Status</th>
-                                                                            <th className="px-6 py-4 text-xs font-bold text-neutral-400 uppercase tracking-wider text-right">Action</th>
-                                                                        </tr>
-                                                                    </thead>
-                                                                    <tbody className="divide-y divide-neutral-100">
-                                                                        {batchGroups.map((item: any) => (
-                                                                            <tr key={item._id} onClick={() => setViewGroup(item)} className={`cursor-pointer transition-colors group ${item.targetBatch && (item.members?.some((m: any) => getBatch(m.rollNumber) !== item.targetBatch)) ? 'bg-red-50 hover:bg-red-100 border-l-4 border-l-red-500' : 'hover:bg-neutral-50'}`}>
-                                                                                <td className="px-6 py-4">
-                                                                                    <div className="flex flex-col">
-                                                                                        <span className="font-bold text-neutral-900 group-hover:text-indigo-600 transition-colors">{item.project?.title || 'No Project'}</span>
-                                                                                        <span className="text-sm text-neutral-500 line-clamp-1 mb-1">
-                                                                                            {item.name ? `Group ${item.name}` : ''} {item.targetBatch ? `(Dropper/Batch override: ${item.targetBatch})` : ''}
-                                                                                        </span>
-                                                                                        <div className="flex flex-wrap gap-1 mt-1">
-                                                                                            {item.members?.map((m: any, idx: number) => (
-                                                                                                <span key={idx} className="text-xs text-neutral-600 bg-neutral-100 px-1.5 py-0.5 rounded border border-neutral-200">
-                                                                                                    {m.name}
-                                                                                                </span>
-                                                                                            ))}
-                                                                                        </div>
-                                                                                    </div>
-                                                                                </td>
-                                                                                <td className="px-6 py-4">
-                                                                                    <div className="flex items-center gap-2">
-                                                                                        <div className="h-6 w-6 rounded-full bg-orange-100 flex items-center justify-center text-xs font-bold text-orange-600">
-                                                                                            {item.project?.faculty?.name?.charAt(0) || '?'}
-                                                                                        </div>
-                                                                                        <span className="text-sm font-medium text-neutral-700">
-                                                                                            {item.project?.faculty?.name || 'Unassigned'}
-                                                                                        </span>
-                                                                                    </div>
-                                                                                </td>
-                                                                                <td className="px-6 py-4">
-                                                                                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${(item.status || item.project?.status) === 'Approved' ? 'bg-green-100 text-green-700' :
-                                                                                        (item.status || item.project?.status) === 'Rejected' ? 'bg-red-100 text-red-700' :
-                                                                                            'bg-indigo-100 text-indigo-700'
-                                                                                        }`}>
-                                                                                        <div className={`w-1.5 h-1.5 rounded-full ${(item.status || item.project?.status) === 'Approved' ? 'bg-green-500' :
-                                                                                            (item.status || item.project?.status) === 'Rejected' ? 'bg-red-500' :
-                                                                                                'bg-indigo-500'
-                                                                                            }`} />
-                                                                                        {item.status || item.project?.status || 'Active'}
-                                                                                    </span>
-                                                                                </td>
-                                                                                <td className="px-6 py-4 text-right">
-                                                                                    <div className="flex flex-col items-end gap-2">
-                                                                                        <div className="relative">
-                                                                                            <button
-                                                                                                onClick={(e) => {
-                                                                                                    e.stopPropagation();
-                                                                                                    setConfigBatchMenuOpen(configBatchMenuOpen === item._id ? null : item._id);
-                                                                                                }}
-                                                                                                className="p-1 rounded-full hover:bg-neutral-100 text-neutral-500 transition-colors"
-                                                                                            >
-                                                                                                <MoreVertical className="w-5 h-5" />
-                                                                                            </button>
-                                                                                            {configBatchMenuOpen === item._id && (
-                                                                                                <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-lg border border-neutral-200 py-1 z-30" onClick={e => e.stopPropagation()}>
-                                                                                                    <button
-                                                                                                        onClick={() => {
-                                                                                                            setConfigBatchGroup(item);
-                                                                                                            setConfigBatchMenuOpen(null);
-                                                                                                        }}
-                                                                                                        className="w-full text-left px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-50 flex items-center gap-2"
-                                                                                                    >
-                                                                                                        <Settings className="w-4 h-4" /> Configure Batch
-                                                                                                    </button>
-                                                                                                </div>
-                                                                                            )}
-                                                                                        </div>
-                                                                                    </div>
-                                                                                </td>
+                                                            {(() => {
+                                                                const hasMidEval = events.some(e => e.type === 'mid_term_evaluation' && e.isActive);
+                                                                const hasEndEval = events.some(e => e.type === 'end_term_evaluation' && e.isActive);
+                                                                const showMid = hasMidEval || hasEndEval;
+                                                                const showEnd = hasEndEval;
+                                                                return (
+                                                                <div className="bg-white rounded-2xl border border-neutral-200 shadow-sm overflow-visible">
+                                                                    <table className="w-full text-left">
+                                                                        <thead className="bg-neutral-50 border-b border-neutral-100">
+                                                                            <tr>
+                                                                                <th className="px-6 py-4 text-xs font-bold text-neutral-400 uppercase tracking-wider">Group / Project</th>
+                                                                                <th className="px-6 py-4 text-xs font-bold text-neutral-400 uppercase tracking-wider">Faculty</th>
+                                                                                <th className="px-6 py-4 text-xs font-bold text-neutral-400 uppercase tracking-wider">Status</th>
+                                                                                {showMid && <th className="px-4 py-4 text-xs font-bold text-indigo-400 uppercase tracking-wider text-center">Mid</th>}
+                                                                                {showEnd && <th className="px-4 py-4 text-xs font-bold text-purple-400 uppercase tracking-wider text-center">End</th>}
+                                                                                {showEnd && <th className="px-4 py-4 text-xs font-bold text-emerald-500 uppercase tracking-wider text-center">Total</th>}
+                                                                                <th className="px-6 py-4 text-xs font-bold text-neutral-400 uppercase tracking-wider text-right">Action</th>
                                                                             </tr>
-                                                                        ))}
-                                                                    </tbody>
-                                                                </table>
-                                                            </div>
+                                                                        </thead>
+                                                                        <tbody className="divide-y divide-neutral-100">
+                                                                            {batchGroups.map((item: any) => {
+                                                                                const midMarks = item.project?.midTermEvaluation?.marks;
+                                                                                const endMarks = item.project?.endTermEvaluation?.marks;
+                                                                                const total = (midMarks ?? 0) + (endMarks ?? 0);
+                                                                                return (
+                                                                                <tr key={item._id} onClick={() => setViewGroup(item)} className={`cursor-pointer transition-colors group ${item.targetBatch && (item.members?.some((m: any) => getBatch(m.rollNumber) !== item.targetBatch)) ? 'bg-red-50 hover:bg-red-100 border-l-4 border-l-red-500' : 'hover:bg-neutral-50'}`}>
+                                                                                    <td className="px-6 py-4">
+                                                                                        <div className="flex flex-col">
+                                                                                            <span className="font-bold text-neutral-900 group-hover:text-indigo-600 transition-colors">{item.project?.title || 'No Project'}</span>
+                                                                                            <span className="text-sm text-neutral-500 line-clamp-1 mb-1">
+                                                                                                {item.name ? `Group ${item.name}` : ''} {item.targetBatch ? `(Dropper/Batch override: ${item.targetBatch})` : ''}
+                                                                                            </span>
+                                                                                            <div className="flex flex-wrap gap-1 mt-1">
+                                                                                                {item.members?.map((m: any, idx: number) => (
+                                                                                                    <span key={idx} className="text-xs text-neutral-600 bg-neutral-100 px-1.5 py-0.5 rounded border border-neutral-200">
+                                                                                                        {m.name}
+                                                                                                    </span>
+                                                                                                ))}
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    </td>
+                                                                                    <td className="px-6 py-4">
+                                                                                        <div className="flex items-center gap-2">
+                                                                                            <div className="h-6 w-6 rounded-full bg-orange-100 flex items-center justify-center text-xs font-bold text-orange-600">
+                                                                                                {item.project?.faculty?.name?.charAt(0) || '?'}
+                                                                                            </div>
+                                                                                            <span className="text-sm font-medium text-neutral-700">
+                                                                                                {item.project?.faculty?.name || 'Unassigned'}
+                                                                                            </span>
+                                                                                        </div>
+                                                                                    </td>
+                                                                                    <td className="px-6 py-4">
+                                                                                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${(item.status || item.project?.status) === 'Approved' ? 'bg-green-100 text-green-700' :
+                                                                                            (item.status || item.project?.status) === 'Rejected' ? 'bg-red-100 text-red-700' :
+                                                                                                'bg-indigo-100 text-indigo-700'
+                                                                                            }`}>
+                                                                                            <div className={`w-1.5 h-1.5 rounded-full ${(item.status || item.project?.status) === 'Approved' ? 'bg-green-500' :
+                                                                                                (item.status || item.project?.status) === 'Rejected' ? 'bg-red-500' :
+                                                                                                    'bg-indigo-500'
+                                                                                                }`} />
+                                                                                            {item.status || item.project?.status || 'Active'}
+                                                                                        </span>
+                                                                                    </td>
+                                                                                    {showMid && (
+                                                                                        <td className="px-4 py-4 text-center">
+                                                                                            {midMarks != null
+                                                                                                ? <span className="inline-block px-2 py-0.5 rounded-lg bg-indigo-50 text-indigo-700 text-sm font-bold">{midMarks}</span>
+                                                                                                : <span className="text-neutral-300 text-sm">—</span>}
+                                                                                        </td>
+                                                                                    )}
+                                                                                    {showEnd && (
+                                                                                        <td className="px-4 py-4 text-center">
+                                                                                            {endMarks != null
+                                                                                                ? <span className="inline-block px-2 py-0.5 rounded-lg bg-purple-50 text-purple-700 text-sm font-bold">{endMarks}</span>
+                                                                                                : <span className="text-neutral-300 text-sm">—</span>}
+                                                                                        </td>
+                                                                                    )}
+                                                                                    {showEnd && (
+                                                                                        <td className="px-4 py-4 text-center">
+                                                                                            {(midMarks != null || endMarks != null)
+                                                                                                ? <span className="inline-block px-2 py-0.5 rounded-lg bg-emerald-50 text-emerald-700 text-sm font-bold">{total}</span>
+                                                                                                : <span className="text-neutral-300 text-sm">—</span>}
+                                                                                        </td>
+                                                                                    )}
+                                                                                    <td className="px-6 py-4 text-right">
+                                                                                        <div className="flex flex-col items-end gap-2">
+                                                                                            <div className="relative">
+                                                                                                <button
+                                                                                                    onClick={(e) => {
+                                                                                                        e.stopPropagation();
+                                                                                                        setConfigBatchMenuOpen(configBatchMenuOpen === item._id ? null : item._id);
+                                                                                                    }}
+                                                                                                    className="p-1 rounded-full hover:bg-neutral-100 text-neutral-500 transition-colors"
+                                                                                                >
+                                                                                                    <MoreVertical className="w-5 h-5" />
+                                                                                                </button>
+                                                                                                {configBatchMenuOpen === item._id && (
+                                                                                                    <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-lg border border-neutral-200 py-1 z-30" onClick={e => e.stopPropagation()}>
+                                                                                                        <button
+                                                                                                            onClick={() => {
+                                                                                                                setConfigBatchGroup(item);
+                                                                                                                setConfigBatchMenuOpen(null);
+                                                                                                            }}
+                                                                                                            className="w-full text-left px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-50 flex items-center gap-2"
+                                                                                                        >
+                                                                                                            <Settings className="w-4 h-4" /> Configure Batch
+                                                                                                        </button>
+                                                                                                    </div>
+                                                                                                )}
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    </td>
+                                                                                </tr>
+                                                                                );
+                                                                            })}
+                                                                        </tbody>
+                                                                    </table>
+                                                                </div>
+                                                                );
+                                                            })()}
                                                         </div>
                                                     );
                                                 })}
@@ -1224,10 +1473,12 @@ const AdminDashboard: React.FC = () => {
                                                                 });
 
                                                                 const panelFacultyWithLoad = panel.faculty.map((f: any) => {
+                                                                    const fId = String(f._id);
                                                                     let count = 0;
                                                                     batchGroups.forEach((g: any) => {
-                                                                        if (g.project && (g.project.faculty === f._id || g.project.faculty?._id === f._id)) {
-                                                                            count++;
+                                                                        if (g.project) {
+                                                                            const projFacId = String(g.project.faculty?._id || g.project.faculty || '');
+                                                                            if (projFacId && projFacId === fId) count++;
                                                                         }
                                                                     });
                                                                     return { ...f, groupCount: count };
@@ -1340,13 +1591,9 @@ const AdminDashboard: React.FC = () => {
                                             <button
                                                 onClick={() => {
                                                     setEditingEvent(null);
-                                                    setEventForm({
-                                                        type: '',
-                                                        endDate: '',
-                                                        extensionDate: '',
-                                                        batchYear: '',
-                                                        rubricParams: ''
-                                                    });
+                                                    setEventForm({ type: '', endDate: '', extensionDate: '', batchYear: '', rubricParams: '' });
+                                                    setRubricSections([]); setRubricPanelAggregation('average');
+                                                    setRubricMode('builder');
                                                     setShowCreateEvent(true);
                                                 }}
                                                 className="px-5 py-2.5 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 flex items-center gap-2"
@@ -1415,6 +1662,8 @@ const AdminDashboard: React.FC = () => {
                                                                                     batchYear: ev.batchYear || '',
                                                                                     rubricParams: ev.rubricParams ? JSON.stringify(ev.rubricParams, null, 2) : ''
                                                                                 });
+                                                                                setRubricMode('builder');
+                                                                                initRubricForType(ev.type, ev.rubricParams);
                                                                                 setShowCreateEvent(true);
                                                                             }}
                                                                             className="p-2 rounded-lg bg-neutral-100 text-neutral-500 hover:bg-indigo-50 hover:text-indigo-600 transition-colors"
@@ -1584,6 +1833,35 @@ const AdminDashboard: React.FC = () => {
                                         </div>
 
 
+                                        <div className="bg-white rounded-2xl border border-neutral-200 p-6 flex items-center justify-between shadow-sm">
+                                            <div className="flex items-center gap-4">
+                                                <div className="h-12 w-12 bg-emerald-50 rounded-xl flex items-center justify-center text-emerald-600">
+                                                    <Users className="w-6 h-6" />
+                                                </div>
+                                                <div>
+                                                    <h3 className="text-lg font-bold text-neutral-900">Student Directory Export</h3>
+                                                    <p className="text-sm text-neutral-500">Export student list, roll numbers, and group status.</p>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-3">
+                                                <select
+                                                    value={exportBatch}
+                                                    onChange={(e) => setExportBatch(e.target.value)}
+                                                    className="px-3 py-2 bg-neutral-50 rounded-lg border border-neutral-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                                                >
+                                                    <option value="">Select Batch</option>
+                                                    {Array.from({ length: 7 }, (_, i) => (new Date().getFullYear() - 7) + i).map(year => (
+                                                        <option key={year} value={year.toString()}>{year}-{year + 4}</option>
+                                                    ))}
+                                                </select>
+                                                <button
+                                                    onClick={handleExportStudents}
+                                                    className="px-6 py-2 bg-neutral-900 text-white rounded-lg font-medium hover:bg-neutral-800 transition-colors flex items-center gap-2"
+                                                >
+                                                    <Download className="w-4 h-4" /> Export Excel
+                                                </button>
+                                            </div>
+                                        </div>
                                     </div>
                                 )}
                             </>
@@ -2076,9 +2354,10 @@ const AdminDashboard: React.FC = () => {
                         <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
                             <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-neutral-50">
                                 <h3 className="text-lg font-bold text-gray-900">{editingEvent ? 'Edit Event' : 'Create New Event'}</h3>
-                                <button onClick={() => { 
-                                    setShowCreateEvent(false); 
-                                    setEditingEvent(null); 
+                                <button onClick={() => {
+                                    setShowCreateEvent(false);
+                                    setEditingEvent(null);
+                                    setRubricSections([]); setRubricPanelAggregation('average');
                                     setEventForm({ type: 'group_formation_project_proposal', endDate: '', extensionDate: '', batchYear: '', rubricParams: '' });
                                 }} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
                             </div>
@@ -2092,7 +2371,7 @@ const AdminDashboard: React.FC = () => {
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-1.5">Event Type</label>
-                                    <select value={eventForm.type} onChange={(e) => setEventForm(prev => ({ ...prev, type: e.target.value }))} className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm transition-all focus:ring-2 focus:ring-indigo-500/20">
+                                    <select value={eventForm.type} onChange={(e) => { const t = e.target.value; setEventForm(prev => ({ ...prev, type: t })); if (t === 'mid_term_evaluation' || t === 'end_term_evaluation') { setRubricMode('builder'); initRubricForType(t); } }} className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm transition-all focus:ring-2 focus:ring-indigo-500/20">
                                         <option value="">Select Event Type</option>
                                         <option value="group_formation_project_proposal">Group Formation & Project Proposal</option>
                                         <option value="mid_term_evaluation">Mid-Term Evaluation</option>
@@ -2136,32 +2415,105 @@ const AdminDashboard: React.FC = () => {
                                 </div>
                                 
                                 {(eventForm.type === 'mid_term_evaluation' || eventForm.type === 'end_term_evaluation') && (
-                                    <div className="pt-2">
-                                        <label className="flex items-center justify-between text-sm font-medium text-gray-700 mb-1.5">
-                                            <span>Evaluation Rubric Configuration (Optional JSON)</span>
-                                            <div className="flex gap-2">
-                                            <button onClick={() => setEventForm(prev => ({ ...prev, rubricParams: JSON.stringify({
-                                                maxMarks: 30, sections: [
-                                                    { title: "Guide Evaluation", maxMarks: 15, key: "guide", fields: [{ key: "dataElicitation", label: "Data Elicitation", max: 5, description: "" }, { key: "problemDefinition", label: "Problem Definition", max: 5, description: "" }, { key: "planning", label: "Planning", max: 5, description: "" }] },
-                                                    { title: "Panel Evaluation", maxMarks: 15, key: "panel", fields: [{ key: "literatureSurvey", label: "Literature Survey", max: 5, description: "" }, { key: "presentationSkills", label: "Presentation Skills", max: 5, description: "" }, { key: "technicalUnderstanding", label: "Technical Understanding", max: 5, description: "" }] }
-                                                ]
-                                            }, null, 2)}))} className="text-[10px] text-indigo-600 bg-indigo-50 px-2 py-1 rounded hover:bg-indigo-100 transition">Template 1</button>
-                                            <button onClick={() => setEventForm(prev => ({ ...prev, rubricParams: JSON.stringify({
-                                                maxMarks: 70, sections: [
-                                                    { title: "Guide Evaluation", maxMarks: 35, key: "guide", fields: [{ key: "requirementSpecification", label: "Requirement", max: 7, description: "" }, { key: "systemDesign", label: "System Design", max: 7, description: "" }, { key: "implementation", label: "Implementation", max: 7, description: "" }, { key: "projectManagement", label: "Management", max: 7, description: "" }, { key: "planningVsExecution", label: "Planning", max: 7, description: "" }] },
-                                                    { title: "Panel Evaluation", maxMarks: 35, key: "panel", fields: [{ key: "testingAndResults", label: "Testing", max: 10, description: "" }, { key: "innovationAndRelevance", label: "Innovation", max: 5, description: "" }, { key: "presentationAndViva", label: "Presentation", max: 10, description: "" }, { key: "conceptualDepth", label: "Conceptual Depth", max: 10, description: "" }] }
-                                                ]
-                                            }, null, 2)}))} className="text-[10px] text-indigo-600 bg-indigo-50 px-2 py-1 rounded hover:bg-indigo-100 transition">Template 2</button>
+                                    <div className="pt-2 space-y-3">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-sm font-semibold text-gray-700">Evaluation Rubric</span>
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-lg">
+                                                    Total: {rubricTotalMarks} marks
+                                                </span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setRubricMode(m => m === 'builder' ? 'json' : 'builder')}
+                                                    className="text-[10px] text-neutral-500 bg-neutral-100 px-2 py-1 rounded hover:bg-neutral-200 transition"
+                                                >
+                                                    {rubricMode === 'builder' ? 'Switch to JSON' : 'Switch to Builder'}
+                                                </button>
                                             </div>
-                                        </label>
-                                        <textarea 
-                                            value={eventForm.rubricParams} 
-                                            onChange={(e) => setEventForm(prev => ({ ...prev, rubricParams: e.target.value }))}
-                                            rows={6}
-                                            placeholder={`{\n  "maxMarks": 100,\n  "sections": []\n}`}
-                                            className="w-full px-3 py-2 border border-gray-300 rounded-xl text-xs font-mono focus:ring-2 focus:ring-indigo-500/20"
-                                        />
-                                        <p className="text-[10px] text-gray-500 mt-1">Leave empty to use hardcoded default rubrics. If provided, must be valid JSON.</p>
+                                        </div>
+
+                                        {rubricMode === 'builder' ? (
+                                            <div className="space-y-4">
+                                                {rubricSections.map((section: any, sIdx: number) => (
+                                                    <div key={sIdx} className="border border-neutral-200 rounded-xl overflow-hidden">
+                                                        <div className="flex items-center justify-between px-4 py-2.5 bg-neutral-50 border-b border-neutral-200">
+                                                            <div className="flex items-center gap-2">
+                                                                <span className={`w-2 h-2 rounded-full ${section.key === 'guide' ? 'bg-indigo-500' : 'bg-amber-500'}`} />
+                                                                <span className="text-sm font-bold text-neutral-800">{section.title}</span>
+                                                            </div>
+                                                            <span className="text-xs font-bold text-neutral-500">
+                                                                {section.fields.reduce((s: number, f: any) => s + (Number(f.max) || 0), 0)} marks
+                                                            </span>
+                                                        </div>
+                                                        <div className="p-3 space-y-2">
+                                                            {section.fields.map((field: any, fIdx: number) => (
+                                                                <div key={fIdx} className="flex items-center gap-2">
+                                                                    <input
+                                                                        type="text"
+                                                                        value={field.label}
+                                                                        onChange={e => updateRubricField(sIdx, fIdx, 'label', e.target.value)}
+                                                                        placeholder="Field label"
+                                                                        className="flex-1 px-2.5 py-1.5 text-sm border border-neutral-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                                                    />
+                                                                    <div className="flex items-center gap-1 shrink-0">
+                                                                        <input
+                                                                            type="number"
+                                                                            value={field.max}
+                                                                            onChange={e => updateRubricField(sIdx, fIdx, 'max', e.target.value)}
+                                                                            min={1}
+                                                                            max={100}
+                                                                            className="w-16 px-2 py-1.5 text-sm border border-neutral-200 rounded-lg text-center focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                                                        />
+                                                                        <span className="text-xs text-neutral-400">pts</span>
+                                                                    </div>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => removeRubricField(sIdx, fIdx)}
+                                                                        className="p-1 text-neutral-300 hover:text-red-500 transition-colors shrink-0"
+                                                                    >
+                                                                        <X className="w-4 h-4" />
+                                                                    </button>
+                                                                </div>
+                                                            ))}
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => addRubricField(sIdx)}
+                                                                className="w-full py-1.5 text-xs font-medium text-indigo-600 border border-dashed border-indigo-200 rounded-lg hover:bg-indigo-50 transition-colors flex items-center justify-center gap-1"
+                                                            >
+                                                                <Plus className="w-3 h-3" /> Add field
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                ))}
+
+                                                {/* Panel Score Aggregation */}
+                                                <div className="flex items-center justify-between p-3 bg-neutral-50 border border-neutral-200 rounded-xl">
+                                                    <div>
+                                                        <p className="text-sm font-bold text-neutral-800">Panel Score Method</p>
+                                                        <p className="text-xs text-neutral-500 mt-0.5">How multiple panel evaluator scores combine</p>
+                                                    </div>
+                                                    <select
+                                                        value={rubricPanelAggregation}
+                                                        onChange={e => setRubricPanelAggregation(e.target.value as 'average' | 'sum')}
+                                                        className="px-3 py-1.5 text-sm border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 bg-white font-medium"
+                                                    >
+                                                        <option value="average">Average of E1 & E2 (default)</option>
+                                                        <option value="sum">Sum of E1 & E2</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div>
+                                                <textarea
+                                                    value={eventForm.rubricParams}
+                                                    onChange={(e) => setEventForm(prev => ({ ...prev, rubricParams: e.target.value }))}
+                                                    rows={8}
+                                                    placeholder={`{\n  "maxMarks": 30,\n  "sections": []\n}`}
+                                                    className="w-full px-3 py-2 border border-gray-300 rounded-xl text-xs font-mono focus:ring-2 focus:ring-indigo-500/20"
+                                                />
+                                                <p className="text-[10px] text-gray-400 mt-1">Advanced: raw JSON. Switch to Builder for a visual editor.</p>
+                                            </div>
+                                        )}
                                     </div>
                                 )}
 
@@ -2179,7 +2531,7 @@ const AdminDashboard: React.FC = () => {
                                 </div>
                             </div>
                             <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-3">
-                                <button onClick={() => { setShowCreateEvent(false); setEditingEvent(null); setAdminPassword(''); }} className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition">Cancel</button>
+                                <button onClick={() => { setShowCreateEvent(false); setEditingEvent(null); setAdminPassword(''); setRubricSections([]); setRubricPanelAggregation('average'); }} className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition">Cancel</button>
                                 <button onClick={async () => {
                                     try {
                                         if (!eventForm.endDate || !adminPassword) {
@@ -2200,14 +2552,29 @@ const AdminDashboard: React.FC = () => {
                                             }
                                         }
 
-                                        // Validate JSON if provided
+                                        // Build rubricParams from builder or JSON textarea
                                         let parsedRubricParams = null;
-                                        if (eventForm.rubricParams && eventForm.rubricParams.trim() !== '') {
-                                            try {
-                                                parsedRubricParams = JSON.parse(eventForm.rubricParams);
-                                            } catch (err) {
-                                                alert("Invalid JSON in Rubric Configuration. Please fix it or leave it empty.");
-                                                return;
+                                        const isEvalType = eventForm.type === 'mid_term_evaluation' || eventForm.type === 'end_term_evaluation';
+                                        if (isEvalType) {
+                                            if (rubricMode === 'builder' && rubricSections.length > 0) {
+                                                parsedRubricParams = {
+                                                    maxMarks: rubricSections.reduce((sum: number, s: any) =>
+                                                        sum + s.fields.reduce((fs: number, f: any) => fs + (Number(f.max) || 0), 0), 0),
+                                                    panelAggregation: rubricPanelAggregation,
+                                                    sections: rubricSections.map((s: any) => ({
+                                                        title: s.title,
+                                                        key: s.key,
+                                                        maxMarks: s.fields.reduce((fs: number, f: any) => fs + (Number(f.max) || 0), 0),
+                                                        fields: s.fields.map((f: any) => ({ key: f.key, label: f.label, max: Number(f.max) || 0 }))
+                                                    }))
+                                                };
+                                            } else if (rubricMode === 'json' && eventForm.rubricParams.trim()) {
+                                                try {
+                                                    parsedRubricParams = JSON.parse(eventForm.rubricParams);
+                                                } catch (err) {
+                                                    alert("Invalid JSON in Rubric Configuration. Please fix it or switch to Builder.");
+                                                    return;
+                                                }
                                             }
                                         }
 

@@ -1,7 +1,7 @@
 
 import express from 'express';
 import { getFaculty, getAllStudents, updateUser, exportStudents, previewImport, commitImport } from '../controllers/userController';
-import { auth } from '../middleware/authMiddleware';
+import { auth, adminAuth } from '../middleware/authMiddleware';
 import { upload } from '../middleware/uploadMiddleware';
 
 const router = express.Router();
@@ -26,10 +26,10 @@ router.use(auth);
 router.get('/faculty', getFaculty);
 router.get('/students/export', exportStudents);
 router.get('/students', getAllStudents);
-router.put('/:id', updateUser);
+router.put('/:id', adminAuth, updateUser);
 
-// Import Routes
-router.post('/import-preview', upload.single('file'), previewImport);
-router.post('/import-commit', commitImport);
+// Import Routes (admin only)
+router.post('/import-preview', adminAuth, upload.single('file'), previewImport);
+router.post('/import-commit', adminAuth, commitImport);
 
 export default router;

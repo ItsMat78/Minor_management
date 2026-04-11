@@ -10,6 +10,17 @@ export const getStats = async (req: Request, res: Response) => {
         const totalFaculty = await User.countDocuments({ role: UserRole.FACULTY });
         const totalGroups = await Group.countDocuments();
         const totalProjects = await Project.countDocuments();
+        
+        // 1. Number of ungrouped students
+        const groupedStudentIds = await Group.distinct('members');
+        const ungroupedStudents = await User.countDocuments({ 
+            role: UserRole.STUDENT, 
+            _id: { $nin: groupedStudentIds } 
+        });
+
+        // 2. Number of unactivated/activated accounts (verification status)
+        const unactivatedAccounts = await User.countDocuments({ isVerified: false });
+        const activatedAccounts = await User.countDocuments({ isVerified: true });
 
         // Group status breakdown
         const groupsForming = await Group.countDocuments({ status: 'Forming' });
@@ -20,6 +31,9 @@ export const getStats = async (req: Request, res: Response) => {
             faculty: totalFaculty,
             groups: totalGroups,
             projects: totalProjects,
+            ungroupedStudents,
+            unactivatedAccounts,
+            activatedAccounts,
             breakdown: {
                 forming: groupsForming,
                 approved: groupsApproved

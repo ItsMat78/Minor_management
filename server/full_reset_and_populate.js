@@ -221,7 +221,7 @@ async function main() {
                             password: defaultHash,
                             role: 'Faculty',
                             department: 'CSE', // Default
-                            isVerified: true
+                            isVerified: false
                         });
                         console.log(`Created Faculty: ${mName}`);
                     }
@@ -247,7 +247,7 @@ async function main() {
                         rollNumber: s.roll,
                         branch: s.branch,
                         semester: 4,
-                        isVerified: true
+                        isVerified: false
                     });
                 }
                 studentIds.push(student._id);

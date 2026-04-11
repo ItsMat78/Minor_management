@@ -16,7 +16,7 @@ export const getFaculty = async (req: Request, res: Response) => {
         const batchYear = batchYearPrefix ? parseInt('20' + batchYearPrefix) : null;
 
         const facultyList = await User.find({ role: UserRole.FACULTY })
-            .select('name email department expertise currentStudents currentGroups maxStudents maxGroups batchConfigs')
+            .select('name email department expertise currentStudents currentGroups maxStudents maxGroups batchConfigs isVerified')
             .lean();
 
         // Dynamically calculate counts for EACH faculty for THIS specific batch
@@ -123,7 +123,7 @@ export const getAllStudents = async (req: Request, res: Response) => {
 
         // Fetch students
         const students = await User.find(query)
-            .select('name email rollNumber branch semester targetBatch _id')
+            .select('name email rollNumber branch semester targetBatch isVerified _id')
             .sort({ rollNumber: 1 });
 
         console.log(`Found ${students.length} students matching criteria.`);

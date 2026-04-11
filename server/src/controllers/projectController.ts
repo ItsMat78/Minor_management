@@ -246,6 +246,25 @@ export const getProjects = async (req: Request, res: Response) => {
     }
 };
 
+export const getArchivedProjects = async (req: Request, res: Response) => {
+    try {
+        const userId = (req as any).user.id;
+
+        const archivedGroups = await Group.find({ members: userId, isArchived: true })
+            .populate({
+                path: 'project',
+                select: 'title description tags archivedMentorName status isArchived createdAt faculty',
+                populate: { path: 'faculty', select: 'name' }
+            })
+            .sort({ updatedAt: -1 })
+            .lean();
+
+        res.json(archivedGroups);
+    } catch (error) {
+        res.status(500).json({ message: 'Server error', error });
+    }
+};
+
 export const addUpdate = async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
@@ -476,8 +495,8 @@ export const submitEvaluation = async (req: Request, res: Response) => {
         let isAuthorized = String(project.faculty) === userId || (req as any).user.role === 'Admin';
 
         if (!isAuthorized && project.faculty) {
-            const panel = await Panel.findOne({ faculty: { $all: [project.faculty, userId] } });
-            if (panel) isAuthorized = true;
+            const panelDoc = await Panel.findOne({ faculty: { $all: [project.faculty, userId] } });
+            if (panelDoc) isAuthorized = true;
         }
 
         if (!isAuthorized) {
