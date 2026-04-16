@@ -239,7 +239,22 @@ export const updateProjectStatus = async (req: Request, res: Response) => {
 
 export const getProjects = async (req: Request, res: Response) => {
     try {
-        const projects = await Project.find().populate('group').populate('faculty', 'name');
+        const { id: userId, role } = (req as any).user;
+
+        let query: any = {};
+
+        if (role === UserRole.ADMIN) {
+            // Admin sees all projects
+        } else if (role === UserRole.FACULTY) {
+            query.faculty = userId;
+        } else {
+            // Student: only projects belonging to groups they're in
+            const groups = await Group.find({ members: userId }).select('_id');
+            const groupIds = groups.map(g => g._id);
+            query.group = { $in: groupIds };
+        }
+
+        const projects = await Project.find(query).populate('group').populate('faculty', 'name');
         res.json(projects);
     } catch (error) {
         res.status(500).json({ message: 'Server error', error });

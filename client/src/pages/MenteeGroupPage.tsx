@@ -8,6 +8,7 @@ import {
     Clock, Users, FileText, Link as LinkIcon,
     MessageSquare, Settings, LogOut, Menu, X, Plus, ChevronRight, Layout, GraduationCap, Medal
 } from 'lucide-react';
+import { Navigate } from 'react-router-dom';
 import FilePreview from '../components/FilePreview';
 import { GlobalEventBanner } from '../components/GlobalEventBanner';
 
@@ -106,6 +107,10 @@ const MenteeGroupPage: React.FC = () => {
             setLoading(false);
         }
     };
+
+    if (user && user.role !== 'Faculty' && user.role !== 'Admin') {
+        return <Navigate to="/dashboard" replace />;
+    }
 
     if (loading) return (
         <div className="flex h-screen items-center justify-center bg-gray-50">

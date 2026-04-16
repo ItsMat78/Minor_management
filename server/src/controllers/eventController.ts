@@ -67,6 +67,26 @@ export const createEvent = async (req: Request, res: Response) => {
             return res.status(400).json({ message: 'Invalid event type' });
         }
 
+        // Block mid-term / end-term creation if group formation is still active
+        if (type === EventType.MID_TERM_EVALUATION || type === EventType.END_TERM_EVALUATION) {
+            const now = new Date();
+            const activeGroupFormation = await Event.findOne({
+                type: EventType.GROUP_FORMATION_AND_PROJECT_PROPOSAL,
+                isActive: true,
+                startDate: { $lte: now },
+                $or: [
+                    { extensionDate: { $exists: true, $ne: null, $gte: now } },
+                    { extensionDate: { $exists: false }, endDate: { $gte: now } },
+                    { extensionDate: null, endDate: { $gte: now } }
+                ]
+            });
+            if (activeGroupFormation) {
+                return res.status(400).json({
+                    message: 'Cannot create an evaluation event while a Group Formation event is still active. Close or deactivate the Group Formation event first.'
+                });
+            }
+        }
+
         // Archiving Logic for Group Formation
         if (type === EventType.GROUP_FORMATION_AND_PROJECT_PROPOSAL) {
             // Archive all current Groups

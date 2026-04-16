@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import User, { IUser, UserRole } from '../models/User';
+import { sendEmail } from '../utils/emailService';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'secret';
 
@@ -65,8 +66,19 @@ export const login = async (req: Request, res: Response) => {
             user.otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 mins
             await user.save();
             
-            // TODO: Replace with actual email service
-            console.log(`[DEV MODE] OTP for ${user.email} is ${otp}`);
+            const subject = 'Your IIITNR Minor Portal Activation OTP';
+            const text = `Your OTP to activate your account is: ${otp}\n\nThis code expires in 10 minutes.`;
+            const html = `
+                <div style="font-family: sans-serif; padding: 20px;">
+                    <h2 style="color: #4f46e5;">Account Activation</h2>
+                    <p>Use the following OTP to activate your Minor Project Portal account:</p>
+                    <p style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #111827;">${otp}</p>
+                    <p style="color: #6b7280;">This code expires in <strong>10 minutes</strong>.</p>
+                </div>
+            `;
+            sendEmail(user.email, subject, text, html).catch(err =>
+                console.error(`[AuthController] Failed to send OTP email to ${user.email}:`, err)
+            );
 
             return res.status(200).json({ 
                 requiresActivation: true, 

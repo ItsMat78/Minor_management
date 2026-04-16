@@ -332,18 +332,34 @@ export const commitImport = async (req: Request, res: Response) => {
             return res.status(400).json({ message: 'No valid rows provided' });
         }
 
-        const defaultPassword = await bcrypt.hash('password123', 10);
-        
-        const usersToInsert = validRows.map(row => ({
-            ...row,
-            password: defaultPassword,
-            isActive: false, // Default to false until migration/OTP if student, or force password reset if faculty
-            isVerified: false
-        }));
+        const defaultPassword = await bcrypt.hash('changeme', 10);
 
-        await User.insertMany(usersToInsert);
+        let created = 0;
+        const errors: { email: string; name: string; reason: string }[] = [];
 
-        res.status(201).json({ message: `Successfully imported ${usersToInsert.length} users` });
+        for (const row of validRows) {
+            try {
+                await User.create({
+                    ...row,
+                    password: defaultPassword,
+                    isActive: false,
+                    isVerified: false
+                });
+                created++;
+            } catch (err: any) {
+                const reason = err.code === 11000
+                    ? 'Duplicate email or roll number'
+                    : (err.message || 'Unknown error');
+                errors.push({ email: row.email, name: row.name, reason });
+            }
+        }
+
+        res.status(201).json({
+            message: `Imported ${created} of ${validRows.length} users`,
+            created,
+            total: validRows.length,
+            errors
+        });
     } catch (error) {
         console.error("Error committing import:", error);
         res.status(500).json({ message: 'Server error importing data', error });

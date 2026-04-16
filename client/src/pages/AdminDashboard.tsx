@@ -48,6 +48,7 @@ const AdminDashboard: React.FC = () => {
     const [showCreatePanel, setShowCreatePanel] = useState(false);
     const [newPanelFaculty, setNewPanelFaculty] = useState<string[]>([]);
     const [newPanelBatch, setNewPanelBatch] = useState<string>('');
+    const [newPanelRoom, setNewPanelRoom] = useState<string>('');
     const [editingPanelId, setEditingPanelId] = useState<string | null>(null);
 
     // Filter State
@@ -100,12 +101,38 @@ const AdminDashboard: React.FC = () => {
 
     const [showCreateAdmin, setShowCreateAdmin] = useState(false);
     const [adminForm, setAdminForm] = useState({ name: '', email: '', password: '' });
+    const [showCreateUser, setShowCreateUser] = useState(false);
+    const [createUserForm, setCreateUserForm] = useState({ name: '', email: '', role: 'Student', rollNumber: '', branch: 'CSE', semester: '', department: 'CSE', expertise: '' });
+    const [createUserError, setCreateUserError] = useState<string | null>(null);
+    const [createUserSuccess, setCreateUserSuccess] = useState<string | null>(null);
 
-    // Import State
+    // Import State (simple user import)
     const [showImportModal, setShowImportModal] = useState(false);
     const [importFile, setImportFile] = useState<File | null>(null);
     const [importPreview, setImportPreview] = useState<{validRows: any[], invalidRows: any[], totalRows: number} | null>(null);
     const [importLoading, setImportLoading] = useState(false);
+
+    // Excel full import state
+    const [excelImportFile, setExcelImportFile] = useState<File | null>(null);
+    const [excelImportSemester, setExcelImportSemester] = useState('');
+    const [excelImportLoading, setExcelImportLoading] = useState(false);
+    const [excelImportPreview, setExcelImportPreview] = useState<any | null>(null);
+    const [excelImportExpanded, setExcelImportExpanded] = useState<Set<number>>(new Set());
+
+    // Snapshot import state
+    const [snapshotImportFile, setSnapshotImportFile] = useState<File | null>(null);
+    const [snapshotImportLoading, setSnapshotImportLoading] = useState(false);
+    const [snapshotImportPreview, setSnapshotImportPreview] = useState<any | null>(null);
+    const [snapshotData, setSnapshotData] = useState<any | null>(null); // raw JSON held for commit
+
+    // Preview error state (replaces alert())
+    const [excelImportPreviewError, setExcelImportPreviewError] = useState<string | null>(null);
+    const [snapshotImportPreviewError, setSnapshotImportPreviewError] = useState<string | null>(null);
+
+    // Import result state (shown after commit)
+    const [simpleImportResult, setSimpleImportResult] = useState<{ created: number; total: number; errors: {email:string;name:string;reason:string}[] } | null>(null);
+    const [excelImportResult, setExcelImportResult] = useState<{ created: any; errors: {groupNumber:string;student?:string;reason:string}[] } | null>(null);
+    const [snapshotImportResult, setSnapshotImportResult] = useState<{ result: any; errors: {type:string;key:string;reason:string}[] } | null>(null);
 
 
     useEffect(() => {
@@ -248,9 +275,9 @@ const AdminDashboard: React.FC = () => {
                 // 2. Update existing and create new
                 for (const p of newPanels) {
                     if (p._id) {
-                        await api.put(`/panels/${p._id}`, { faculty: p.faculty, batchYear: p.batchYear });
+                        await api.put(`/panels/${p._id}`, { faculty: p.faculty, batchYear: p.batchYear, room: p.room || undefined });
                     } else {
-                        await api.post('/panels', { faculty: p.faculty, batchYear: p.batchYear });
+                        await api.post('/panels', { faculty: p.faculty, batchYear: p.batchYear, room: p.room || undefined });
                     }
                 }
             } else {
@@ -689,7 +716,7 @@ const AdminDashboard: React.FC = () => {
                     />
                     <SidebarItem
                         icon={<Download className="w-5 h-5" />}
-                        label="Data Exports"
+                        label="Data"
                         active={activeTab === 'exports'}
                         onClick={() => setActiveTab('exports')}
                     />
@@ -729,7 +756,7 @@ const AdminDashboard: React.FC = () => {
                             {activeTab === 'faculty' && 'Faculty Directory'}
                             {activeTab === 'panels' && 'Evaluation Panels'}
                             {activeTab === 'events' && 'Setup Events'}
-                            {activeTab === 'exports' && 'Data Exports'}
+                            {activeTab === 'exports' && 'Data — Imports & Exports'}
                         </h1>
                     </div>
                     {activeTab !== 'events' && <GlobalEventBanner />}
@@ -980,6 +1007,18 @@ const AdminDashboard: React.FC = () => {
                                                         <div>
                                                             <p className="font-bold text-neutral-900 group-hover:text-indigo-700">Add New Admin</p>
                                                             <p className="text-xs text-neutral-500">Create a secondary admin account</p>
+                                                        </div>
+                                                    </button>
+                                                    <button
+                                                        onClick={() => { setCreateUserError(null); setCreateUserSuccess(null); setCreateUserForm({ name: '', email: '', role: 'Student', rollNumber: '', branch: 'CSE', semester: '', department: 'CSE', expertise: '' }); setShowCreateUser(true); }}
+                                                        className="flex items-center gap-3 p-4 rounded-2xl border border-neutral-200 hover:border-green-300 hover:bg-green-50 hover:text-green-700 transition-all text-left group"
+                                                    >
+                                                        <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center text-green-600 group-hover:scale-110 transition-transform">
+                                                            <Plus className="w-5 h-5" />
+                                                        </div>
+                                                        <div>
+                                                            <p className="font-bold text-neutral-900 group-hover:text-green-700">Create Account</p>
+                                                            <p className="text-xs text-neutral-500">Add a student or faculty account</p>
                                                         </div>
                                                     </button>
                                                 </div>
@@ -1504,6 +1543,7 @@ const AdminDashboard: React.FC = () => {
                                                                                 <div>
                                                                                     <h4 className="text-sm font-bold text-neutral-900">Panel {index + 1}</h4>
                                                                                     <p className="text-xs text-neutral-500">{panel.faculty.length} members • {panelGroupsCount} groups</p>
+                                                                                    {panel.room && <p className="text-xs text-indigo-600 font-medium mt-0.5">{panel.room}</p>}
                                                                                 </div>
                                                                             </div>
                                                                         </div>
@@ -1862,6 +1902,399 @@ const AdminDashboard: React.FC = () => {
                                                 </button>
                                             </div>
                                         </div>
+
+                                        {/* ── Snapshot Export ──────────────────────────────────── */}
+                                        <div className="bg-white rounded-2xl border border-neutral-200 p-6 flex items-center justify-between shadow-sm">
+                                            <div className="flex items-center gap-4">
+                                                <div className="h-12 w-12 bg-violet-50 rounded-xl flex items-center justify-center text-violet-600">
+                                                    <Download className="w-6 h-6" />
+                                                </div>
+                                                <div>
+                                                    <h3 className="text-lg font-bold text-neutral-900">Full Database Snapshot</h3>
+                                                    <p className="text-sm text-neutral-500">Export all users, groups, projects, and evaluations as a portable JSON file.</p>
+                                                </div>
+                                            </div>
+                                            <button
+                                                onClick={async () => {
+                                                    try {
+                                                        const res = await api.get('/import/snapshot/export', { responseType: 'blob' });
+                                                        const url = URL.createObjectURL(new Blob([res.data]));
+                                                        const a = document.createElement('a');
+                                                        a.href = url;
+                                                        a.download = `snapshot_${new Date().toISOString().slice(0, 10)}.json`;
+                                                        a.click();
+                                                        URL.revokeObjectURL(url);
+                                                    } catch { alert('Snapshot export failed'); }
+                                                }}
+                                                className="px-6 py-2 bg-violet-600 text-white rounded-lg font-medium hover:bg-violet-700 transition-colors flex items-center gap-2"
+                                            >
+                                                <Download className="w-4 h-4" /> Export Snapshot
+                                            </button>
+                                        </div>
+
+                                        {/* ── Divider ──────────────────────────────────────────── */}
+                                        <div className="flex items-center gap-4 py-2">
+                                            <div className="flex-1 h-px bg-neutral-200" />
+                                            <span className="text-xs font-bold text-neutral-400 uppercase tracking-widest">Imports</span>
+                                            <div className="flex-1 h-px bg-neutral-200" />
+                                        </div>
+
+                                        {/* ── Full Excel Import ─────────────────────────────────── */}
+                                        <div className="bg-white rounded-2xl border border-neutral-200 shadow-sm overflow-hidden">
+                                            <div className="p-6 flex items-center justify-between">
+                                                <div className="flex items-center gap-4">
+                                                    <div className="h-12 w-12 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600">
+                                                        <Upload className="w-6 h-6" />
+                                                    </div>
+                                                    <div>
+                                                        <h3 className="text-lg font-bold text-neutral-900">Full Excel Import <span className="ml-2 text-xs font-semibold bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">Step 2</span></h3>
+                                                        <p className="text-sm text-neutral-500">Import groups and projects from an IIITNR Excel sheet. Run the student CSV import (Step 1) first so students are matched by roll number.</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="px-6 pb-6 space-y-4">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="flex-1">
+                                                        <label className="block text-xs font-semibold text-neutral-500 mb-1 uppercase tracking-wider">Semester</label>
+                                                        <select
+                                                            value={excelImportSemester}
+                                                            onChange={e => setExcelImportSemester(e.target.value)}
+                                                            className="w-full px-3 py-2 bg-neutral-50 rounded-lg border border-neutral-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                                        >
+                                                            <option value="">Select semester</option>
+                                                            {[1,2,3,4,5,6,7,8].map(s => <option key={s} value={s}>Semester {s}</option>)}
+                                                        </select>
+                                                    </div>
+                                                    <div className="flex-1">
+                                                        <label className="block text-xs font-semibold text-neutral-500 mb-1 uppercase tracking-wider">Excel File</label>
+                                                        <label className="flex items-center gap-2 px-4 py-2 bg-neutral-50 border border-neutral-200 rounded-lg cursor-pointer hover:bg-indigo-50 hover:border-indigo-200 transition-colors text-sm font-medium text-neutral-700">
+                                                            <Upload className="w-4 h-4" />
+                                                            {excelImportFile ? excelImportFile.name : 'Choose .xlsx file'}
+                                                            <input type="file" accept=".xlsx,.xls" className="hidden" onChange={e => { setExcelImportFile(e.target.files?.[0] || null); setExcelImportPreviewError(null); }} />
+                                                        </label>
+                                                    </div>
+                                                    <div className="pt-5">
+                                                        <button
+                                                            disabled={!excelImportFile || excelImportLoading}
+                                                            onClick={async () => {
+                                                                if (!excelImportFile) return;
+                                                                setExcelImportLoading(true);
+                                                                setExcelImportPreview(null);
+                                                                setExcelImportPreviewError(null);
+                                                                try {
+                                                                    const fd = new FormData();
+                                                                    fd.append('file', excelImportFile);
+                                                                    fd.append('semester', excelImportSemester);
+                                                                    const res = await api.post('/import/excel/preview', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+                                                                    setExcelImportPreview(res.data);
+                                                                    setExcelImportExpanded(new Set());
+                                                                } catch (err: any) {
+                                                                    setExcelImportPreviewError(err.response?.data?.message || 'Preview failed. Check the file format and try again.');
+                                                                } finally {
+                                                                    setExcelImportLoading(false);
+                                                                }
+                                                            }}
+                                                            className="px-5 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+                                                        >
+                                                            {excelImportLoading ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Analyzing...</> : 'Preview'}
+                                                        </button>
+                                                    </div>
+                                                </div>
+
+                                                {excelImportPreviewError && (
+                                                    <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+                                                        <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+                                                        <p className="text-sm text-red-700">{excelImportPreviewError}</p>
+                                                    </div>
+                                                )}
+
+                                                {excelImportPreview && (
+                                                    <div className="space-y-4">
+                                                        {/* Summary cards */}
+                                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                                            {[
+                                                                { label: 'Groups', value: excelImportPreview.summary.totalGroups, color: 'indigo' },
+                                                                { label: 'New Students', value: excelImportPreview.summary.newStudents, color: 'green' },
+                                                                { label: 'Existing Students', value: excelImportPreview.summary.existingStudents, color: 'amber' },
+                                                                { label: 'New Faculty', value: excelImportPreview.summary.newFaculty, color: 'violet' }
+                                                            ].map(({ label, value, color }) => (
+                                                                <div key={label} className={`bg-${color}-50 rounded-xl p-4 border border-${color}-100`}>
+                                                                    <p className={`text-xs font-bold text-${color}-600 uppercase tracking-wider`}>{label}</p>
+                                                                    <p className={`text-2xl font-black text-${color}-700 mt-1`}>{value}</p>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                        {excelImportPreview.summary.studentsAlreadyGrouped > 0 && (
+                                                            <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl p-4">
+                                                                <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                                                                <p className="text-sm text-amber-800"><strong>{excelImportPreview.summary.studentsAlreadyGrouped}</strong> student(s) are already in active groups and will be placed in existing groups (no duplicate group created).</p>
+                                                            </div>
+                                                        )}
+
+                                                        {/* Group list */}
+                                                        <div className="border border-neutral-200 rounded-xl overflow-hidden">
+                                                            <div className="bg-neutral-50 px-4 py-2 text-xs font-bold text-neutral-500 uppercase tracking-wider">
+                                                                Groups to Import ({excelImportPreview.groups.length})
+                                                            </div>
+                                                            <div className="divide-y divide-neutral-100 max-h-64 overflow-y-auto">
+                                                                {excelImportPreview.groups.map((g: any, idx: number) => (
+                                                                    <div key={idx}>
+                                                                        <button
+                                                                            onClick={() => setExcelImportExpanded(prev => {
+                                                                                const next = new Set(prev);
+                                                                                next.has(idx) ? next.delete(idx) : next.add(idx);
+                                                                                return next;
+                                                                            })}
+                                                                            className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-neutral-50 transition-colors text-left"
+                                                                        >
+                                                                            <div className="flex items-center gap-3">
+                                                                                <span className="text-xs font-bold text-neutral-500 w-8">#{g.groupNumber}</span>
+                                                                                <span className="text-sm font-medium text-neutral-800 truncate max-w-xs">{g.projectTitle}</span>
+                                                                                <span className="text-xs text-neutral-400">{g.students.length} students</span>
+                                                                                {g.faculty.status === 'new' && <span className="px-2 py-0.5 bg-violet-100 text-violet-700 rounded-full text-xs font-medium">New Faculty</span>}
+                                                                            </div>
+                                                                            <ChevronDown className={`w-4 h-4 text-neutral-400 transition-transform ${excelImportExpanded.has(idx) ? 'rotate-180' : ''}`} />
+                                                                        </button>
+                                                                        {excelImportExpanded.has(idx) && (
+                                                                            <div className="px-4 pb-3 bg-neutral-50 border-t border-neutral-100">
+                                                                                <p className="text-xs text-neutral-500 mb-2 font-medium">Faculty: <span className="text-neutral-700">{g.faculty.name || '—'} {g.faculty.status === 'new' ? '(will be created)' : '(existing)'}</span></p>
+                                                                                <div className="space-y-1">
+                                                                                    {g.students.map((s: any, si: number) => (
+                                                                                        <div key={si} className="flex items-center gap-2 text-xs">
+                                                                                            <span className={`w-2 h-2 rounded-full flex-shrink-0 ${s.status === 'new' ? 'bg-green-400' : 'bg-amber-400'}`} />
+                                                                                            <span className="text-neutral-700 font-medium">{s.name}</span>
+                                                                                            <span className="text-neutral-400">{s.roll}</span>
+                                                                                            <span className="text-neutral-400">{s.branch}</span>
+                                                                                            {s.inGroup && <span className="text-amber-600 font-medium">(already in group)</span>}
+                                                                                        </div>
+                                                                                    ))}
+                                                                                </div>
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="flex gap-3 justify-end">
+                                                            <button
+                                                                onClick={() => { setExcelImportPreview(null); setExcelImportFile(null); }}
+                                                                className="px-4 py-2 border border-neutral-200 rounded-lg text-sm font-medium hover:bg-neutral-50 transition-colors"
+                                                            >
+                                                                Cancel
+                                                            </button>
+                                                            <button
+                                                                disabled={excelImportLoading}
+                                                                onClick={async () => {
+                                                                    setExcelImportLoading(true);
+                                                                    try {
+                                                                        const res = await api.post('/import/excel/commit', {
+                                                                            groups: excelImportPreview.groups,
+                                                                            semester: parseInt(excelImportSemester) || 0
+                                                                        });
+                                                                        setExcelImportResult({ created: res.data.created, errors: res.data.errors || [] });
+                                                                        setExcelImportPreview(null);
+                                                                    } catch (err: any) {
+                                                                        setExcelImportResult({ created: {}, errors: [{ groupNumber: '—', reason: err.response?.data?.message || 'Server error' }] });
+                                                                    } finally {
+                                                                        setExcelImportLoading(false);
+                                                                    }
+                                                                }}
+                                                                className="px-5 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors flex items-center gap-2"
+                                                            >
+                                                                {excelImportLoading ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Importing...</> : <><Save className="w-4 h-4" /> Confirm & Import</>}
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {/* Excel import result */}
+                                                {excelImportResult && (
+                                                    <div className="mt-4 space-y-3">
+                                                        <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+                                                            {[
+                                                                { label: 'Students', value: excelImportResult.created.students ?? 0, color: 'green' },
+                                                                { label: 'Faculty',  value: excelImportResult.created.faculty  ?? 0, color: 'violet' },
+                                                                { label: 'Groups',   value: excelImportResult.created.groups   ?? 0, color: 'indigo' },
+                                                                { label: 'Projects', value: excelImportResult.created.projects ?? 0, color: 'blue' },
+                                                                { label: 'Skipped',  value: excelImportResult.created.skipped  ?? 0, color: 'amber' },
+                                                            ].map(({ label, value, color }) => (
+                                                                <div key={label} className={`bg-${color}-50 rounded-xl p-3 border border-${color}-100 text-center`}>
+                                                                    <p className={`text-xs font-bold text-${color}-600 uppercase tracking-wider`}>{label}</p>
+                                                                    <p className={`text-xl font-black text-${color}-700 mt-1`}>{value}</p>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                        {excelImportResult.errors.length > 0 && (
+                                                            <div className="border border-red-200 rounded-xl overflow-hidden">
+                                                                <div className="bg-red-50 px-4 py-2 text-xs font-bold text-red-700 uppercase tracking-wider">Errors ({excelImportResult.errors.length})</div>
+                                                                <div className="divide-y divide-red-100 max-h-48 overflow-y-auto">
+                                                                    {excelImportResult.errors.map((e, i) => (
+                                                                        <div key={i} className="px-4 py-2 text-xs flex gap-3">
+                                                                            <span className="font-medium text-neutral-700 w-16 flex-shrink-0">Grp #{e.groupNumber}</span>
+                                                                            {e.student && <span className="text-neutral-500 w-28 truncate flex-shrink-0">{e.student}</span>}
+                                                                            <span className="text-red-600">{e.reason}</span>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                        <div className="flex justify-end">
+                                                            <button onClick={() => { setExcelImportResult(null); setExcelImportFile(null); setExcelImportSemester(''); }}
+                                                                className="px-4 py-2 bg-neutral-900 text-white rounded-lg text-sm font-medium hover:bg-neutral-800 transition-colors">
+                                                                Done
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {/* ── Snapshot Import ───────────────────────────────────── */}
+                                        <div className="bg-white rounded-2xl border border-neutral-200 shadow-sm overflow-hidden">
+                                            <div className="p-6">
+                                                <div className="flex items-center gap-4 mb-4">
+                                                    <div className="h-12 w-12 bg-violet-50 rounded-xl flex items-center justify-center text-violet-600">
+                                                        <Upload className="w-6 h-6" />
+                                                    </div>
+                                                    <div>
+                                                        <h3 className="text-lg font-bold text-neutral-900">Snapshot Import</h3>
+                                                        <p className="text-sm text-neutral-500">Restore a full database state from a previously exported snapshot JSON file.</p>
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex items-center gap-3">
+                                                    <label className="flex-1 flex items-center gap-2 px-4 py-2 bg-neutral-50 border border-neutral-200 rounded-lg cursor-pointer hover:bg-violet-50 hover:border-violet-200 transition-colors text-sm font-medium text-neutral-700">
+                                                        <Upload className="w-4 h-4" />
+                                                        {snapshotImportFile ? snapshotImportFile.name : 'Choose snapshot .json file'}
+                                                        <input type="file" accept=".json" className="hidden" onChange={e => {
+                                                            const f = e.target.files?.[0] || null;
+                                                            setSnapshotImportFile(f);
+                                                            setSnapshotImportPreview(null);
+                                                            setSnapshotData(null);
+                                                            setSnapshotImportPreviewError(null);
+                                                        }} />
+                                                    </label>
+                                                    <button
+                                                        disabled={!snapshotImportFile || snapshotImportLoading}
+                                                        onClick={async () => {
+                                                            if (!snapshotImportFile) return;
+                                                            setSnapshotImportLoading(true);
+                                                            setSnapshotImportPreviewError(null);
+                                                            try {
+                                                                const text = await snapshotImportFile.text();
+                                                                let json: any;
+                                                                try { json = JSON.parse(text); }
+                                                                catch { throw new Error('File is not valid JSON.'); }
+                                                                setSnapshotData(json);
+                                                                const res = await api.post('/import/snapshot/preview', json);
+                                                                setSnapshotImportPreview(res.data);
+                                                            } catch (err: any) {
+                                                                setSnapshotImportPreviewError(err.response?.data?.message || err.message || 'Invalid snapshot file.');
+                                                            } finally {
+                                                                setSnapshotImportLoading(false);
+                                                            }
+                                                        }}
+                                                        className="px-5 py-2 bg-violet-600 text-white rounded-lg font-medium hover:bg-violet-700 disabled:opacity-50 transition-colors flex items-center gap-2"
+                                                    >
+                                                        {snapshotImportLoading ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Analyzing...</> : 'Preview'}
+                                                    </button>
+                                                </div>
+
+                                                {snapshotImportPreviewError && (
+                                                    <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl px-4 py-3 mt-4">
+                                                        <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+                                                        <p className="text-sm text-red-700">{snapshotImportPreviewError}</p>
+                                                    </div>
+                                                )}
+
+                                                {snapshotImportPreview && (
+                                                    <div className="mt-4 space-y-4">
+                                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                                            {(['users', 'groups', 'projects', 'panels'] as const).map(key => (
+                                                                <div key={key} className="bg-neutral-50 rounded-xl p-4 border border-neutral-200">
+                                                                    <p className="text-xs font-bold text-neutral-500 uppercase tracking-wider capitalize">{key}</p>
+                                                                    <p className="text-xl font-black text-neutral-800 mt-1">{snapshotImportPreview.summary[key].total}</p>
+                                                                    <p className="text-xs text-neutral-400 mt-0.5">
+                                                                        <span className="text-green-600 font-medium">+{snapshotImportPreview.summary[key].create}</span>
+                                                                        {' '}create · <span className="text-neutral-400">{snapshotImportPreview.summary[key].skip} skip</span>
+                                                                    </p>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                        <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl p-4">
+                                                            <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                                                            <p className="text-sm text-amber-800">All imported users will be assigned a temporary password <strong>changeme</strong>. Students must activate via OTP; faculty can log in immediately.</p>
+                                                        </div>
+                                                        <div className="flex gap-3 justify-end">
+                                                            <button onClick={() => { setSnapshotImportPreview(null); setSnapshotData(null); setSnapshotImportFile(null); }}
+                                                                className="px-4 py-2 border border-neutral-200 rounded-lg text-sm font-medium hover:bg-neutral-50 transition-colors">
+                                                                Cancel
+                                                            </button>
+                                                            <button
+                                                                disabled={snapshotImportLoading}
+                                                                onClick={async () => {
+                                                                    setSnapshotImportLoading(true);
+                                                                    try {
+                                                                        const res = await api.post('/import/snapshot/commit', snapshotData);
+                                                                        setSnapshotImportResult({ result: res.data.result, errors: res.data.errors || [] });
+                                                                        setSnapshotImportPreview(null);
+                                                                        setSnapshotData(null);
+                                                                    } catch (err: any) {
+                                                                        setSnapshotImportResult({ result: {}, errors: [{ type: 'request', key: '—', reason: err.response?.data?.message || 'Server error' }] });
+                                                                    } finally {
+                                                                        setSnapshotImportLoading(false);
+                                                                    }
+                                                                }}
+                                                                className="px-5 py-2 bg-violet-600 text-white rounded-lg font-medium hover:bg-violet-700 disabled:opacity-50 transition-colors flex items-center gap-2"
+                                                            >
+                                                                {snapshotImportLoading ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Importing...</> : <><Save className="w-4 h-4" /> Restore Snapshot</>}
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {/* Snapshot import result */}
+                                                {snapshotImportResult && (
+                                                    <div className="mt-4 space-y-3">
+                                                        <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+                                                            {[
+                                                                { label: 'Users',    value: snapshotImportResult.result.users    ?? 0, color: 'green' },
+                                                                { label: 'Groups',   value: snapshotImportResult.result.groups   ?? 0, color: 'indigo' },
+                                                                { label: 'Projects', value: snapshotImportResult.result.projects ?? 0, color: 'blue' },
+                                                                { label: 'Panels',   value: snapshotImportResult.result.panels   ?? 0, color: 'violet' },
+                                                                { label: 'Skipped',  value: snapshotImportResult.result.skipped  ?? 0, color: 'amber' },
+                                                            ].map(({ label, value, color }) => (
+                                                                <div key={label} className={`bg-${color}-50 rounded-xl p-3 border border-${color}-100 text-center`}>
+                                                                    <p className={`text-xs font-bold text-${color}-600 uppercase tracking-wider`}>{label}</p>
+                                                                    <p className={`text-xl font-black text-${color}-700 mt-1`}>{value}</p>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                        {snapshotImportResult.errors.length > 0 && (
+                                                            <div className="border border-red-200 rounded-xl overflow-hidden">
+                                                                <div className="bg-red-50 px-4 py-2 text-xs font-bold text-red-700 uppercase tracking-wider">Errors ({snapshotImportResult.errors.length})</div>
+                                                                <div className="divide-y divide-red-100 max-h-48 overflow-y-auto">
+                                                                    {snapshotImportResult.errors.map((e, i) => (
+                                                                        <div key={i} className="px-4 py-2 text-xs flex gap-3">
+                                                                            <span className="font-medium text-violet-700 w-16 flex-shrink-0 capitalize">{e.type}</span>
+                                                                            <span className="text-neutral-500 w-32 truncate flex-shrink-0">{e.key}</span>
+                                                                            <span className="text-red-600">{e.reason}</span>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                        <div className="flex justify-end">
+                                                            <button onClick={() => { setSnapshotImportResult(null); setSnapshotImportFile(null); }}
+                                                                className="px-4 py-2 bg-neutral-900 text-white rounded-lg text-sm font-medium hover:bg-neutral-800 transition-colors">
+                                                                Done
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
                                     </div>
                                 )}
                             </>
@@ -1881,6 +2314,7 @@ const AdminDashboard: React.FC = () => {
                                     setEditingPanelId(null);
                                     setNewPanelFaculty([]);
                                     setNewPanelBatch('');
+                                    setNewPanelRoom('');
                                 }} className="text-gray-400 hover:text-gray-600">
                                     <X className="w-5 h-5" />
                                 </button>
@@ -1894,6 +2328,16 @@ const AdminDashboard: React.FC = () => {
                                             <option key={year} value={year.toString()}>{year}</option>
                                         ))}
                                     </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Room / Venue <span className="text-gray-400 font-normal">(optional)</span></label>
+                                    <input
+                                        type="text"
+                                        value={newPanelRoom}
+                                        onChange={e => setNewPanelRoom(e.target.value)}
+                                        placeholder="e.g. Room 304"
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                    />
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-1">Select Faculty Members (Max 3)</label>
@@ -1945,15 +2389,17 @@ const AdminDashboard: React.FC = () => {
                                 <button
                                     onClick={async () => {
                                         try {
+                                            const panelPayload = { faculty: newPanelFaculty, batchYear: parseInt(newPanelBatch), room: newPanelRoom || undefined };
                                             if (editingPanelId) {
-                                                await api.put(`/panels/${editingPanelId}`, { faculty: newPanelFaculty, batchYear: parseInt(newPanelBatch) });
+                                                await api.put(`/panels/${editingPanelId}`, panelPayload);
                                             } else {
-                                                await api.post('/panels', { faculty: newPanelFaculty, batchYear: parseInt(newPanelBatch) });
+                                                await api.post('/panels', panelPayload);
                                             }
                                             setShowCreatePanel(false);
                                             setEditingPanelId(null);
                                             setNewPanelFaculty([]);
                                             setNewPanelBatch('');
+                                            setNewPanelRoom('');
                                             const res = await api.get(`/panels?batchYear=${filterBatch}`);
                                             setPanels(Array.isArray(res.data) ? res.data : []);
                                         } catch (e: any) { alert(e.response?.data?.message || `Error ${editingPanelId ? 'updating' : 'creating'} panel`); }
@@ -2798,14 +3244,113 @@ const AdminDashboard: React.FC = () => {
                             </form>
                         </motion.div>
                     </div>
-                )}                {/* Smart Import Modal */}
+                )}
+
+                {showCreateUser && (
+                    <div className="fixed inset-0 bg-neutral-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 cursor-default">
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            className="bg-white rounded-2xl max-w-md w-full shadow-2xl overflow-hidden"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <div className="px-6 py-4 border-b border-neutral-100 flex justify-between items-center bg-indigo-50/50">
+                                <h3 className="text-lg font-bold text-neutral-900 flex items-center gap-2">
+                                    <Users className="w-5 h-5 text-indigo-600" /> Create Account
+                                </h3>
+                                <button onClick={() => { setShowCreateUser(false); setCreateUserError(null); setCreateUserSuccess(null); }} className="text-neutral-400 hover:text-neutral-600 transition-colors">
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+                            <div className="p-6 space-y-4">
+                                {createUserSuccess ? (
+                                    <div className="space-y-4">
+                                        <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-sm text-green-800">{createUserSuccess}</div>
+                                        <div className="flex justify-end gap-3">
+                                            <button onClick={() => { setCreateUserSuccess(null); setCreateUserForm({ name: '', email: '', role: 'Student', rollNumber: '', branch: 'CSE', semester: '', department: 'CSE', expertise: '' }); }} className="px-4 py-2 text-sm font-bold text-indigo-600 hover:bg-indigo-50 rounded-xl transition-colors">Create Another</button>
+                                            <button onClick={() => { setShowCreateUser(false); setCreateUserSuccess(null); }} className="px-4 py-2 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-colors">Done</button>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <form onSubmit={async (e) => {
+                                        e.preventDefault();
+                                        setCreateUserError(null);
+                                        try {
+                                            const res = await api.post('/admin/create-user', createUserForm);
+                                            setCreateUserSuccess(`Account created for ${res.data.user.name} (${res.data.user.email}). ${createUserForm.role === 'Student' ? 'They must activate via OTP on first login.' : 'Faculty account is immediately active.'}`);
+                                        } catch (err: any) {
+                                            setCreateUserError(err.response?.data?.message || 'Failed to create account.');
+                                        }
+                                    }} className="space-y-4">
+                                        <div>
+                                            <label className="block text-sm font-bold text-neutral-700 mb-1.5">Role</label>
+                                            <select value={createUserForm.role} onChange={e => setCreateUserForm(p => ({ ...p, role: e.target.value }))} className="w-full px-4 py-2.5 rounded-xl border border-neutral-200 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none text-sm">
+                                                <option value="Student">Student</option>
+                                                <option value="Faculty">Faculty</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-bold text-neutral-700 mb-1.5">Full Name</label>
+                                            <input required type="text" value={createUserForm.name} onChange={e => setCreateUserForm(p => ({ ...p, name: e.target.value }))} className="w-full px-4 py-2.5 rounded-xl border border-neutral-200 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all text-sm" placeholder="Full name" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-bold text-neutral-700 mb-1.5">Email</label>
+                                            <input required type="email" value={createUserForm.email} onChange={e => setCreateUserForm(p => ({ ...p, email: e.target.value }))} className="w-full px-4 py-2.5 rounded-xl border border-neutral-200 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all text-sm" placeholder="user@iiitnr.edu.in" />
+                                        </div>
+                                        {createUserForm.role === 'Student' && (<>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div>
+                                                    <label className="block text-sm font-bold text-neutral-700 mb-1.5">Roll Number</label>
+                                                    <input required type="text" value={createUserForm.rollNumber} onChange={e => setCreateUserForm(p => ({ ...p, rollNumber: e.target.value }))} className="w-full px-4 py-2.5 rounded-xl border border-neutral-200 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all text-sm" placeholder="24100XXXX" />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-sm font-bold text-neutral-700 mb-1.5">Semester</label>
+                                                    <select value={createUserForm.semester} onChange={e => setCreateUserForm(p => ({ ...p, semester: e.target.value }))} className="w-full px-4 py-2.5 rounded-xl border border-neutral-200 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none text-sm">
+                                                        <option value="">—</option>
+                                                        {[1,2,3,4,5,6,7,8].map(s => <option key={s} value={s}>Sem {s}</option>)}
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-bold text-neutral-700 mb-1.5">Branch</label>
+                                                <select value={createUserForm.branch} onChange={e => setCreateUserForm(p => ({ ...p, branch: e.target.value }))} className="w-full px-4 py-2.5 rounded-xl border border-neutral-200 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none text-sm">
+                                                    <option value="CSE">CSE</option>
+                                                    <option value="ECE">ECE</option>
+                                                    <option value="DSAI">DSAI</option>
+                                                </select>
+                                            </div>
+                                        </>)}
+                                        {createUserForm.role === 'Faculty' && (<>
+                                            <div>
+                                                <label className="block text-sm font-bold text-neutral-700 mb-1.5">Department</label>
+                                                <input type="text" value={createUserForm.department} onChange={e => setCreateUserForm(p => ({ ...p, department: e.target.value }))} className="w-full px-4 py-2.5 rounded-xl border border-neutral-200 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all text-sm" placeholder="CSE" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-bold text-neutral-700 mb-1.5">Expertise <span className="font-normal text-neutral-400">(optional)</span></label>
+                                                <input type="text" value={createUserForm.expertise} onChange={e => setCreateUserForm(p => ({ ...p, expertise: e.target.value }))} className="w-full px-4 py-2.5 rounded-xl border border-neutral-200 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all text-sm" placeholder="Machine Learning, NLP..." />
+                                            </div>
+                                        </>)}
+                                        {createUserError && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-2">{createUserError}</p>}
+                                        <p className="text-xs text-neutral-400">Default password: <strong>changeme</strong>. {createUserForm.role === 'Student' ? 'Student must activate via OTP on first login.' : 'Faculty account is immediately active.'}</p>
+                                        <div className="pt-2 flex justify-end gap-3">
+                                            <button type="button" onClick={() => { setShowCreateUser(false); setCreateUserError(null); }} className="px-5 py-2.5 text-sm font-bold text-neutral-600 hover:bg-neutral-100 rounded-xl transition-colors">Cancel</button>
+                                            <button type="submit" className="px-5 py-2.5 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-colors shadow-sm">Create Account</button>
+                                        </div>
+                                    </form>
+                                )}
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+
+                {/* Smart Import Modal */}
                 {showImportModal && (
                     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
                         <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
                             <div className="px-6 py-4 border-b border-neutral-100 flex items-center justify-between bg-neutral-50/50">
                                 <h3 className="text-xl font-bold text-neutral-800 flex items-center gap-2">
                                     <Upload className="w-5 h-5 text-indigo-600" />
-                                    Smart Import - {activeTab === 'students' ? 'Students' : 'Faculty'}
+                                    Smart Import - {activeTab === 'students' ? 'Students' : 'Faculty'}{activeTab === 'students' && <span className="ml-2 text-xs font-semibold bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">Step 1</span>}
                                 </h3>
                                 <button onClick={() => setShowImportModal(false)} className="p-2 text-neutral-400 hover:bg-neutral-100 rounded-full transition-colors">
                                     <X className="w-5 h-5" />
@@ -2815,12 +3360,16 @@ const AdminDashboard: React.FC = () => {
                             <div className="p-6 overflow-y-auto flex-1 bg-neutral-50/30">
                                 {!importPreview ? (
                                     <div className="max-w-xl mx-auto space-y-6">
-                                        <div className="bg-indigo-50 border border-indigo-100 p-4 rounded-xl text-sm text-indigo-800">
-                                            <strong>Instructions:</strong> Please upload an Excel (.xlsx, .xls) or CSV file. 
-                                            <br className="my-1"/>
-                                            Required columns for <b>Students</b>: Name (or FullName), Email, RollNumber, Branch. (Optional: Semester)
-                                            <br className="my-1"/>
-                                            Required columns for <b>Faculty</b>: Name (or FullName), Email, Department. (Optional: Expertise)
+                                        <div className="bg-indigo-50 border border-indigo-100 p-4 rounded-xl text-sm text-indigo-800 space-y-1.5">
+                                            <p><strong>Instructions:</strong> Upload an Excel (.xlsx, .xls) or CSV file.</p>
+                                            <p>Required columns for <b>Students</b>: Name (or FullName), Email, RollNumber. (Optional: Branch, Semester)</p>
+                                            <p>Required columns for <b>Faculty</b>: Name (or FullName), Email, Department. (Optional: Expertise)</p>
+                                        </div>
+                                        <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl text-sm text-amber-800 space-y-1">
+                                            <p className="font-semibold">Recommended import order</p>
+                                            <p><span className="font-medium">Step 1 — this screen:</span> Import the student CSV with real email addresses. This registers accounts so students can receive their activation OTP.</p>
+                                            <p><span className="font-medium">Step 2 — Full Excel Import:</span> Import the IIITNR sheet. It matches students by roll number to existing accounts and assigns them to groups and projects.</p>
+                                            <p className="text-xs text-amber-700 mt-1">All imported users start with password <strong>changeme</strong> and must activate via OTP on first login.</p>
                                         </div>
 
                                         <div className="border-2 border-dashed border-neutral-300 rounded-2xl p-10 text-center hover:bg-indigo-50 hover:border-indigo-300 transition-colors w-full cursor-pointer relative">
@@ -2958,29 +3507,53 @@ const AdminDashboard: React.FC = () => {
                                 )}
                             </div>
                             
+                            {/* Simple import result */}
+                            {simpleImportResult && (
+                                <div className="px-6 pb-4 space-y-3">
+                                    <div className="flex items-center gap-4 p-4 rounded-xl border bg-neutral-50">
+                                        <div className="flex-1">
+                                            <p className="text-sm font-bold text-neutral-800">{simpleImportResult.created} of {simpleImportResult.total} users imported successfully</p>
+                                            {simpleImportResult.errors.length > 0 && <p className="text-xs text-red-600 mt-0.5">{simpleImportResult.errors.length} error(s)</p>}
+                                        </div>
+                                        <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0" />
+                                    </div>
+                                    {simpleImportResult.errors.length > 0 && (
+                                        <div className="border border-red-200 rounded-xl overflow-hidden">
+                                            <div className="bg-red-50 px-4 py-2 text-xs font-bold text-red-700 uppercase tracking-wider">Errors ({simpleImportResult.errors.length})</div>
+                                            <div className="divide-y divide-red-100 max-h-40 overflow-y-auto">
+                                                {simpleImportResult.errors.map((e, i) => (
+                                                    <div key={i} className="px-4 py-2 text-xs flex gap-3">
+                                                        <span className="font-medium text-neutral-700 w-32 truncate">{e.name || e.email}</span>
+                                                        <span className="text-red-600">{e.reason}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                             <div className="px-6 py-4 border-t border-neutral-100 flex justify-end gap-3 bg-white">
                                 <button
                                     onClick={() => {
-                                        if (importPreview) {
+                                        setSimpleImportResult(null);
+                                        if (simpleImportResult || !importPreview) {
+                                            setShowImportModal(false);
+                                        } else {
                                             setImportPreview(null);
                                             setImportFile(null);
-                                        } else {
-                                            setShowImportModal(false);
                                         }
                                     }}
                                     className="px-5 py-2.5 text-neutral-600 font-bold hover:bg-neutral-100 rounded-xl transition-colors"
                                 >
-                                    {importPreview ? 'Start Over' : 'Cancel'}
+                                    {simpleImportResult ? 'Close' : importPreview ? 'Start Over' : 'Cancel'}
                                 </button>
-                                {importPreview && importPreview.validRows.length > 0 && (
+                                {importPreview && importPreview.validRows.length > 0 && !simpleImportResult && (
                                     <button
                                         onClick={async () => {
                                             setImportLoading(true);
                                             try {
                                                 const res = await api.post('/users/import-commit', { validRows: importPreview.validRows });
-                                                alert(res.data.message);
-                                                setShowImportModal(false);
-                                                // Refresh data
+                                                setSimpleImportResult({ created: res.data.created, total: res.data.total, errors: res.data.errors || [] });
                                                 if (activeTab === 'students') {
                                                     const resStudents = await api.get('/users/students');
                                                     setStudents(Array.isArray(resStudents.data) ? resStudents.data : []);
@@ -2989,7 +3562,7 @@ const AdminDashboard: React.FC = () => {
                                                     setFaculty(Array.isArray(resFaculty.data) ? resFaculty.data : []);
                                                 }
                                             } catch (error: any) {
-                                                alert(error.response?.data?.message || 'Error committing import.');
+                                                setSimpleImportResult({ created: 0, total: importPreview.validRows.length, errors: [{ email: '', name: 'Request failed', reason: error.response?.data?.message || 'Server error' }] });
                                             } finally {
                                                 setImportLoading(false);
                                             }

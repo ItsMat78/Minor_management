@@ -9,7 +9,7 @@ dotenv.config({ path: path.join(__dirname, '../../.env') });
 
 const seedFaculty = async () => {
     try {
-        await mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/minor-project-portal');
+        await mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/minor_management');
         console.log('Connected to MongoDB');
 
         // Read the faculty list file

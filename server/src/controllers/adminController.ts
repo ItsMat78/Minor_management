@@ -44,6 +44,51 @@ export const getStats = async (req: Request, res: Response) => {
     }
 };
 
+export const createUser = async (req: Request, res: Response) => {
+    try {
+        const { name, email, role, rollNumber, branch, semester, department, expertise } = req.body;
+        if (!name || !email || !role) {
+            return res.status(400).json({ message: 'name, email, and role are required.' });
+        }
+        if (!['Student', 'Faculty'].includes(role)) {
+            return res.status(400).json({ message: 'role must be Student or Faculty.' });
+        }
+        if (role === 'Student' && !rollNumber) {
+            return res.status(400).json({ message: 'rollNumber is required for students.' });
+        }
+
+        const existing = await User.findOne({ $or: [{ email }, ...(rollNumber ? [{ rollNumber }] : [])] });
+        if (existing) {
+            return res.status(400).json({ message: 'A user with that email or roll number already exists.' });
+        }
+
+        const defaultPassword = await bcrypt.hash('changeme', 10);
+
+        const newUser = new User({
+            name,
+            email,
+            password: defaultPassword,
+            role,
+            rollNumber:  role === 'Student' ? rollNumber : undefined,
+            branch:      role === 'Student' ? (branch || 'CSE') : undefined,
+            semester:    role === 'Student' ? (Number(semester) || undefined) : undefined,
+            department:  role === 'Faculty' ? (department || 'CSE') : undefined,
+            expertise:   role === 'Faculty' ? expertise : undefined,
+            isVerified:  role === 'Faculty',   // faculty active immediately
+            isActive:    role === 'Faculty',
+        });
+
+        await newUser.save();
+
+        const userObj = newUser.toObject() as any;
+        delete userObj.password;
+        res.status(201).json({ message: 'Account created successfully', user: userObj });
+    } catch (error: any) {
+        const reason = error.code === 11000 ? 'Duplicate email or roll number.' : (error.message || 'Server error');
+        res.status(500).json({ message: reason });
+    }
+};
+
 export const createAdmin = async (req: Request, res: Response) => {
     try {
         const { name, email, password } = req.body;

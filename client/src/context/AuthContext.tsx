@@ -1,6 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import axios from 'axios';
-import api from '../utils/api'; // Using the configured api instance
+import api from '../utils/api';
 
 interface User {
     _id: string;
@@ -20,8 +19,6 @@ interface User {
 interface Event {
     _id: string;
     type: string;
-    label: string;
-    description: string;
     startDate: string;
     endDate: string;
     extensionDate?: string;
@@ -60,15 +57,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     useEffect(() => {
         const token = localStorage.getItem('token');
         if (token) {
-            axios.defaults.headers.common['x-auth-token'] = token;
-            axios.get('http://localhost:5000/api/auth/me')
+            api.get('/auth/me')
                 .then(res => {
                     setUser(res.data);
                     return refreshActiveEvents();
                 })
                 .catch(() => {
                     localStorage.removeItem('token');
-                    delete axios.defaults.headers.common['x-auth-token'];
                 })
                 .finally(() => setLoading(false));
         } else {
@@ -78,14 +73,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const login = async (token: string, userData: User) => {
         localStorage.setItem('token', token);
-        axios.defaults.headers.common['x-auth-token'] = token;
         setUser(userData);
         await refreshActiveEvents();
     };
 
     const logout = () => {
         localStorage.removeItem('token');
-        delete axios.defaults.headers.common['x-auth-token'];
         setUser(null);
         setActiveEvents([]);
     };

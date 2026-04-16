@@ -1,6 +1,12 @@
 import { Server as HttpServer } from 'http';
 import { Server, Socket } from 'socket.io';
+import jwt from 'jsonwebtoken';
 import Message from './models/Message';
+import User from './models/User';
+
+interface AuthenticatedSocket extends Socket {
+    user?: { id: string; name: string; role: string };
+}
 
 export const initSocket = (httpServer: HttpServer) => {
     const io = new Server(httpServer, {
@@ -10,12 +16,31 @@ export const initSocket = (httpServer: HttpServer) => {
         }
     });
 
-    io.on('connection', (socket: Socket) => {
-        console.log('New client connected:', socket.id);
+    // JWT auth middleware for socket connections
+    io.use(async (socket: AuthenticatedSocket, next) => {
+        const token = socket.handshake.auth?.token;
+        if (!token) {
+            return next(new Error('Authentication error: no token provided'));
+        }
+
+        try {
+            const decoded = jwt.verify(token, process.env.JWT_SECRET!) as any;
+            const dbUser = await User.findById(decoded.id).select('name role').lean();
+            if (!dbUser) {
+                return next(new Error('Authentication error: user not found'));
+            }
+            socket.user = { id: decoded.id, name: dbUser.name, role: dbUser.role };
+            next();
+        } catch {
+            next(new Error('Authentication error: invalid token'));
+        }
+    });
+
+    io.on('connection', (socket: AuthenticatedSocket) => {
+        console.log('New client connected:', socket.id, '| user:', socket.user?.id);
 
         socket.on('joinGroup', async (groupId: string) => {
             socket.join(groupId);
-            console.log(`Socket ${socket.id} joined group ${groupId}`);
 
             // Load previous messages
             try {
@@ -27,7 +52,9 @@ export const initSocket = (httpServer: HttpServer) => {
         });
 
         socket.on('sendMessage', async (data) => {
-            const { groupId, message, sender, attachments } = data;
+            const { groupId, message, attachments } = data;
+            // Use server-verified identity — ignore any client-supplied sender field
+            const sender = socket.user!.name;
 
             try {
                 const newMessage = new Message({

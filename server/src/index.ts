@@ -12,8 +12,14 @@ import userRoutes from './routes/userRoutes';
 import adminRoutes from './routes/adminRoutes';
 import panelRoutes from './routes/panelRoutes';
 import eventRoutes from './routes/eventRoutes';
+import importRoutes from './routes/importRoutes';
 
 dotenv.config();
+
+if (!process.env.JWT_SECRET) {
+    console.error('FATAL: JWT_SECRET environment variable is not set. Refusing to start.');
+    process.exit(1);
+}
 
 const app = express();
 const httpServer = createServer(app);
@@ -40,6 +46,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/panels', panelRoutes);
 app.use('/api/events', eventRoutes);
+app.use('/api/import', importRoutes);
 
 app.get('/', (req, res) => {
     res.send('IIITNR Minor Project Portal API is running!');

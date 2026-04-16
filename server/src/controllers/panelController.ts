@@ -226,11 +226,11 @@ export const exportEvaluations = async (req: any, res: Response) => {
 
 export const createPanel = async (req: any, res: Response) => {
     try {
-        const { faculty, batchYear } = req.body;
+        const { faculty, batchYear, room } = req.body;
         if (!faculty || !batchYear) {
             return res.status(400).json({ message: 'Missing required fields' });
         }
-        const newPanel = new Panel({ faculty, batchYear });
+        const newPanel = new Panel({ faculty, batchYear, room: room || undefined });
         await newPanel.save();
 
         // Send Email to Faculty Panel Members
@@ -249,7 +249,7 @@ export const createPanel = async (req: any, res: Response) => {
 export const updatePanel = async (req: any, res: Response) => {
     try {
         const panelId = req.params.id;
-        const { faculty, batchYear } = req.body;
+        const { faculty, batchYear, room } = req.body;
 
         if (!faculty || !batchYear) {
             return res.status(400).json({ message: 'Missing required fields' });
@@ -257,7 +257,7 @@ export const updatePanel = async (req: any, res: Response) => {
 
         const updatedPanel = await Panel.findByIdAndUpdate(
             panelId,
-            { faculty, batchYear },
+            { faculty, batchYear, room: room || undefined },
             { new: true }
         ).populate('faculty', 'name email department maxGroups currentGroups');
 
@@ -593,7 +593,7 @@ export const exportPanels = async (req: any, res: Response) => {
         if (maxGroups > 0) {
             const venueRowValues: any = { label: 'Venue' };
             panels.forEach((p: any, i: number) => {
-                venueRowValues[`panel_${i}`] = `Room no. 30${i + 4}`; // Placeholder slightly varied
+                venueRowValues[`panel_${i}`] = p.room || `Room no. 30${i + 4}`;
             });
             const venueRow = worksheet.addRow(venueRowValues);
             venueRow.font = { bold: true, color: { argb: 'FF0000FF' } }; // Blue text for venue rooms

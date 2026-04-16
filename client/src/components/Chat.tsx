@@ -3,7 +3,9 @@ import { io, Socket } from 'socket.io-client';
 import { useAuth } from '../context/AuthContext';
 import { Send, MessageSquare, Paperclip, ChevronRight, X } from 'lucide-react';
 
-const socket: Socket = io('http://localhost:5000'); // Make sure this matches your server URL
+const socket: Socket = io('http://localhost:5000', {
+    auth: { token: localStorage.getItem('token') }
+});
 
 interface Message {
     sender: string;
@@ -68,9 +70,7 @@ const Chat: React.FC<ChatProps> = ({ groupId, groupName, isOpen, onClose, onMess
         socket.emit('sendMessage', {
             groupId,
             message: newMessage,
-            sender: user?.name,
             attachments,
-            timestamp: new Date()
         });
         setNewMessage('');
         setFile(null);

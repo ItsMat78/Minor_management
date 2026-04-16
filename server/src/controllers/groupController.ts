@@ -1,10 +1,11 @@
 import { Request, Response } from 'express';
+import bcrypt from 'bcryptjs';
 import Group from '../models/Group';
 import User from '../models/User';
 import Project from '../models/Project';
 import { sendGroupCreationEmail } from '../utils/emailService';
 
-// Create a group
+
 export const createGroup = async (req: Request, res: Response) => {
     try {
         const userId = (req as any).user.id;
@@ -123,8 +124,6 @@ export const getMyGroup = async (req: Request, res: Response) => {
     }
 };
 
-import bcrypt from 'bcryptjs';
-
 export const leaveGroup = async (req: Request, res: Response) => {
     try {
         const userId = (req as any).user.id;
@@ -140,7 +139,8 @@ export const leaveGroup = async (req: Request, res: Response) => {
         if (!isMatch) return res.status(400).json({ message: 'Invalid password' });
 
         const group = await Group.findOne({ members: userId, isArchived: { $ne: true } });
-        if (!group) return res.status(404).json({ message: 'Not in a group' });
+        if (!group) return res.status(404).json({ message: 'Not in an active group' });
+        if (group.isArchived) return res.status(403).json({ message: 'Cannot leave an archived group.' });
 
         // Remove user from group
         group.members = group.members.filter(m => m.toString() !== userId);
@@ -223,8 +223,11 @@ export const updateGroup = async (req: Request, res: Response) => {
         const { id } = req.params;
         const { targetBatch } = req.body;
 
-        const group = await Group.findByIdAndUpdate(id, { targetBatch }, { new: true });
+        const group = await Group.findById(id);
         if (!group) return res.status(404).json({ message: 'Group not found' });
+        if (group.isArchived) return res.status(403).json({ message: 'Archived groups are read-only and cannot be modified.' });
+
+        await Group.findByIdAndUpdate(id, { targetBatch }, { new: true });
 
         res.json(group);
     } catch (error) {

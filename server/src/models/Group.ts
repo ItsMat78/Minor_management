@@ -29,4 +29,3 @@ GroupSchema.path('members').validate(function (members: any[]) {
 }, 'Group cannot have more than 3 members.');
 
 export default mongoose.model<IGroup>('Group', GroupSchema);
-// Trigger nodemon restart
