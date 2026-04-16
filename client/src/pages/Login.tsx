@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import axios from 'axios';
+import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Loader2, ArrowRight, User, Lock } from 'lucide-react';
@@ -36,7 +36,7 @@ const Login: React.FC = () => {
 
         try {
             if (isOtpMode) {
-                const res = await axios.post('http://localhost:5000/api/auth/verify-otp', { email, otp });
+                const res = await api.post('/auth/verify-otp', { email, otp });
                 login(res.data.token, res.data.user);
 
                 if (res.data.user.role === 'Admin') {
@@ -45,7 +45,7 @@ const Login: React.FC = () => {
                     navigate('/dashboard');
                 }
             } else {
-                const res = await axios.post('http://localhost:5000/api/auth/login', { email, password });
+                const res = await api.post('/auth/login', { email, password });
                 
                 if (res.data.requiresActivation) {
                     setIsOtpMode(true);

@@ -78,7 +78,6 @@ export const getFaculty = async (req: Request, res: Response) => {
 
 export const getAllStudents = async (req: Request, res: Response) => {
     try {
-        console.log("Fetching all students...");
 
         // Get current user to check role and semester
         const currentUserId = (req as any).user.id;
@@ -116,17 +115,26 @@ export const getAllStudents = async (req: Request, res: Response) => {
         }
 
         // 2. Filter by Branch
-        const { branch, status: filterStatus } = req.query;
+        const { branch, status: filterStatus, page: pageParam, limit: limitParam } = req.query;
         if (branch && branch !== 'all') {
             query.branch = branch;
         }
 
+        // Pagination (admin only — students always get their full cohort)
+        const isAdmin = currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.FACULTY;
+        const page = isAdmin && pageParam ? Math.max(1, parseInt(pageParam as string)) : 0;
+        const limit = isAdmin && limitParam ? Math.max(1, Math.min(200, parseInt(limitParam as string))) : 0;
+        const usePagination = page > 0 && limit > 0;
+
         // Fetch students
-        const students = await User.find(query)
+        let studentQuery = User.find(query)
             .select('name email rollNumber branch semester targetBatch isVerified _id')
             .sort({ rollNumber: 1 });
+        if (usePagination) studentQuery = studentQuery.skip((page - 1) * limit).limit(limit);
+        const students = await studentQuery;
 
-        console.log(`Found ${students.length} students matching criteria.`);
+        // Total count for pagination header
+        const total = usePagination ? await User.countDocuments(query) : students.length;
 
         // Find which students are in groups
         const groups = await Group.find({}, 'members');
@@ -149,7 +157,11 @@ export const getAllStudents = async (req: Request, res: Response) => {
             studentsWithStatus = studentsWithStatus.filter(s => !s.isGrouped);
         }
 
-        res.json(studentsWithStatus);
+        if (usePagination) {
+            res.json({ data: studentsWithStatus, total, page, pages: Math.ceil(total / limit) });
+        } else {
+            res.json(studentsWithStatus);
+        }
     } catch (error) {
         console.error("Error in getAllStudents:", error);
         res.status(500).json({ message: 'Server error', error });

@@ -3,7 +3,7 @@ import Project from '../models/Project';
 import Group from '../models/Group';
 import User, { UserRole } from '../models/User';
 import mongoose from 'mongoose';
-import { sendProposalStatusEmail, sendProposalSubmissionEmail } from '../utils/emailService';
+import { sendProposalStatusEmail, sendProposalSubmissionEmail, sendEmail } from '../utils/emailService';
 import Panel from '../models/Panel';
 
 // ... (imports)
@@ -11,17 +11,13 @@ import Panel from '../models/Panel';
 export const createProject = async (req: Request, res: Response) => {
     try {
         const userId = (req as any).user.id;
-        console.log(`[createProject] User ${userId} submitting project`);
         const { title, description, tags, facultyId, attachments, status = 'Pending', semester } = req.body;
-        console.log(`[createProject] Payload:`, { title, facultyId, status, semester });
 
         // Check if user is in a group
         const group = await Group.findOne({ members: userId });
         if (!group) {
-            console.log(`[createProject] User ${userId} not in a group`);
             return res.status(400).json({ message: 'You must be in a group to propose a project' });
         }
-        console.log(`[createProject] Group found: ${group._id}, status: ${group.status}`);
 
         // Check if group already has a project pending or approved
         // Allow multiple drafts, but only one Pending/Approved
@@ -31,7 +27,6 @@ export const createProject = async (req: Request, res: Response) => {
                 status: 'Approved'
             });
             if (existingApproved) {
-                console.log(`[createProject] Group already has an approved project: ${existingApproved._id}`);
                 return res.status(400).json({ message: 'Group already has an approved project' });
             }
             // Allow multiple Pending projects
@@ -42,7 +37,6 @@ export const createProject = async (req: Request, res: Response) => {
         if (facultyId) {
             faculty = await User.findById(facultyId);
             if (!faculty || faculty.role !== UserRole.FACULTY) {
-                console.log(`[createProject] Invalid faculty: ${facultyId}`);
                 return res.status(400).json({ message: 'Invalid faculty selected' });
             }
         }
@@ -59,7 +53,6 @@ export const createProject = async (req: Request, res: Response) => {
         });
 
         await newProject.save();
-        console.log(`[createProject] Project saved: ${newProject._id}`);
 
         // Auto decide group number upon project submission if it hasn't been assigned a numeric ID yet
         if (!group.name || isNaN(parseInt(group.name)) || group.name.startsWith('Group-')) {
@@ -244,7 +237,7 @@ export const getProjects = async (req: Request, res: Response) => {
         let query: any = {};
 
         if (role === UserRole.ADMIN) {
-            // Admin sees all projects
+            // Admin sees all projects — support pagination
         } else if (role === UserRole.FACULTY) {
             query.faculty = userId;
         } else {
@@ -254,8 +247,24 @@ export const getProjects = async (req: Request, res: Response) => {
             query.group = { $in: groupIds };
         }
 
-        const projects = await Project.find(query).populate('group').populate('faculty', 'name');
-        res.json(projects);
+        const { page: pageParam, limit: limitParam } = req.query;
+        const page = pageParam ? Math.max(1, parseInt(pageParam as string)) : 0;
+        const limit = limitParam ? Math.max(1, Math.min(200, parseInt(limitParam as string))) : 0;
+        const usePagination = page > 0 && limit > 0 && role === UserRole.ADMIN;
+
+        let projectQuery = Project.find(query)
+            .populate('group', 'name members targetBatch')
+            .populate('faculty', 'name email')
+            .sort({ createdAt: -1 });
+
+        if (usePagination) {
+            const total = await Project.countDocuments(query);
+            const projects = await projectQuery.skip((page - 1) * limit).limit(limit);
+            res.json({ data: projects, total, page, pages: Math.ceil(total / limit) });
+        } else {
+            const projects = await projectQuery;
+            res.json(projects);
+        }
     } catch (error) {
         res.status(500).json({ message: 'Server error', error });
     }
@@ -329,6 +338,19 @@ export const addUpdate = async (req: Request, res: Response) => {
             project.hasNewUpdate = true;
         }
         await project.save();
+
+        // Notify faculty mentor when a student posts an update
+        if (isMember && !isFaculty && project.faculty) {
+            const facultyUser = await User.findById(project.faculty).select('email name');
+            if (facultyUser?.email) {
+                const groupName = group?.name || 'Unknown Group';
+                const updateHeading = title || 'New Progress Update';
+                const subject = `[Group ${groupName}] New Progress Update: ${updateHeading}`;
+                const text = `Group "${groupName}" has posted a new progress update titled "${updateHeading}". Please log in to the portal to review it.`;
+                const html = `<div style="font-family:sans-serif;padding:20px"><h2 style="color:#4f46e5">New Progress Update</h2><p><strong>Group:</strong> ${groupName}</p><p><strong>Update:</strong> ${updateHeading}</p><p style="color:#6b7280">${content}</p><p>Please log in to the Minor Management Portal to view the full update.</p></div>`;
+                sendEmail(facultyUser.email, subject, text, html).catch(err => console.error('Progress update email failed:', err));
+            }
+        }
 
         res.json(project);
     } catch (error) {
@@ -598,6 +620,60 @@ export const uploadSubmissions = async (req: Request, res: Response) => {
         res.json({ message: 'Submissions uploaded successfully', project });
     } catch (error) {
         console.error("Submission upload error:", error);
+        res.status(500).json({ message: 'Server error', error });
+    }
+};
+
+/**
+ * SET per-student feedback from mentor.
+ * PUT /api/projects/:id/student-feedback
+ * Body: { studentId: string, comment: string }
+ * Auth: assigned faculty or admin only
+ */
+export const setStudentFeedback = async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const { studentId, comment } = req.body;
+        const userId = (req as any).user.id;
+
+        if (!studentId || !comment) {
+            return res.status(400).json({ message: 'studentId and comment are required' });
+        }
+
+        const project = await Project.findById(id);
+        if (!project) return res.status(404).json({ message: 'Project not found' });
+
+        const isAuthorized = String(project.faculty) === userId || (req as any).user.role === 'Admin';
+        if (!isAuthorized) {
+            return res.status(403).json({ message: 'Not authorized to leave feedback on this project' });
+        }
+
+        // Verify the student is actually in the project's group
+        const group = await Group.findById(project.group);
+        if (!group || !group.members.some(m => String(m) === studentId)) {
+            return res.status(400).json({ message: 'Student is not a member of this project\'s group' });
+        }
+
+        if (!project.studentFeedback) project.studentFeedback = [];
+
+        const existing = project.studentFeedback.find(f => String(f.student) === studentId);
+        if (existing) {
+            existing.comment = comment;
+            existing.updatedAt = new Date();
+        } else {
+            project.studentFeedback.push({
+                student: new mongoose.Types.ObjectId(studentId),
+                comment,
+                updatedAt: new Date()
+            });
+        }
+
+        project.markModified('studentFeedback');
+        await project.save();
+
+        res.json({ message: 'Student feedback saved', studentFeedback: project.studentFeedback });
+    } catch (error) {
+        console.error('setStudentFeedback error:', error);
         res.status(500).json({ message: 'Server error', error });
     }
 };

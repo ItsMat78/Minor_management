@@ -33,6 +33,12 @@ const MenteeGroupPage: React.FC = () => {
     const [feedbackContent, setFeedbackContent] = useState('');
     const [submittingFeedback, setSubmittingFeedback] = useState(false);
 
+    // Per-Student Feedback State
+    const [studentFeedbackTarget, setStudentFeedbackTarget] = useState<any>(null);
+    const [isStudentFeedbackModalOpen, setIsStudentFeedbackModalOpen] = useState(false);
+    const [studentFeedbackComment, setStudentFeedbackComment] = useState('');
+    const [submittingStudentFeedback, setSubmittingStudentFeedback] = useState(false);
+
     useEffect(() => {
         fetchGroupDetails();
     }, [groupId]);
@@ -85,6 +91,27 @@ const MenteeGroupPage: React.FC = () => {
             alert("Failed to submit feedback. Please try again.");
         } finally {
             setSubmittingFeedback(false);
+        }
+    };
+
+    const handleSetStudentFeedback = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!group?.project?._id || !studentFeedbackTarget) return;
+        setSubmittingStudentFeedback(true);
+        try {
+            await api.put(`/projects/${group.project._id}/student-feedback`, {
+                studentId: studentFeedbackTarget._id,
+                comment: studentFeedbackComment
+            });
+            await fetchGroupDetails();
+            setIsStudentFeedbackModalOpen(false);
+            setStudentFeedbackComment('');
+            setStudentFeedbackTarget(null);
+        } catch (error) {
+            console.error('Failed to save student feedback', error);
+            alert('Failed to save feedback. Please try again.');
+        } finally {
+            setSubmittingStudentFeedback(false);
         }
     };
 
@@ -452,6 +479,52 @@ const MenteeGroupPage: React.FC = () => {
                                 </div>
                             </div>
 
+                            {/* Per-Student Feedback */}
+                            {group.members && group.members.length > 0 && group.project && (
+                                <div className="bg-white rounded-3xl border border-neutral-200 shadow-sm p-6">
+                                    <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                                        <MessageSquare className="w-5 h-5 text-indigo-600" /> Student Feedback
+                                    </h3>
+                                    <div className="space-y-3">
+                                        {group.members.map((member: any) => {
+                                            const fb = group.project?.studentFeedback?.find(
+                                                (f: any) => String(f.student) === String(member._id) ||
+                                                            (f.student?._id && String(f.student._id) === String(member._id))
+                                            );
+                                            return (
+                                                <div key={member._id} className="p-4 bg-gray-50 rounded-2xl border border-gray-100">
+                                                    <div className="flex items-center justify-between mb-2">
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="h-7 w-7 rounded-full bg-indigo-600 flex items-center justify-center font-bold text-white text-xs shadow-sm shrink-0">
+                                                                {member.name.charAt(0)}
+                                                            </div>
+                                                            <span className="text-sm font-bold text-gray-900">{member.name}</span>
+                                                        </div>
+                                                        {(user?.role === 'Admin' || String(user?._id) === String(group.project?.faculty?._id) || String(user?._id) === String(group.project?.faculty)) && (
+                                                            <button
+                                                                onClick={() => {
+                                                                    setStudentFeedbackTarget(member);
+                                                                    setStudentFeedbackComment(fb?.comment || '');
+                                                                    setIsStudentFeedbackModalOpen(true);
+                                                                }}
+                                                                className="text-xs font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 px-2.5 py-1 rounded-md"
+                                                            >
+                                                                {fb ? 'Edit' : 'Add Feedback'}
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                    {fb ? (
+                                                        <p className="text-xs text-gray-600 leading-relaxed whitespace-pre-wrap ml-9">{fb.comment}</p>
+                                                    ) : (
+                                                        <p className="text-xs text-gray-400 italic ml-9">No feedback yet.</p>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+
                         </div>
                     </div>
                 </main>
@@ -582,6 +655,58 @@ const MenteeGroupPage: React.FC = () => {
                                     className="px-6 py-2 text-sm font-bold text-white bg-orange-600 rounded-xl hover:bg-orange-700 shadow-md disabled:opacity-50"
                                 >
                                     {submittingFeedback ? 'Saving...' : 'Save Feedback'}
+                                </button>
+                            </div>
+                        </form>
+                    </motion.div>
+                </div>
+            )}
+
+            {/* Per-Student Feedback Modal */}
+            {isStudentFeedbackModalOpen && studentFeedbackTarget && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm">
+                    <motion.div
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden"
+                    >
+                        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+                            <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                                <MessageSquare className="w-5 h-5 text-indigo-600" />
+                                Feedback for {studentFeedbackTarget.name}
+                            </h3>
+                            <button onClick={() => setIsStudentFeedbackModalOpen(false)} className="text-gray-400 hover:text-gray-600">
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+                        <form onSubmit={handleSetStudentFeedback} className="p-6 space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-600 mb-2">
+                                    Write individual feedback for <span className="font-bold text-gray-900">{studentFeedbackTarget.name}</span>.
+                                </label>
+                                <textarea
+                                    value={studentFeedbackComment}
+                                    onChange={(e) => setStudentFeedbackComment(e.target.value)}
+                                    required
+                                    rows={4}
+                                    placeholder="Write your feedback here..."
+                                    className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none"
+                                />
+                            </div>
+                            <div className="flex justify-end gap-3 pt-4 border-t border-gray-50">
+                                <button
+                                    type="button"
+                                    onClick={() => setIsStudentFeedbackModalOpen(false)}
+                                    className="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-100 rounded-xl hover:bg-gray-200"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={submittingStudentFeedback || !studentFeedbackComment.trim()}
+                                    className="px-6 py-2 text-sm font-bold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 shadow-md disabled:opacity-50"
+                                >
+                                    {submittingStudentFeedback ? 'Saving...' : 'Save Feedback'}
                                 </button>
                             </div>
                         </form>

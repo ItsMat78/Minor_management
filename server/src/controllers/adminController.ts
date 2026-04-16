@@ -8,11 +8,11 @@ export const getStats = async (req: Request, res: Response) => {
     try {
         const totalStudents = await User.countDocuments({ role: UserRole.STUDENT });
         const totalFaculty = await User.countDocuments({ role: UserRole.FACULTY });
-        const totalGroups = await Group.countDocuments();
-        const totalProjects = await Project.countDocuments();
+        const totalGroups = await Group.countDocuments({ isArchived: { $ne: true } });
+        const totalProjects = await Project.countDocuments({ isArchived: { $ne: true } });
         
         // 1. Number of ungrouped students
-        const groupedStudentIds = await Group.distinct('members');
+        const groupedStudentIds = await Group.distinct('members', { isArchived: { $ne: true } });
         const ungroupedStudents = await User.countDocuments({ 
             role: UserRole.STUDENT, 
             _id: { $nin: groupedStudentIds } 
@@ -23,8 +23,12 @@ export const getStats = async (req: Request, res: Response) => {
         const activatedAccounts = await User.countDocuments({ isVerified: true });
 
         // Group status breakdown
-        const groupsForming = await Group.countDocuments({ status: 'Forming' });
-        const groupsApproved = await Group.countDocuments({ status: 'Approved' });
+        const [forming, proposalPending, approved, assigned] = await Promise.all([
+            Group.countDocuments({ status: 'Forming', isArchived: { $ne: true } }),
+            Group.countDocuments({ status: 'ProposalPending', isArchived: { $ne: true } }),
+            Group.countDocuments({ status: 'Approved', isArchived: { $ne: true } }),
+            Group.countDocuments({ status: 'Assigned', isArchived: { $ne: true } }),
+        ]);
 
         res.json({
             students: totalStudents,
@@ -34,10 +38,14 @@ export const getStats = async (req: Request, res: Response) => {
             ungroupedStudents,
             unactivatedAccounts,
             activatedAccounts,
-            breakdown: {
-                forming: groupsForming,
-                approved: groupsApproved
-            }
+            groupsByStatus: {
+                Forming: forming,
+                ProposalPending: proposalPending,
+                Approved: approved,
+                Assigned: assigned,
+            },
+            // legacy shape preserved
+            breakdown: { forming, approved }
         });
     } catch (error) {
         res.status(500).json({ message: 'Server error', error });
@@ -115,6 +123,27 @@ export const createAdmin = async (req: Request, res: Response) => {
         delete adminObj.password;
 
         res.status(201).json({ message: 'Admin account created successfully', admin: adminObj });
+    } catch (error) {
+        res.status(500).json({ message: 'Server error', error });
+    }
+};
+
+/**
+ * One-time migration: mark all student accounts as inactive (isActive=false).
+ * POST /api/admin/mark-students-inactive
+ * Auth: admin only
+ */
+export const markStudentsInactive = async (req: Request, res: Response) => {
+    try {
+        const result = await User.updateMany(
+            { role: UserRole.STUDENT },
+            { $set: { isActive: false } }
+        );
+        res.json({
+            message: `Marked ${result.modifiedCount} of ${result.matchedCount} students as inactive.`,
+            matched: result.matchedCount,
+            modified: result.modifiedCount
+        });
     } catch (error) {
         res.status(500).json({ message: 'Server error', error });
     }

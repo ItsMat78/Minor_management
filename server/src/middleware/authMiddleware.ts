@@ -8,7 +8,6 @@ export interface AuthRequest extends Request {
 }
 
 export const auth = (req: AuthRequest, res: Response, next: NextFunction) => {
-    console.log(`Auth Middleware Hit: ${req.method} ${req.originalUrl}`);
     const token = req.header('x-auth-token');
 
     if (!token) {

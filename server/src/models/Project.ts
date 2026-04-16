@@ -10,6 +10,11 @@ export interface IProject extends Document {
     status: 'Draft' | 'Pending' | 'Approved' | 'Rejected';
     attachments?: string[]; // URLs
     feedback?: string;
+    studentFeedback?: {
+        student: mongoose.Types.ObjectId;
+        comment: string;
+        updatedAt: Date;
+    }[];
     createdAt: Date;
     isArchived?: boolean;
     archivedMentorName?: string;
@@ -89,6 +94,11 @@ const ProjectSchema: Schema = new Schema({
     status: { type: String, enum: ['Draft', 'Pending', 'Approved', 'Rejected'], default: 'Draft' },
     attachments: [{ type: String }],
     feedback: { type: String },
+    studentFeedback: [{
+        student: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+        comment: { type: String, required: true },
+        updatedAt: { type: Date, default: Date.now }
+    }],
     updates: [{
         title: { type: String },
         content: { type: String, required: true },

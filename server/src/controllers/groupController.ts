@@ -200,18 +200,31 @@ export const getMyMentees = async (req: Request, res: Response) => {
 
 export const getAllGroups = async (req: Request, res: Response) => {
     try {
-        const groups = await Group.find({ isArchived: { $ne: true } })
+        const { page: pageParam, limit: limitParam, search } = req.query;
+        const page = pageParam ? Math.max(1, parseInt(pageParam as string)) : 0;
+        const limit = limitParam ? Math.max(1, Math.min(200, parseInt(limitParam as string))) : 0;
+        const usePagination = page > 0 && limit > 0;
+
+        const baseQuery = Group.find({ isArchived: { $ne: true } })
             .populate('members', 'name email rollNumber branch')
             .populate({
                 path: 'project',
                 populate: { path: 'faculty', select: 'name email department' },
-                select: 'title description status tags semester attachments feedback hasNewUpdate updates faculty midTermEvaluation endTermEvaluation finalReportEvaluation'
+                select: 'title description status tags semester attachments feedback hasNewUpdate updates faculty midTermEvaluation endTermEvaluation finalReportEvaluation studentFeedback'
             })
             .sort({ createdAt: -1 });
 
-        console.log("getAllGroups fetched groups with targetBatch:", groups.filter(g => g.targetBatch).length);
+        let groups;
+        let total: number;
 
-        res.json(groups);
+        if (usePagination) {
+            total = await Group.countDocuments({ isArchived: { $ne: true } });
+            groups = await baseQuery.skip((page - 1) * limit).limit(limit);
+            res.json({ data: groups, total, page, pages: Math.ceil(total / limit) });
+        } else {
+            groups = await baseQuery;
+            res.json(groups);
+        }
     } catch (error) {
         console.error("Error fetching all groups:", error);
         res.status(500).json({ message: 'Server error', error });

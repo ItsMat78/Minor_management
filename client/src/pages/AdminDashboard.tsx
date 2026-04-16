@@ -39,6 +39,14 @@ const AdminDashboard: React.FC = () => {
     const [stats, setStats] = useState<any>(null);
     const [loading, setLoading] = useState(false);
     const [panels, setPanels] = useState<any[]>([]);
+
+    // Pagination state
+    const PAGE_SIZE = 50;
+    const [studentsPage, setStudentsPage] = useState(1);
+    const [studentsTotalPages, setStudentsTotalPages] = useState(1);
+    const [groupsPage, setGroupsPage] = useState(1);
+    const [groupsTotalPages, setGroupsTotalPages] = useState(1);
+    const [studentsTotalCount, setStudentsTotalCount] = useState(0);
     const [showAutoCreateModal, setShowAutoCreateModal] = useState(false);
     const [autoCreateFaculties, setAutoCreateFaculties] = useState<any[]>([]);
     const [showAutoCreateBatchSelect, setShowAutoCreateBatchSelect] = useState(false);
@@ -140,8 +148,14 @@ const AdminDashboard: React.FC = () => {
             setLoading(true);
             try {
                 if (activeTab === 'students') {
-                    const res = await api.get('/users/students');
-                    setStudents(Array.isArray(res.data) ? res.data : []);
+                    const res = await api.get(`/users/students?page=${studentsPage}&limit=${PAGE_SIZE}`);
+                    if (res.data && res.data.data) {
+                        setStudents(res.data.data);
+                        setStudentsTotalPages(res.data.pages || 1);
+                        setStudentsTotalCount(res.data.total || 0);
+                    } else {
+                        setStudents(Array.isArray(res.data) ? res.data : []);
+                    }
                 } else if (activeTab === 'faculty') {
                     const res = await api.get('/users/faculty');
                     setFaculty(Array.isArray(res.data) ? res.data : []);
@@ -192,7 +206,7 @@ const AdminDashboard: React.FC = () => {
         if (activeTab === 'groups') {
             setViewGroup(null); // Reset detail view on tab change
         }
-    }, [activeTab, filterBatch]);
+    }, [activeTab, filterBatch, studentsPage, groupsPage]);
 
     // Reset sort when tab changes
     useEffect(() => {
@@ -1021,9 +1035,55 @@ const AdminDashboard: React.FC = () => {
                                                             <p className="text-xs text-neutral-500">Add a student or faculty account</p>
                                                         </div>
                                                     </button>
+                                                    <button
+                                                        onClick={async () => {
+                                                            if (!window.confirm('This will mark ALL current students as inactive (isActive = false) for the new semester. This action cannot be undone easily. Proceed?')) return;
+                                                            try {
+                                                                const res = await api.post('/admin/mark-students-inactive');
+                                                                alert(`Done: ${res.data.modifiedCount} students marked inactive.`);
+                                                                const statsRes = await api.get('/admin/stats');
+                                                                setStats(statsRes.data);
+                                                            } catch (e: any) {
+                                                                alert('Failed: ' + (e.response?.data?.message || e.message));
+                                                            }
+                                                        }}
+                                                        className="flex items-center gap-3 p-4 rounded-2xl border border-neutral-200 hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700 transition-all text-left group"
+                                                    >
+                                                        <div className="w-10 h-10 rounded-full bg-rose-100 flex items-center justify-center text-rose-600 group-hover:scale-110 transition-transform">
+                                                            <UserX className="w-5 h-5" />
+                                                        </div>
+                                                        <div>
+                                                            <p className="font-bold text-neutral-900 group-hover:text-rose-700">Mark Students Inactive</p>
+                                                            <p className="text-xs text-neutral-500">Reset activation for new semester</p>
+                                                        </div>
+                                                    </button>
                                                 </div>
                                             </div>
                                         </div>
+
+                                        {/* Group Status Breakdown */}
+                                        {stats && (
+                                            <div className="md:col-span-2 lg:col-span-4">
+                                                <div className="bg-white p-6 rounded-3xl border border-neutral-200 shadow-sm">
+                                                    <h3 className="text-lg font-bold text-neutral-900 mb-4 flex items-center gap-2">
+                                                        <LayoutGrid className="w-5 h-5 text-emerald-600" /> Group Status Breakdown
+                                                    </h3>
+                                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                                        {[
+                                                            { label: 'Forming', val: stats?.groupsByStatus?.Forming ?? 0, color: 'amber' },
+                                                            { label: 'Proposal Pending', val: stats?.groupsByStatus?.ProposalPending ?? 0, color: 'orange' },
+                                                            { label: 'Approved', val: stats?.groupsByStatus?.Approved ?? 0, color: 'emerald' },
+                                                            { label: 'Assigned', val: stats?.groupsByStatus?.Assigned ?? 0, color: 'indigo' },
+                                                        ].map(({ label, val, color }) => (
+                                                            <div key={label} onClick={() => setActiveTab('groups')} className={`cursor-pointer p-4 rounded-2xl bg-${color}-50 border border-${color}-100 hover:shadow-md transition-all`}>
+                                                                <p className={`text-xs font-bold uppercase tracking-wider text-${color}-600 mb-1`}>{label}</p>
+                                                                <p className={`text-3xl font-black text-${color}-700`}>{val}</p>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                 )}
 
@@ -1128,6 +1188,41 @@ const AdminDashboard: React.FC = () => {
                                             </tbody>
                                         </table>
                                     </div>
+                                    {/* Pagination controls */}
+                                    {studentsTotalPages > 1 && (
+                                        <div className="flex items-center justify-between mt-4 px-1">
+                                            <span className="text-sm text-neutral-500">
+                                                Page {studentsPage} of {studentsTotalPages} &middot; {studentsTotalCount} students
+                                            </span>
+                                            <div className="flex gap-2">
+                                                <button
+                                                    disabled={studentsPage <= 1}
+                                                    onClick={() => setStudentsPage(p => Math.max(1, p - 1))}
+                                                    className="px-3 py-1.5 text-sm font-medium rounded-lg border border-neutral-200 hover:bg-neutral-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                                                >
+                                                    ← Prev
+                                                </button>
+                                                {Array.from({ length: Math.min(5, studentsTotalPages) }, (_, i) => {
+                                                    const start = Math.max(1, Math.min(studentsPage - 2, studentsTotalPages - 4));
+                                                    const p = start + i;
+                                                    return p <= studentsTotalPages ? (
+                                                        <button
+                                                            key={p}
+                                                            onClick={() => setStudentsPage(p)}
+                                                            className={`px-3 py-1.5 text-sm font-medium rounded-lg border transition-colors ${p === studentsPage ? 'bg-indigo-600 text-white border-indigo-600' : 'border-neutral-200 hover:bg-neutral-50'}`}
+                                                        >{p}</button>
+                                                    ) : null;
+                                                })}
+                                                <button
+                                                    disabled={studentsPage >= studentsTotalPages}
+                                                    onClick={() => setStudentsPage(p => Math.min(studentsTotalPages, p + 1))}
+                                                    className="px-3 py-1.5 text-sm font-medium rounded-lg border border-neutral-200 hover:bg-neutral-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                                                >
+                                                    Next →
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
                                 )}
 
                                 {activeTab === 'faculty' && (
