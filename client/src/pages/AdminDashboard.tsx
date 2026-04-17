@@ -44,8 +44,6 @@ const AdminDashboard: React.FC = () => {
     const PAGE_SIZE = 50;
     const [studentsPage, setStudentsPage] = useState(1);
     const [studentsTotalPages, setStudentsTotalPages] = useState(1);
-    const [groupsPage, setGroupsPage] = useState(1);
-    const [groupsTotalPages, setGroupsTotalPages] = useState(1);
     const [studentsTotalCount, setStudentsTotalCount] = useState(0);
     const [showAutoCreateModal, setShowAutoCreateModal] = useState(false);
     const [autoCreateFaculties, setAutoCreateFaculties] = useState<any[]>([]);
@@ -117,7 +115,7 @@ const AdminDashboard: React.FC = () => {
     // Import State (simple user import)
     const [showImportModal, setShowImportModal] = useState(false);
     const [importFile, setImportFile] = useState<File | null>(null);
-    const [importPreview, setImportPreview] = useState<{validRows: any[], invalidRows: any[], totalRows: number} | null>(null);
+    const [importPreview, setImportPreview] = useState<{ validRows: any[], invalidRows: any[], totalRows: number } | null>(null);
     const [importLoading, setImportLoading] = useState(false);
 
     // Excel full import state
@@ -138,9 +136,9 @@ const AdminDashboard: React.FC = () => {
     const [snapshotImportPreviewError, setSnapshotImportPreviewError] = useState<string | null>(null);
 
     // Import result state (shown after commit)
-    const [simpleImportResult, setSimpleImportResult] = useState<{ created: number; total: number; errors: {email:string;name:string;reason:string}[] } | null>(null);
-    const [excelImportResult, setExcelImportResult] = useState<{ created: any; errors: {groupNumber:string;student?:string;reason:string}[] } | null>(null);
-    const [snapshotImportResult, setSnapshotImportResult] = useState<{ result: any; errors: {type:string;key:string;reason:string}[] } | null>(null);
+    const [simpleImportResult, setSimpleImportResult] = useState<{ created: number; total: number; errors: { email: string; name: string; reason: string }[] } | null>(null);
+    const [excelImportResult, setExcelImportResult] = useState<{ created: any; errors: { groupNumber: string; student?: string; reason: string }[] } | null>(null);
+    const [snapshotImportResult, setSnapshotImportResult] = useState<{ result: any; errors: { type: string; key: string; reason: string }[] } | null>(null);
 
 
     useEffect(() => {
@@ -206,7 +204,7 @@ const AdminDashboard: React.FC = () => {
         if (activeTab === 'groups') {
             setViewGroup(null); // Reset detail view on tab change
         }
-    }, [activeTab, filterBatch, studentsPage, groupsPage]);
+    }, [activeTab, filterBatch, studentsPage]);
 
     // Reset sort when tab changes
     useEffect(() => {
@@ -414,7 +412,7 @@ const AdminDashboard: React.FC = () => {
             const matchesGroupStatus = filterGroupStatus === 'All' ||
                 (filterGroupStatus === 'Grouped' ? s.isGrouped : !s.isGrouped);
 
-            const matchesVerificationStatus = filterVerificationStatus === 'All' || 
+            const matchesVerificationStatus = filterVerificationStatus === 'All' ||
                 (filterVerificationStatus === 'Verified' ? s.isVerified : !s.isVerified);
 
             return matchesSearch && matchesBranch && matchesBatch && matchesGroupStatus && matchesVerificationStatus;
@@ -568,31 +566,39 @@ const AdminDashboard: React.FC = () => {
 
     const DEFAULT_RUBRICS: Record<string, any[]> = {
         mid_term_evaluation: [
-            { title: 'Guide Evaluation', key: 'guide', fields: [
-                { key: 'dataElicitation', label: 'Data Elicitation', max: 5 },
-                { key: 'problemDefinition', label: 'Problem Definition', max: 5 },
-                { key: 'planning', label: 'Planning', max: 5 },
-            ]},
-            { title: 'Panel Evaluation', key: 'panel', fields: [
-                { key: 'literatureSurvey', label: 'Literature Survey', max: 5 },
-                { key: 'presentationSkills', label: 'Presentation Skills', max: 5 },
-                { key: 'technicalUnderstanding', label: 'Technical Understanding', max: 5 },
-            ]},
+            {
+                title: 'Guide Evaluation', key: 'guide', fields: [
+                    { key: 'dataElicitation', label: 'Data Elicitation', max: 5 },
+                    { key: 'problemDefinition', label: 'Problem Definition', max: 5 },
+                    { key: 'planning', label: 'Planning', max: 5 },
+                ]
+            },
+            {
+                title: 'Panel Evaluation', key: 'panel', fields: [
+                    { key: 'literatureSurvey', label: 'Literature Survey', max: 5 },
+                    { key: 'presentationSkills', label: 'Presentation Skills', max: 5 },
+                    { key: 'technicalUnderstanding', label: 'Technical Understanding', max: 5 },
+                ]
+            },
         ],
         end_term_evaluation: [
-            { title: 'Guide Evaluation', key: 'guide', fields: [
-                { key: 'requirementSpecification', label: 'Requirement Specification', max: 7 },
-                { key: 'systemDesign', label: 'System Design', max: 7 },
-                { key: 'implementation', label: 'Implementation', max: 7 },
-                { key: 'projectManagement', label: 'Project Management', max: 7 },
-                { key: 'planningVsExecution', label: 'Planning vs Execution', max: 7 },
-            ]},
-            { title: 'Panel Evaluation', key: 'panel', fields: [
-                { key: 'testingAndResults', label: 'Testing & Results', max: 10 },
-                { key: 'innovationAndRelevance', label: 'Innovation & Relevance', max: 5 },
-                { key: 'presentationAndViva', label: 'Presentation & Viva', max: 10 },
-                { key: 'conceptualDepth', label: 'Conceptual Depth', max: 10 },
-            ]},
+            {
+                title: 'Guide Evaluation', key: 'guide', fields: [
+                    { key: 'requirementSpecification', label: 'Requirement Specification', max: 7 },
+                    { key: 'systemDesign', label: 'System Design', max: 7 },
+                    { key: 'implementation', label: 'Implementation', max: 7 },
+                    { key: 'projectManagement', label: 'Project Management', max: 7 },
+                    { key: 'planningVsExecution', label: 'Planning vs Execution', max: 7 },
+                ]
+            },
+            {
+                title: 'Panel Evaluation', key: 'panel', fields: [
+                    { key: 'testingAndResults', label: 'Testing & Results', max: 10 },
+                    { key: 'innovationAndRelevance', label: 'Innovation & Relevance', max: 5 },
+                    { key: 'presentationAndViva', label: 'Presentation & Viva', max: 10 },
+                    { key: 'conceptualDepth', label: 'Conceptual Depth', max: 10 },
+                ]
+            },
         ],
     };
 
@@ -605,7 +611,7 @@ const AdminDashboard: React.FC = () => {
                     setRubricPanelAggregation(parsed.panelAggregation || 'average');
                     return;
                 }
-            } catch {}
+            } catch { }
         }
         setRubricSections(JSON.parse(JSON.stringify(DEFAULT_RUBRICS[type] || [])));
         setRubricPanelAggregation('average');
@@ -843,7 +849,7 @@ const AdminDashboard: React.FC = () => {
 
                                     {/* Smart Import Button */}
                                     {(activeTab === 'students' || activeTab === 'faculty') && (
-                                        <button 
+                                        <button
                                             onClick={() => {
                                                 setImportFile(null);
                                                 setImportPreview(null);
@@ -914,7 +920,7 @@ const AdminDashboard: React.FC = () => {
                             </div>
                         ) : (
                             <>
-                                                                {activeTab === 'overview' && (
+                                {activeTab === 'overview' && (
                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                                         <div onClick={() => { setActiveTab('students'); setFilterGroupStatus('All'); setFilterVerificationStatus('All'); }} className="bg-white p-6 rounded-3xl border border-neutral-200 shadow-sm relative overflow-hidden group cursor-pointer hover:border-indigo-300 hover:shadow-lg transition-all active:scale-[0.98]">
                                             <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
@@ -926,28 +932,13 @@ const AdminDashboard: React.FC = () => {
                                             </div>
                                         </div>
 
-                                        <div className="bg-white p-6 rounded-3xl border border-neutral-200 shadow-sm relative overflow-hidden hover:border-amber-300 hover:shadow-lg transition-all">
-                                            <div className="absolute top-0 right-0 p-4 opacity-5">
+                                        <div onClick={() => setActiveTab('faculty')} className="bg-white p-6 rounded-3xl border border-neutral-200 shadow-sm relative overflow-hidden group cursor-pointer hover:border-rose-300 hover:shadow-lg transition-all active:scale-[0.98]">
+                                            <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
                                                 <Users className="w-16 h-16" />
                                             </div>
-                                            <h3 className="text-neutral-500 font-bold text-sm tracking-wider uppercase mb-2">Ungrouped Students</h3>
-                                            <div className="flex items-end gap-3 mb-4" onClick={() => { setActiveTab('students'); setFilterGroupStatus('Available'); setFilterVerificationStatus('All'); }} style={{ cursor: 'pointer' }}>
-                                                <span className="text-4xl font-black text-amber-600">{stats?.ungroupedStudents || 0}</span>
-                                                <span className="text-sm font-bold text-amber-500 mb-1">Available</span>
-                                            </div>
-                                            <div className="flex gap-2">
-                                                <button
-                                                    onClick={(e) => { e.stopPropagation(); copyUngroupedEmails(); }}
-                                                    className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-bold rounded-xl bg-neutral-100 text-neutral-600 hover:bg-amber-50 hover:text-amber-700 transition-colors border border-neutral-200"
-                                                >
-                                                    {emailsCopied ? <><Check className="w-3.5 h-3.5" /> Copied!</> : <><Copy className="w-3.5 h-3.5" /> Copy Emails</>}
-                                                </button>
-                                                <button
-                                                    onClick={(e) => { e.stopPropagation(); openGmailWithUngrouped(); }}
-                                                    className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-bold rounded-xl bg-neutral-100 text-neutral-600 hover:bg-blue-50 hover:text-blue-700 transition-colors border border-neutral-200"
-                                                >
-                                                    <Mail className="w-3.5 h-3.5" /> Gmail
-                                                </button>
+                                            <h3 className="text-neutral-500 font-bold text-sm tracking-wider uppercase mb-2">Total Faculty</h3>
+                                            <div className="flex items-end gap-3">
+                                                <span className="text-4xl font-black text-neutral-900">{stats?.faculty || 0}</span>
                                             </div>
                                         </div>
 
@@ -956,9 +947,12 @@ const AdminDashboard: React.FC = () => {
                                                 <LayoutGrid className="w-16 h-16" />
                                             </div>
                                             <h3 className="text-neutral-500 font-bold text-sm tracking-wider uppercase mb-2">Total Groups</h3>
+
                                             <div className="flex items-end gap-3">
                                                 <span className="text-4xl font-black text-neutral-900">{stats?.groups || 0}</span>
+                                                <span className="text-sm font-bold text-indigo-500 mb-1">In System</span>
                                             </div>
+
                                         </div>
 
                                         <div onClick={() => setActiveTab('groups')} className="bg-white p-6 rounded-3xl border border-neutral-200 shadow-sm relative overflow-hidden group cursor-pointer hover:border-indigo-300 hover:shadow-lg transition-all active:scale-[0.98]">
@@ -969,16 +963,6 @@ const AdminDashboard: React.FC = () => {
                                             <div className="flex items-end gap-3">
                                                 <span className="text-4xl font-black text-neutral-900">{stats?.projects || 0}</span>
                                                 <span className="text-sm font-bold text-indigo-500 mb-1">In System</span>
-                                            </div>
-                                        </div>
-
-                                        <div onClick={() => setActiveTab('faculty')} className="bg-white p-6 rounded-3xl border border-neutral-200 shadow-sm relative overflow-hidden group cursor-pointer hover:border-rose-300 hover:shadow-lg transition-all active:scale-[0.98]">
-                                            <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
-                                                <Users className="w-16 h-16" />
-                                            </div>
-                                            <h3 className="text-neutral-500 font-bold text-sm tracking-wider uppercase mb-2">Total Faculty</h3>
-                                            <div className="flex items-end gap-3">
-                                                <span className="text-4xl font-black text-neutral-900">{stats?.faculty || 0}</span>
                                             </div>
                                         </div>
 
@@ -1002,6 +986,34 @@ const AdminDashboard: React.FC = () => {
                                                 <span className="text-4xl font-black text-rose-600">{stats?.unactivatedAccounts || 0}</span>
                                                 <span className="text-sm font-bold text-rose-500 mb-1">Pending</span>
                                             </div>
+                                        </div>
+
+                                        <div className="bg-white p-6 rounded-3xl border border-neutral-200 shadow-sm relative col-span-2 overflow-hidden hover:border-amber-300 hover:shadow-lg transition-all">
+                                            <div className="absolute top-0 right-0 p-4 opacity-5">
+                                                <Users className="w-16 h-16" />
+                                            </div>
+                                            <h3 className="text-neutral-500 font-bold text-sm tracking-wider uppercase mb-2">Ungrouped Students</h3>
+                                            <div className="flex items-center justify-between gap-3 mb-4" onClick={() => { setActiveTab('students'); setFilterGroupStatus('Available'); setFilterVerificationStatus('All'); }} style={{ cursor: 'pointer' }}>
+                                                <div className="flex items-end gap-3">
+                                                    <span className="text-4xl font-black text-amber-600">{stats?.ungroupedStudents || 0}</span>
+                                                    <span className="text-sm font-bold text-amber-500 mb-1">Not in any group</span>
+                                                </div>
+                                                <div className="flex gap-2">
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); copyUngroupedEmails(); }}
+                                                        className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-bold rounded-xl bg-neutral-100 text-neutral-600 hover:bg-amber-50 hover:text-amber-700 transition-colors border border-neutral-200"
+                                                    >
+                                                        {emailsCopied ? <><Check className="w-3.5 h-3.5" /> Copied!</> : <><Copy className="w-3.5 h-3.5" /> Copy Emails</>}
+                                                    </button>
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); openGmailWithUngrouped(); }}
+                                                        className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-bold rounded-xl bg-neutral-100 text-neutral-600 hover:bg-blue-50 hover:text-blue-700 transition-colors border border-neutral-200"
+                                                    >
+                                                        <Mail className="w-3.5 h-3.5" /> Mail Directly
+                                                    </button>
+                                                </div>
+                                            </div>
+
                                         </div>
 
                                         {/* Quick Actions */}
@@ -1088,141 +1100,143 @@ const AdminDashboard: React.FC = () => {
                                 )}
 
                                 {activeTab === 'students' && (
-                                    <div className="bg-white rounded-xl border border-neutral-200 shadow-sm overflow-visible">
-                                        <table className="w-full text-left text-sm">
-                                            <thead className="bg-neutral-50 border-b border-neutral-200">
-                                                <tr>
-                                                    <th className="px-6 py-3 font-semibold text-neutral-500">Student</th>
-                                                    <th className="px-6 py-3 font-semibold text-neutral-500">Branch</th>
-                                                    <th className="px-6 py-3 font-semibold text-neutral-500">Group</th>
-                                                    <th className="px-6 py-3 font-semibold text-neutral-500">Account</th>
-                                                    <th className="px-6 py-3 font-semibold text-neutral-500 text-right">Actions</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-neutral-100">
-                                                {getFilteredStudents().map((student) => (
-                                                    <tr key={student._id} className="hover:bg-neutral-50">
-                                                        <td className="px-6 py-4">
-                                                            <div className="flex flex-col gap-0.5">
-                                                                <div className="flex items-center gap-2">
-                                                                    <span className={`font-semibold ${getBatch(student.rollNumber) !== student.targetBatch && student.targetBatch ? 'text-red-700' : 'text-neutral-900'}`}>
-                                                                        {student.name}
-                                                                    </span>
-                                                                    {student.targetBatch && getBatch(student.rollNumber) !== student.targetBatch && (
-                                                                        <span className="text-[10px] text-red-600 font-bold uppercase bg-red-50 px-1.5 py-0.5 rounded border border-red-100">
-                                                                            Dropper → {student.targetBatch}
-                                                                        </span>
-                                                                    )}
-                                                                </div>
-                                                                <span className="font-mono text-xs text-neutral-500">{student.rollNumber || '—'}</span>
-                                                                <span className="text-xs text-neutral-400 truncate max-w-[220px]">{student.email}</span>
-                                                            </div>
-                                                        </td>
-                                                        <td className="px-6 py-4">
-                                                            <span className="px-2.5 py-1 bg-neutral-100 text-neutral-600 text-xs font-medium rounded-lg">{student.branch || '—'}</span>
-                                                        </td>
-                                                        <td className="px-6 py-4">
-                                                            {student.isGrouped ? (
-                                                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-100">
-                                                                    <Check className="w-3 h-3" /> In Group
-                                                                </span>
-                                                            ) : (
-                                                                <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-100">
-                                                                    Ungrouped
-                                                                </span>
-                                                            )}
-                                                        </td>
-                                                        <td className="px-6 py-4">
-                                                            {student.isVerified ? (
-                                                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-100">
-                                                                    <CheckCircle className="w-3 h-3" /> Activated
-                                                                </span>
-                                                            ) : (
-                                                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-rose-50 text-rose-700 border border-rose-100">
-                                                                    <Clock className="w-3 h-3" /> Pending
-                                                                </span>
-                                                            )}
-                                                        </td>
-                                                        <td className="px-6 py-4 text-right">
-                                                            <div className="flex items-center justify-end gap-1">
-                                                                <a
-                                                                    href={`mailto:${student.email}`}
-                                                                    onClick={e => e.stopPropagation()}
-                                                                    className="p-1.5 rounded-lg hover:bg-blue-50 text-neutral-400 hover:text-blue-600 transition-colors"
-                                                                    title="Send email"
-                                                                >
-                                                                    <Mail className="w-4 h-4" />
-                                                                </a>
-                                                                <div className="relative">
-                                                                    <button
-                                                                        onClick={(e) => {
-                                                                            e.stopPropagation();
-                                                                            setStudentBatchMenuOpen(studentBatchMenuOpen === student._id ? null : student._id);
-                                                                        }}
-                                                                        className="p-1.5 rounded-lg hover:bg-neutral-100 text-neutral-400 transition-colors"
-                                                                        title="More actions"
-                                                                    >
-                                                                        <Settings className="w-4 h-4" />
-                                                                    </button>
-                                                                    {studentBatchMenuOpen === student._id && (
-                                                                        <div
-                                                                            className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-lg border border-neutral-200 py-1 z-50 animate-in fade-in zoom-in duration-200"
-                                                                            onClick={e => e.stopPropagation()}
-                                                                        >
-                                                                            <button
-                                                                                onClick={() => { setConfigStudentBatch(student); setStudentBatchMenuOpen(null); }}
-                                                                                className="w-full text-left px-4 py-2 text-sm text-neutral-700 hover:bg-indigo-50 hover:text-indigo-600 flex items-center gap-2 transition-colors"
-                                                                            >
-                                                                                <AlertCircle className="w-4 h-4" /> Override batch
-                                                                            </button>
-                                                                        </div>
-                                                                    )}
-                                                                </div>
-                                                            </div>
-                                                        </td>
+                                    <>
+                                        <div className="bg-white rounded-xl border border-neutral-200 shadow-sm overflow-visible">
+                                            <table className="w-full text-left text-sm">
+                                                <thead className="bg-neutral-50 border-b border-neutral-200">
+                                                    <tr>
+                                                        <th className="px-6 py-3 font-semibold text-neutral-500">Student</th>
+                                                        <th className="px-6 py-3 font-semibold text-neutral-500">Branch</th>
+                                                        <th className="px-6 py-3 font-semibold text-neutral-500">Group</th>
+                                                        <th className="px-6 py-3 font-semibold text-neutral-500">Account</th>
+                                                        <th className="px-6 py-3 font-semibold text-neutral-500 text-right">Actions</th>
                                                     </tr>
-                                                ))}
-                                                {students.length === 0 && (
-                                                    <tr><td colSpan={5} className="px-6 py-8 text-center text-neutral-400">No students found.</td></tr>
-                                                )}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                    {/* Pagination controls */}
-                                    {studentsTotalPages > 1 && (
-                                        <div className="flex items-center justify-between mt-4 px-1">
-                                            <span className="text-sm text-neutral-500">
-                                                Page {studentsPage} of {studentsTotalPages} &middot; {studentsTotalCount} students
-                                            </span>
-                                            <div className="flex gap-2">
-                                                <button
-                                                    disabled={studentsPage <= 1}
-                                                    onClick={() => setStudentsPage(p => Math.max(1, p - 1))}
-                                                    className="px-3 py-1.5 text-sm font-medium rounded-lg border border-neutral-200 hover:bg-neutral-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                                                >
-                                                    ← Prev
-                                                </button>
-                                                {Array.from({ length: Math.min(5, studentsTotalPages) }, (_, i) => {
-                                                    const start = Math.max(1, Math.min(studentsPage - 2, studentsTotalPages - 4));
-                                                    const p = start + i;
-                                                    return p <= studentsTotalPages ? (
-                                                        <button
-                                                            key={p}
-                                                            onClick={() => setStudentsPage(p)}
-                                                            className={`px-3 py-1.5 text-sm font-medium rounded-lg border transition-colors ${p === studentsPage ? 'bg-indigo-600 text-white border-indigo-600' : 'border-neutral-200 hover:bg-neutral-50'}`}
-                                                        >{p}</button>
-                                                    ) : null;
-                                                })}
-                                                <button
-                                                    disabled={studentsPage >= studentsTotalPages}
-                                                    onClick={() => setStudentsPage(p => Math.min(studentsTotalPages, p + 1))}
-                                                    className="px-3 py-1.5 text-sm font-medium rounded-lg border border-neutral-200 hover:bg-neutral-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                                                >
-                                                    Next →
-                                                </button>
-                                            </div>
+                                                </thead>
+                                                <tbody className="divide-y divide-neutral-100">
+                                                    {getFilteredStudents().map((student) => (
+                                                        <tr key={student._id} className="hover:bg-neutral-50">
+                                                            <td className="px-6 py-4">
+                                                                <div className="flex flex-col gap-0.5">
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className={`font-semibold ${getBatch(student.rollNumber) !== student.targetBatch && student.targetBatch ? 'text-red-700' : 'text-neutral-900'}`}>
+                                                                            {student.name}
+                                                                        </span>
+                                                                        {student.targetBatch && getBatch(student.rollNumber) !== student.targetBatch && (
+                                                                            <span className="text-[10px] text-red-600 font-bold uppercase bg-red-50 px-1.5 py-0.5 rounded border border-red-100">
+                                                                                Dropper → {student.targetBatch}
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                    <span className="font-mono text-xs text-neutral-500">{student.rollNumber || '—'}</span>
+                                                                    <span className="text-xs text-neutral-400 truncate max-w-[220px]">{student.email}</span>
+                                                                </div>
+                                                            </td>
+                                                            <td className="px-6 py-4">
+                                                                <span className="px-2.5 py-1 bg-neutral-100 text-neutral-600 text-xs font-medium rounded-lg">{student.branch || '—'}</span>
+                                                            </td>
+                                                            <td className="px-6 py-4">
+                                                                {student.isGrouped ? (
+                                                                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-100">
+                                                                        <Check className="w-3 h-3" /> In Group
+                                                                    </span>
+                                                                ) : (
+                                                                    <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-100">
+                                                                        Ungrouped
+                                                                    </span>
+                                                                )}
+                                                            </td>
+                                                            <td className="px-6 py-4">
+                                                                {student.isVerified ? (
+                                                                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-100">
+                                                                        <CheckCircle className="w-3 h-3" /> Activated
+                                                                    </span>
+                                                                ) : (
+                                                                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-rose-50 text-rose-700 border border-rose-100">
+                                                                        <Clock className="w-3 h-3" /> Pending
+                                                                    </span>
+                                                                )}
+                                                            </td>
+                                                            <td className="px-6 py-4 text-right">
+                                                                <div className="flex items-center justify-end gap-1">
+                                                                    <a
+                                                                        href={`mailto:${student.email}`}
+                                                                        onClick={e => e.stopPropagation()}
+                                                                        className="p-1.5 rounded-lg hover:bg-blue-50 text-neutral-400 hover:text-blue-600 transition-colors"
+                                                                        title="Send email"
+                                                                    >
+                                                                        <Mail className="w-4 h-4" />
+                                                                    </a>
+                                                                    <div className="relative">
+                                                                        <button
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                setStudentBatchMenuOpen(studentBatchMenuOpen === student._id ? null : student._id);
+                                                                            }}
+                                                                            className="p-1.5 rounded-lg hover:bg-neutral-100 text-neutral-400 transition-colors"
+                                                                            title="More actions"
+                                                                        >
+                                                                            <Settings className="w-4 h-4" />
+                                                                        </button>
+                                                                        {studentBatchMenuOpen === student._id && (
+                                                                            <div
+                                                                                className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-lg border border-neutral-200 py-1 z-50 animate-in fade-in zoom-in duration-200"
+                                                                                onClick={e => e.stopPropagation()}
+                                                                            >
+                                                                                <button
+                                                                                    onClick={() => { setConfigStudentBatch(student); setStudentBatchMenuOpen(null); }}
+                                                                                    className="w-full text-left px-4 py-2 text-sm text-neutral-700 hover:bg-indigo-50 hover:text-indigo-600 flex items-center gap-2 transition-colors"
+                                                                                >
+                                                                                    <AlertCircle className="w-4 h-4" /> Override batch
+                                                                                </button>
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                    {students.length === 0 && (
+                                                        <tr><td colSpan={5} className="px-6 py-8 text-center text-neutral-400">No students found.</td></tr>
+                                                    )}
+                                                </tbody>
+                                            </table>
                                         </div>
-                                    )}
+                                        {/* Pagination controls */}
+                                        {studentsTotalPages > 1 && (
+                                            <div className="flex items-center justify-between mt-4 px-1">
+                                                <span className="text-sm text-neutral-500">
+                                                    Page {studentsPage} of {studentsTotalPages} &middot; {studentsTotalCount} students
+                                                </span>
+                                                <div className="flex gap-2">
+                                                    <button
+                                                        disabled={studentsPage <= 1}
+                                                        onClick={() => setStudentsPage(p => Math.max(1, p - 1))}
+                                                        className="px-3 py-1.5 text-sm font-medium rounded-lg border border-neutral-200 hover:bg-neutral-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                                                    >
+                                                        ← Prev
+                                                    </button>
+                                                    {Array.from({ length: Math.min(5, studentsTotalPages) }, (_, i) => {
+                                                        const start = Math.max(1, Math.min(studentsPage - 2, studentsTotalPages - 4));
+                                                        const p = start + i;
+                                                        return p <= studentsTotalPages ? (
+                                                            <button
+                                                                key={p}
+                                                                onClick={() => setStudentsPage(p)}
+                                                                className={`px-3 py-1.5 text-sm font-medium rounded-lg border transition-colors ${p === studentsPage ? 'bg-indigo-600 text-white border-indigo-600' : 'border-neutral-200 hover:bg-neutral-50'}`}
+                                                            >{p}</button>
+                                                        ) : null;
+                                                    })}
+                                                    <button
+                                                        disabled={studentsPage >= studentsTotalPages}
+                                                        onClick={() => setStudentsPage(p => Math.min(studentsTotalPages, p + 1))}
+                                                        className="px-3 py-1.5 text-sm font-medium rounded-lg border border-neutral-200 hover:bg-neutral-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                                                    >
+                                                        Next →
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </>
                                 )}
 
                                 {activeTab === 'faculty' && (
@@ -1343,118 +1357,118 @@ const AdminDashboard: React.FC = () => {
                                                                 const showMid = hasMidEval || hasEndEval;
                                                                 const showEnd = hasEndEval;
                                                                 return (
-                                                                <div className="bg-white rounded-2xl border border-neutral-200 shadow-sm overflow-visible">
-                                                                    <table className="w-full text-left">
-                                                                        <thead className="bg-neutral-50 border-b border-neutral-100">
-                                                                            <tr>
-                                                                                <th className="px-6 py-4 text-xs font-bold text-neutral-400 uppercase tracking-wider">Group / Project</th>
-                                                                                <th className="px-6 py-4 text-xs font-bold text-neutral-400 uppercase tracking-wider">Faculty</th>
-                                                                                <th className="px-6 py-4 text-xs font-bold text-neutral-400 uppercase tracking-wider">Status</th>
-                                                                                {showMid && <th className="px-4 py-4 text-xs font-bold text-indigo-400 uppercase tracking-wider text-center">Mid</th>}
-                                                                                {showEnd && <th className="px-4 py-4 text-xs font-bold text-purple-400 uppercase tracking-wider text-center">End</th>}
-                                                                                {showEnd && <th className="px-4 py-4 text-xs font-bold text-emerald-500 uppercase tracking-wider text-center">Total</th>}
-                                                                                <th className="px-6 py-4 text-xs font-bold text-neutral-400 uppercase tracking-wider text-right">Action</th>
-                                                                            </tr>
-                                                                        </thead>
-                                                                        <tbody className="divide-y divide-neutral-100">
-                                                                            {batchGroups.map((item: any) => {
-                                                                                const midMarks = item.project?.midTermEvaluation?.marks;
-                                                                                const endMarks = item.project?.endTermEvaluation?.marks;
-                                                                                const total = (midMarks ?? 0) + (endMarks ?? 0);
-                                                                                return (
-                                                                                <tr key={item._id} onClick={() => setViewGroup(item)} className={`cursor-pointer transition-colors group ${item.targetBatch && (item.members?.some((m: any) => getBatch(m.rollNumber) !== item.targetBatch)) ? 'bg-red-50 hover:bg-red-100 border-l-4 border-l-red-500' : 'hover:bg-neutral-50'}`}>
-                                                                                    <td className="px-6 py-4">
-                                                                                        <div className="flex flex-col">
-                                                                                            <span className="font-bold text-neutral-900 group-hover:text-indigo-600 transition-colors">{item.project?.title || 'No Project'}</span>
-                                                                                            <span className="text-sm text-neutral-500 line-clamp-1 mb-1">
-                                                                                                {item.name ? `Group ${item.name}` : ''} {item.targetBatch ? `(Dropper/Batch override: ${item.targetBatch})` : ''}
-                                                                                            </span>
-                                                                                            <div className="flex flex-wrap gap-1 mt-1">
-                                                                                                {item.members?.map((m: any, idx: number) => (
-                                                                                                    <span key={idx} className="text-xs text-neutral-600 bg-neutral-100 px-1.5 py-0.5 rounded border border-neutral-200">
-                                                                                                        {m.name}
-                                                                                                    </span>
-                                                                                                ))}
-                                                                                            </div>
-                                                                                        </div>
-                                                                                    </td>
-                                                                                    <td className="px-6 py-4">
-                                                                                        <div className="flex items-center gap-2">
-                                                                                            <div className="h-6 w-6 rounded-full bg-orange-100 flex items-center justify-center text-xs font-bold text-orange-600">
-                                                                                                {item.project?.faculty?.name?.charAt(0) || '?'}
-                                                                                            </div>
-                                                                                            <span className="text-sm font-medium text-neutral-700">
-                                                                                                {item.project?.faculty?.name || 'Unassigned'}
-                                                                                            </span>
-                                                                                        </div>
-                                                                                    </td>
-                                                                                    <td className="px-6 py-4">
-                                                                                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${(item.status || item.project?.status) === 'Approved' ? 'bg-green-100 text-green-700' :
-                                                                                            (item.status || item.project?.status) === 'Rejected' ? 'bg-red-100 text-red-700' :
-                                                                                                'bg-indigo-100 text-indigo-700'
-                                                                                            }`}>
-                                                                                            <div className={`w-1.5 h-1.5 rounded-full ${(item.status || item.project?.status) === 'Approved' ? 'bg-green-500' :
-                                                                                                (item.status || item.project?.status) === 'Rejected' ? 'bg-red-500' :
-                                                                                                    'bg-indigo-500'
-                                                                                                }`} />
-                                                                                            {item.status || item.project?.status || 'Active'}
-                                                                                        </span>
-                                                                                    </td>
-                                                                                    {showMid && (
-                                                                                        <td className="px-4 py-4 text-center">
-                                                                                            {midMarks != null
-                                                                                                ? <span className="inline-block px-2 py-0.5 rounded-lg bg-indigo-50 text-indigo-700 text-sm font-bold">{midMarks}</span>
-                                                                                                : <span className="text-neutral-300 text-sm">—</span>}
-                                                                                        </td>
-                                                                                    )}
-                                                                                    {showEnd && (
-                                                                                        <td className="px-4 py-4 text-center">
-                                                                                            {endMarks != null
-                                                                                                ? <span className="inline-block px-2 py-0.5 rounded-lg bg-purple-50 text-purple-700 text-sm font-bold">{endMarks}</span>
-                                                                                                : <span className="text-neutral-300 text-sm">—</span>}
-                                                                                        </td>
-                                                                                    )}
-                                                                                    {showEnd && (
-                                                                                        <td className="px-4 py-4 text-center">
-                                                                                            {(midMarks != null || endMarks != null)
-                                                                                                ? <span className="inline-block px-2 py-0.5 rounded-lg bg-emerald-50 text-emerald-700 text-sm font-bold">{total}</span>
-                                                                                                : <span className="text-neutral-300 text-sm">—</span>}
-                                                                                        </td>
-                                                                                    )}
-                                                                                    <td className="px-6 py-4 text-right">
-                                                                                        <div className="flex flex-col items-end gap-2">
-                                                                                            <div className="relative">
-                                                                                                <button
-                                                                                                    onClick={(e) => {
-                                                                                                        e.stopPropagation();
-                                                                                                        setConfigBatchMenuOpen(configBatchMenuOpen === item._id ? null : item._id);
-                                                                                                    }}
-                                                                                                    className="p-1 rounded-full hover:bg-neutral-100 text-neutral-500 transition-colors"
-                                                                                                >
-                                                                                                    <MoreVertical className="w-5 h-5" />
-                                                                                                </button>
-                                                                                                {configBatchMenuOpen === item._id && (
-                                                                                                    <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-lg border border-neutral-200 py-1 z-30" onClick={e => e.stopPropagation()}>
-                                                                                                        <button
-                                                                                                            onClick={() => {
-                                                                                                                setConfigBatchGroup(item);
-                                                                                                                setConfigBatchMenuOpen(null);
-                                                                                                            }}
-                                                                                                            className="w-full text-left px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-50 flex items-center gap-2"
-                                                                                                        >
-                                                                                                            <Settings className="w-4 h-4" /> Configure Batch
-                                                                                                        </button>
-                                                                                                    </div>
-                                                                                                )}
-                                                                                            </div>
-                                                                                        </div>
-                                                                                    </td>
+                                                                    <div className="bg-white rounded-2xl border border-neutral-200 shadow-sm overflow-visible">
+                                                                        <table className="w-full text-left">
+                                                                            <thead className="bg-neutral-50 border-b border-neutral-100">
+                                                                                <tr>
+                                                                                    <th className="px-6 py-4 text-xs font-bold text-neutral-400 uppercase tracking-wider">Group / Project</th>
+                                                                                    <th className="px-6 py-4 text-xs font-bold text-neutral-400 uppercase tracking-wider">Faculty</th>
+                                                                                    <th className="px-6 py-4 text-xs font-bold text-neutral-400 uppercase tracking-wider">Status</th>
+                                                                                    {showMid && <th className="px-4 py-4 text-xs font-bold text-indigo-400 uppercase tracking-wider text-center">Mid</th>}
+                                                                                    {showEnd && <th className="px-4 py-4 text-xs font-bold text-purple-400 uppercase tracking-wider text-center">End</th>}
+                                                                                    {showEnd && <th className="px-4 py-4 text-xs font-bold text-emerald-500 uppercase tracking-wider text-center">Total</th>}
+                                                                                    <th className="px-6 py-4 text-xs font-bold text-neutral-400 uppercase tracking-wider text-right">Action</th>
                                                                                 </tr>
-                                                                                );
-                                                                            })}
-                                                                        </tbody>
-                                                                    </table>
-                                                                </div>
+                                                                            </thead>
+                                                                            <tbody className="divide-y divide-neutral-100">
+                                                                                {batchGroups.map((item: any) => {
+                                                                                    const midMarks = item.project?.midTermEvaluation?.marks;
+                                                                                    const endMarks = item.project?.endTermEvaluation?.marks;
+                                                                                    const total = (midMarks ?? 0) + (endMarks ?? 0);
+                                                                                    return (
+                                                                                        <tr key={item._id} onClick={() => setViewGroup(item)} className={`cursor-pointer transition-colors group ${item.targetBatch && (item.members?.some((m: any) => getBatch(m.rollNumber) !== item.targetBatch)) ? 'bg-red-50 hover:bg-red-100 border-l-4 border-l-red-500' : 'hover:bg-neutral-50'}`}>
+                                                                                            <td className="px-6 py-4">
+                                                                                                <div className="flex flex-col">
+                                                                                                    <span className="font-bold text-neutral-900 group-hover:text-indigo-600 transition-colors">{item.project?.title || 'No Project'}</span>
+                                                                                                    <span className="text-sm text-neutral-500 line-clamp-1 mb-1">
+                                                                                                        {item.name ? `Group ${item.name}` : ''} {item.targetBatch ? `(Dropper/Batch override: ${item.targetBatch})` : ''}
+                                                                                                    </span>
+                                                                                                    <div className="flex flex-wrap gap-1 mt-1">
+                                                                                                        {item.members?.map((m: any, idx: number) => (
+                                                                                                            <span key={idx} className="text-xs text-neutral-600 bg-neutral-100 px-1.5 py-0.5 rounded border border-neutral-200">
+                                                                                                                {m.name}
+                                                                                                            </span>
+                                                                                                        ))}
+                                                                                                    </div>
+                                                                                                </div>
+                                                                                            </td>
+                                                                                            <td className="px-6 py-4">
+                                                                                                <div className="flex items-center gap-2">
+                                                                                                    <div className="h-6 w-6 rounded-full bg-orange-100 flex items-center justify-center text-xs font-bold text-orange-600">
+                                                                                                        {item.project?.faculty?.name?.charAt(0) || '?'}
+                                                                                                    </div>
+                                                                                                    <span className="text-sm font-medium text-neutral-700">
+                                                                                                        {item.project?.faculty?.name || 'Unassigned'}
+                                                                                                    </span>
+                                                                                                </div>
+                                                                                            </td>
+                                                                                            <td className="px-6 py-4">
+                                                                                                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${(item.status || item.project?.status) === 'Approved' ? 'bg-green-100 text-green-700' :
+                                                                                                    (item.status || item.project?.status) === 'Rejected' ? 'bg-red-100 text-red-700' :
+                                                                                                        'bg-indigo-100 text-indigo-700'
+                                                                                                    }`}>
+                                                                                                    <div className={`w-1.5 h-1.5 rounded-full ${(item.status || item.project?.status) === 'Approved' ? 'bg-green-500' :
+                                                                                                        (item.status || item.project?.status) === 'Rejected' ? 'bg-red-500' :
+                                                                                                            'bg-indigo-500'
+                                                                                                        }`} />
+                                                                                                    {item.status || item.project?.status || 'Active'}
+                                                                                                </span>
+                                                                                            </td>
+                                                                                            {showMid && (
+                                                                                                <td className="px-4 py-4 text-center">
+                                                                                                    {midMarks != null
+                                                                                                        ? <span className="inline-block px-2 py-0.5 rounded-lg bg-indigo-50 text-indigo-700 text-sm font-bold">{midMarks}</span>
+                                                                                                        : <span className="text-neutral-300 text-sm">—</span>}
+                                                                                                </td>
+                                                                                            )}
+                                                                                            {showEnd && (
+                                                                                                <td className="px-4 py-4 text-center">
+                                                                                                    {endMarks != null
+                                                                                                        ? <span className="inline-block px-2 py-0.5 rounded-lg bg-purple-50 text-purple-700 text-sm font-bold">{endMarks}</span>
+                                                                                                        : <span className="text-neutral-300 text-sm">—</span>}
+                                                                                                </td>
+                                                                                            )}
+                                                                                            {showEnd && (
+                                                                                                <td className="px-4 py-4 text-center">
+                                                                                                    {(midMarks != null || endMarks != null)
+                                                                                                        ? <span className="inline-block px-2 py-0.5 rounded-lg bg-emerald-50 text-emerald-700 text-sm font-bold">{total}</span>
+                                                                                                        : <span className="text-neutral-300 text-sm">—</span>}
+                                                                                                </td>
+                                                                                            )}
+                                                                                            <td className="px-6 py-4 text-right">
+                                                                                                <div className="flex flex-col items-end gap-2">
+                                                                                                    <div className="relative">
+                                                                                                        <button
+                                                                                                            onClick={(e) => {
+                                                                                                                e.stopPropagation();
+                                                                                                                setConfigBatchMenuOpen(configBatchMenuOpen === item._id ? null : item._id);
+                                                                                                            }}
+                                                                                                            className="p-1 rounded-full hover:bg-neutral-100 text-neutral-500 transition-colors"
+                                                                                                        >
+                                                                                                            <MoreVertical className="w-5 h-5" />
+                                                                                                        </button>
+                                                                                                        {configBatchMenuOpen === item._id && (
+                                                                                                            <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-lg border border-neutral-200 py-1 z-30" onClick={e => e.stopPropagation()}>
+                                                                                                                <button
+                                                                                                                    onClick={() => {
+                                                                                                                        setConfigBatchGroup(item);
+                                                                                                                        setConfigBatchMenuOpen(null);
+                                                                                                                    }}
+                                                                                                                    className="w-full text-left px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-50 flex items-center gap-2"
+                                                                                                                >
+                                                                                                                    <Settings className="w-4 h-4" /> Configure Batch
+                                                                                                                </button>
+                                                                                                            </div>
+                                                                                                        )}
+                                                                                                    </div>
+                                                                                                </div>
+                                                                                            </td>
+                                                                                        </tr>
+                                                                                    );
+                                                                                })}
+                                                                            </tbody>
+                                                                        </table>
+                                                                    </div>
                                                                 );
                                                             })()}
                                                         </div>
@@ -1483,13 +1497,13 @@ const AdminDashboard: React.FC = () => {
                                         </div>
                                         {Object.entries(
                                             panels
-                                                 .filter(p => filterBatch === 'All' || String(p.batchYear) === String(filterBatch))
-                                                 .reduce((acc: any, panel: any) => {
-                                                const year = panel.batchYear;
-                                                acc[year] = acc[year] || [];
-                                                acc[year].push(panel);
-                                                return acc;
-                                            }, {})
+                                                .filter(p => filterBatch === 'All' || String(p.batchYear) === String(filterBatch))
+                                                .reduce((acc: any, panel: any) => {
+                                                    const year = panel.batchYear;
+                                                    acc[year] = acc[year] || [];
+                                                    acc[year].push(panel);
+                                                    return acc;
+                                                }, {})
                                         ).sort(([a]: any, [b]: any) => Number(b) - Number(a)).map(([year, yearPanels]: any) => {
                                             const isCollapsed = collapsedPanelsBatches[year] || false;
                                             return (
@@ -1751,7 +1765,7 @@ const AdminDashboard: React.FC = () => {
                                                     const end = new Date(ev.endDate);
                                                     const ext = ev.extensionDate ? new Date(ev.extensionDate) : null;
                                                     const effectiveEnd = ext || end;
-                                                     const isOngoing = now <= effectiveEnd;
+                                                    const isOngoing = now <= effectiveEnd;
                                                     const isExpired = now > effectiveEnd;
                                                     const daysLeft = Math.ceil((effectiveEnd.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
 
@@ -1835,7 +1849,7 @@ const AdminDashboard: React.FC = () => {
                                                             </div>
 
                                                             <h3 className="text-xl font-bold text-neutral-900 mb-1.5">{typeLabels[ev.type] || ev.type.replace(/_/g, ' ').toUpperCase()}</h3>
-                                                            
+
                                                             {/* Status Badge */}
                                                             <div className="mb-4 mt-4">
                                                                 {isOngoing ? (
@@ -1937,7 +1951,7 @@ const AdminDashboard: React.FC = () => {
                                                     ))}
                                                 </select>
                                             </div>
-                                            
+
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                                 <button
                                                     onClick={() => handleExportEvaluations('midterm')}
@@ -2057,7 +2071,7 @@ const AdminDashboard: React.FC = () => {
                                                             className="w-full px-3 py-2 bg-neutral-50 rounded-lg border border-neutral-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
                                                         >
                                                             <option value="">Select semester</option>
-                                                            {[1,2,3,4,5,6,7,8].map(s => <option key={s} value={s}>Semester {s}</option>)}
+                                                            {[1, 2, 3, 4, 5, 6, 7, 8].map(s => <option key={s} value={s}>Semester {s}</option>)}
                                                         </select>
                                                     </div>
                                                     <div className="flex-1">
@@ -2209,10 +2223,10 @@ const AdminDashboard: React.FC = () => {
                                                         <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
                                                             {[
                                                                 { label: 'Students', value: excelImportResult.created.students ?? 0, color: 'green' },
-                                                                { label: 'Faculty',  value: excelImportResult.created.faculty  ?? 0, color: 'violet' },
-                                                                { label: 'Groups',   value: excelImportResult.created.groups   ?? 0, color: 'indigo' },
+                                                                { label: 'Faculty', value: excelImportResult.created.faculty ?? 0, color: 'violet' },
+                                                                { label: 'Groups', value: excelImportResult.created.groups ?? 0, color: 'indigo' },
                                                                 { label: 'Projects', value: excelImportResult.created.projects ?? 0, color: 'blue' },
-                                                                { label: 'Skipped',  value: excelImportResult.created.skipped  ?? 0, color: 'amber' },
+                                                                { label: 'Skipped', value: excelImportResult.created.skipped ?? 0, color: 'amber' },
                                                             ].map(({ label, value, color }) => (
                                                                 <div key={label} className={`bg-${color}-50 rounded-xl p-3 border border-${color}-100 text-center`}>
                                                                     <p className={`text-xs font-bold text-${color}-600 uppercase tracking-wider`}>{label}</p>
@@ -2354,11 +2368,11 @@ const AdminDashboard: React.FC = () => {
                                                     <div className="mt-4 space-y-3">
                                                         <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
                                                             {[
-                                                                { label: 'Users',    value: snapshotImportResult.result.users    ?? 0, color: 'green' },
-                                                                { label: 'Groups',   value: snapshotImportResult.result.groups   ?? 0, color: 'indigo' },
+                                                                { label: 'Users', value: snapshotImportResult.result.users ?? 0, color: 'green' },
+                                                                { label: 'Groups', value: snapshotImportResult.result.groups ?? 0, color: 'indigo' },
                                                                 { label: 'Projects', value: snapshotImportResult.result.projects ?? 0, color: 'blue' },
-                                                                { label: 'Panels',   value: snapshotImportResult.result.panels   ?? 0, color: 'violet' },
-                                                                { label: 'Skipped',  value: snapshotImportResult.result.skipped  ?? 0, color: 'amber' },
+                                                                { label: 'Panels', value: snapshotImportResult.result.panels ?? 0, color: 'violet' },
+                                                                { label: 'Skipped', value: snapshotImportResult.result.skipped ?? 0, color: 'amber' },
                                                             ].map(({ label, value, color }) => (
                                                                 <div key={label} className={`bg-${color}-50 rounded-xl p-3 border border-${color}-100 text-center`}>
                                                                     <p className={`text-xs font-bold text-${color}-600 uppercase tracking-wider`}>{label}</p>
@@ -2466,7 +2480,7 @@ const AdminDashboard: React.FC = () => {
                                             <div className="flex flex-col items-center justify-center py-8 text-center bg-gray-50/50 rounded-xl border-2 border-dashed border-gray-100">
                                                 <Users className="w-8 h-8 text-gray-300 mb-2" />
                                                 <p className="text-xs font-bold text-gray-400 px-4 leading-relaxed">
-                                                    Please select a batch above first<br/>to show available faculty members.
+                                                    Please select a batch above first<br />to show available faculty members.
                                                 </p>
                                             </div>
                                         )}
@@ -2878,8 +2892,8 @@ const AdminDashboard: React.FC = () => {
                             </div>
                             <div className="px-6 py-5 bg-neutral-50 border-t border-neutral-100 flex justify-end gap-3">
                                 <button onClick={() => setConfigStudentBatch(null)} className="px-5 py-2.5 text-sm font-black uppercase tracking-widest text-neutral-500 hover:text-neutral-700 hover:bg-neutral-100 rounded-xl transition-all">Cancel</button>
-                                <button 
-                                    onClick={() => handleUpdateStudentBatch((document.getElementById('studentBatchUpdateSelect') as HTMLSelectElement).value)} 
+                                <button
+                                    onClick={() => handleUpdateStudentBatch((document.getElementById('studentBatchUpdateSelect') as HTMLSelectElement).value)}
                                     className="px-6 py-2.5 bg-indigo-600 text-white text-sm font-black uppercase tracking-widest rounded-xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 active:scale-95"
                                 >
                                     Apply Override
@@ -2918,7 +2932,7 @@ const AdminDashboard: React.FC = () => {
                                         <option value="mid_term_evaluation">Mid-Term Evaluation</option>
                                         <option value="end_term_evaluation">End-Term Evaluation</option>
                                     </select>
-                                    
+
                                     {eventForm.type === 'group_formation_project_proposal' && (
                                         <div className="mt-3 p-4 bg-red-50 border-2 border-red-200 rounded-xl animate-in fade-in slide-in-from-top-1 duration-300">
                                             <div className="flex items-start gap-3">
@@ -2928,7 +2942,7 @@ const AdminDashboard: React.FC = () => {
                                                 <div>
                                                     <h4 className="text-sm font-black text-red-800 uppercase tracking-wider">Critical Warning</h4>
                                                     <p className="text-xs text-red-700 mt-1 font-bold leading-relaxed">
-                                                        Starting a new <span className="underline decoration-red-400 decoration-2">Group Formation</span> phase will eventually <span className="bg-red-200 px-1 rounded">RESET ALL EXISTING GROUPS & PANELS</span>. 
+                                                        Starting a new <span className="underline decoration-red-400 decoration-2">Group Formation</span> phase will eventually <span className="bg-red-200 px-1 rounded">RESET ALL EXISTING GROUPS & PANELS</span>.
                                                         Current groups will be archived and destroyed. This action is irreversible.
                                                     </p>
                                                 </div>
@@ -2954,7 +2968,7 @@ const AdminDashboard: React.FC = () => {
                                         {eventForm.extensionDate && (<button onClick={() => setEventForm(prev => ({ ...prev, extensionDate: '' }))} className="text-xs text-red-500 mt-1 hover:underline">Remove extension</button>)}
                                     </div>
                                 </div>
-                                
+
                                 {(eventForm.type === 'mid_term_evaluation' || eventForm.type === 'end_term_evaluation') && (
                                     <div className="pt-2 space-y-3">
                                         <div className="flex items-center justify-between">
@@ -3062,12 +3076,12 @@ const AdminDashboard: React.FC = () => {
                                     <label className="block text-sm font-bold text-gray-700 mb-1.5 flex items-center gap-1.5">
                                         <Settings className="w-4 h-4 text-indigo-500" /> Admin Password
                                     </label>
-                                    <input 
-                                        type="password" 
-                                        value={adminPassword} 
-                                        onChange={(e) => setAdminPassword(e.target.value)} 
-                                        placeholder="Required to authorize this action" 
-                                        className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20" 
+                                    <input
+                                        type="password"
+                                        value={adminPassword}
+                                        onChange={(e) => setAdminPassword(e.target.value)}
+                                        placeholder="Required to authorize this action"
+                                        className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20"
                                     />
                                 </div>
                             </div>
@@ -3119,12 +3133,12 @@ const AdminDashboard: React.FC = () => {
                                             }
                                         }
 
-                                        const payload = { 
-                                            ...eventForm, 
-                                            password: adminPassword, 
-                                            extensionDate: eventForm.extensionDate || null, 
+                                        const payload = {
+                                            ...eventForm,
+                                            password: adminPassword,
+                                            extensionDate: eventForm.extensionDate || null,
                                             batchYear: eventForm.batchYear || undefined,
-                                            rubricParams: parsedRubricParams 
+                                            rubricParams: parsedRubricParams
                                         };
                                         if (editingEvent) {
                                             await api.put(`/events/${editingEvent._id}`, payload);
@@ -3175,12 +3189,12 @@ const AdminDashboard: React.FC = () => {
                                     <label className="block text-sm font-bold text-gray-700 mb-1.5 flex items-center gap-1.5">
                                         <Settings className="w-4 h-4 text-indigo-500" /> Admin Password
                                     </label>
-                                    <input 
-                                        type="password" 
-                                        value={adminPassword} 
-                                        onChange={(e) => setAdminPassword(e.target.value)} 
-                                        placeholder="Required to authorize this action" 
-                                        className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20" 
+                                    <input
+                                        type="password"
+                                        value={adminPassword}
+                                        onChange={(e) => setAdminPassword(e.target.value)}
+                                        placeholder="Required to authorize this action"
+                                        className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20"
                                     />
                                 </div>
                             </div>
@@ -3190,15 +3204,15 @@ const AdminDashboard: React.FC = () => {
                                     onClick={async () => {
                                         try {
                                             if (!adminPassword) { alert('Admin password is required.'); return; }
-                                            
+
                                             // Expire event by setting endDate to now
-                                            const payload = { 
+                                            const payload = {
                                                 type: confirmEndEvent.type,
                                                 endDate: new Date().toISOString(),
                                                 batchYear: confirmEndEvent.batchYear,
-                                                password: adminPassword 
+                                                password: adminPassword
                                             };
-                                            
+
                                             await api.put(`/events/${confirmEndEvent._id}`, payload);
                                             setConfirmEndEvent(null);
                                             setAdminPassword('');
@@ -3238,12 +3252,12 @@ const AdminDashboard: React.FC = () => {
                                     <label className="block text-sm font-bold text-gray-700 mb-1.5 flex items-center gap-1.5">
                                         <Settings className="w-4 h-4 text-indigo-500" /> Admin Password
                                     </label>
-                                    <input 
-                                        type="password" 
-                                        value={adminPassword} 
-                                        onChange={(e) => setAdminPassword(e.target.value)} 
-                                        placeholder="Authorize deletion" 
-                                        className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20" 
+                                    <input
+                                        type="password"
+                                        value={adminPassword}
+                                        onChange={(e) => setAdminPassword(e.target.value)}
+                                        placeholder="Authorize deletion"
+                                        className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20"
                                     />
                                 </div>
                             </div>
@@ -3402,7 +3416,7 @@ const AdminDashboard: React.FC = () => {
                                                     <label className="block text-sm font-bold text-neutral-700 mb-1.5">Semester</label>
                                                     <select value={createUserForm.semester} onChange={e => setCreateUserForm(p => ({ ...p, semester: e.target.value }))} className="w-full px-4 py-2.5 rounded-xl border border-neutral-200 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none text-sm">
                                                         <option value="">—</option>
-                                                        {[1,2,3,4,5,6,7,8].map(s => <option key={s} value={s}>Sem {s}</option>)}
+                                                        {[1, 2, 3, 4, 5, 6, 7, 8].map(s => <option key={s} value={s}>Sem {s}</option>)}
                                                     </select>
                                                 </div>
                                             </div>
@@ -3451,7 +3465,7 @@ const AdminDashboard: React.FC = () => {
                                     <X className="w-5 h-5" />
                                 </button>
                             </div>
-                            
+
                             <div className="p-6 overflow-y-auto flex-1 bg-neutral-50/30">
                                 {!importPreview ? (
                                     <div className="max-w-xl mx-auto space-y-6">
@@ -3468,9 +3482,9 @@ const AdminDashboard: React.FC = () => {
                                         </div>
 
                                         <div className="border-2 border-dashed border-neutral-300 rounded-2xl p-10 text-center hover:bg-indigo-50 hover:border-indigo-300 transition-colors w-full cursor-pointer relative">
-                                            <input 
-                                                type="file" 
-                                                accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel" 
+                                            <input
+                                                type="file"
+                                                accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel"
                                                 onChange={async (e) => {
                                                     const file = e.target.files?.[0];
                                                     if (file) {
@@ -3520,28 +3534,28 @@ const AdminDashboard: React.FC = () => {
                                                     <p className="text-sm text-neutral-500 font-bold mb-1 uppercase tracking-wider">Total Rows</p>
                                                     <p className="text-2xl font-black text-neutral-800">{importPreview.totalRows}</p>
                                                 </div>
-                                                <div className="w-10 h-10 bg-neutral-100 rounded-lg flex items-center justify-center text-neutral-500"><FileText className="w-5 h-5"/></div>
+                                                <div className="w-10 h-10 bg-neutral-100 rounded-lg flex items-center justify-center text-neutral-500"><FileText className="w-5 h-5" /></div>
                                             </div>
                                             <div className="bg-white p-4 rounded-xl border border-green-200 shadow-sm flex items-center justify-between">
                                                 <div>
                                                     <p className="text-sm text-green-600 font-bold mb-1 uppercase tracking-wider">Ready to Import</p>
                                                     <p className="text-2xl font-black text-green-700">{importPreview.validRows.length}</p>
                                                 </div>
-                                                <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center text-green-600"><CheckCircle className="w-5 h-5"/></div>
+                                                <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center text-green-600"><CheckCircle className="w-5 h-5" /></div>
                                             </div>
                                             <div className="bg-white p-4 rounded-xl border border-red-200 shadow-sm flex items-center justify-between">
                                                 <div>
                                                     <p className="text-sm text-red-600 font-bold mb-1 uppercase tracking-wider">Invalid Rows</p>
                                                     <p className="text-2xl font-black text-red-700">{importPreview.invalidRows.length}</p>
                                                 </div>
-                                                <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center text-red-600"><AlertCircle className="w-5 h-5"/></div>
+                                                <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center text-red-600"><AlertCircle className="w-5 h-5" /></div>
                                             </div>
                                         </div>
 
                                         {importPreview.invalidRows.length > 0 && (
                                             <div className="bg-white rounded-xl border border-red-200 shadow-sm overflow-hidden">
                                                 <div className="bg-red-50 px-4 py-3 border-b border-red-100">
-                                                    <h4 className="font-bold text-red-800 flex items-center gap-2"><AlertTriangle className="w-4 h-4"/> Validation Errors</h4>
+                                                    <h4 className="font-bold text-red-800 flex items-center gap-2"><AlertTriangle className="w-4 h-4" /> Validation Errors</h4>
                                                     <p className="text-xs text-red-600 mt-1">These rows will be skipped during import.</p>
                                                 </div>
                                                 <div className="max-h-64 overflow-y-auto">
@@ -3569,7 +3583,7 @@ const AdminDashboard: React.FC = () => {
 
                                         <div className="bg-white rounded-xl border border-green-200 shadow-sm overflow-hidden">
                                             <div className="bg-green-50 px-4 py-3 border-b border-green-100">
-                                                <h4 className="font-bold text-green-800 flex items-center gap-2"><CheckCircle className="w-4 h-4"/> Valid Entries Preview (Showing first 5)</h4>
+                                                <h4 className="font-bold text-green-800 flex items-center gap-2"><CheckCircle className="w-4 h-4" /> Valid Entries Preview (Showing first 5)</h4>
                                             </div>
                                             <div className="overflow-x-auto">
                                                 <table className="w-full text-left text-sm">
@@ -3601,7 +3615,7 @@ const AdminDashboard: React.FC = () => {
                                     </div>
                                 )}
                             </div>
-                            
+
                             {/* Simple import result */}
                             {simpleImportResult && (
                                 <div className="px-6 pb-4 space-y-3">
@@ -3665,7 +3679,7 @@ const AdminDashboard: React.FC = () => {
                                         disabled={importLoading}
                                         className="px-5 py-2.5 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition flex items-center gap-2 shadow-lg shadow-indigo-200"
                                     >
-                                        {importLoading ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Importing...</> : <><Save className="w-4 h-4"/> Confirm & Import {importPreview.validRows.length} Users</>}
+                                        {importLoading ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Importing...</> : <><Save className="w-4 h-4" /> Confirm & Import {importPreview.validRows.length} Users</>}
                                     </button>
                                 )}
                             </div>

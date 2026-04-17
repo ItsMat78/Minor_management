@@ -35,7 +35,7 @@ The system is accessible via web browser by three roles: **Students**, **Faculty
 | Term | Definition |
 |---|---|
 | Minor Project | A semester-long project undertaken by a student group in their 5th–8th semester |
-| Group | 2–4 students registered together for a shared minor project |
+| Group | Up to 3 students registered together for a shared minor project |
 | Panel | A set of faculty members assigned to evaluate a batch of groups |
 | Cohort / Batch | Students sharing the same year of admission (e.g., 2022-batch) |
 | OTP | One-Time Password used for account activation |
@@ -92,7 +92,7 @@ The portal is a standalone MERN-stack web application (MongoDB, Express.js, Reac
 | FR-AUTH-02 | When a student account exists but `isActive = false`, the login response shall include `requiresActivation: true` and trigger an OTP email to the student. |
 | FR-AUTH-03 | Students shall enter the 6-digit OTP on the Login page to activate their account. Successful OTP entry shall set `isActive = true` and `isVerified = true`. |
 | FR-AUTH-04 | Authentication tokens shall be JWTs signed with the `JWT_SECRET` environment variable. The server shall reject any JWT signed with a different secret. |
-| FR-AUTH-05 | Tokens shall expire after 7 days. Expired tokens shall return HTTP 401. |
+| FR-AUTH-05 | Tokens shall expire after 1 day (`expiresIn: '1d'`). Expired tokens shall return HTTP 401. |
 | FR-AUTH-06 | The server shall validate the `x-auth-token` header on all protected routes. |
 
 ### 3.2 Student Module
@@ -100,7 +100,7 @@ The portal is a standalone MERN-stack web application (MongoDB, Express.js, Reac
 | ID | Requirement |
 |---|---|
 | FR-STU-01 | A student shall be able to view the student directory filtered to their own batch/cohort only. |
-| FR-STU-02 | A student with no group shall be able to create a new group by selecting 1–3 other students from the directory and a faculty mentor. |
+| FR-STU-02 | A student with no group shall be able to create a new group by selecting 1–2 other students from the directory (max 3 members total including the creator) and a faculty mentor. |
 | FR-STU-03 | Group formation shall validate that all selected members are ungrouped, active, and belong to the same cohort (unless explicitly overridden for droppers). |
 | FR-STU-04 | A student who is a group member shall be able to submit a project proposal (title, description, tags, faculty assignment). |
 | FR-STU-05 | A student shall be able to post progress updates (text, links, file attachments) on any active project. |
@@ -156,8 +156,8 @@ The portal is a standalone MERN-stack web application (MongoDB, Express.js, Reac
 | ID | Requirement |
 |---|---|
 | NFR-SEC-01 | All passwords shall be stored as bcrypt hashes (salt rounds ≥ 10). |
-| NFR-SEC-02 | The `JWT_SECRET` environment variable shall be required at server startup; the server shall exit with a fatal error if absent in production. |
-| NFR-SEC-03 | Role-escalation via `PUT /api/users/:id` shall be blocked: a non-admin user can only update their own profile, and `role` is excluded from the allowed update fields. |
+| NFR-SEC-02 | The `JWT_SECRET` environment variable shall be required at server startup; the server shall exit unconditionally with `process.exit(1)` if it is absent (no `NODE_ENV` check). |
+| NFR-SEC-03 | `PUT /api/users/:id` is guarded by the `adminAuth` middleware so only admins can call it. Note: the controller passes `req.body` directly to `findByIdAndUpdate` without field filtering, so admins can update any field including `role`. |
 | NFR-SEC-04 | Admin-only routes (`/api/admin/*`, import routes) shall require the `adminAuth` middleware. |
 | NFR-SEC-05 | Role-based filtering shall be applied on `GET /api/projects`: students see only their own group's project; faculty see only mentored projects; admins see all. |
 
@@ -181,7 +181,7 @@ The portal is a standalone MERN-stack web application (MongoDB, Express.js, Reac
 | ID | Requirement |
 |---|---|
 | NFR-MAINT-01 | No production deployment shall include `console.log` debug statements in server controllers or middleware. |
-| NFR-MAINT-02 | Server startup must log the configured MongoDB URI (without credentials) to confirm environment. |
+| NFR-MAINT-02 | Server startup logs `'MongoDB connected'` on successful database connection. The URI itself is not printed. |
 | NFR-MAINT-03 | All API endpoints shall use the `/api/` prefix. The shared `api` Axios instance must be used by all client components. |
 
 ---
@@ -206,7 +206,7 @@ The portal is a standalone MERN-stack web application (MongoDB, Express.js, Reac
           │                │
 ┌─────────▼──────┐  ┌─────▼────────────┐
 │  MongoDB (ODM) │  │ SMTP (Nodemailer) │
-│  Mongoose 7    │  │ sendEmail utils  │
+│  Mongoose 9    │  │ sendEmail utils  │
 └────────────────┘  └──────────────────┘
 ```
 
@@ -217,9 +217,9 @@ The portal is a standalone MERN-stack web application (MongoDB, Express.js, Reac
 | Model | Key Fields |
 |---|---|
 | **User** | name, email, password (hashed), role (Student/Faculty/Admin), rollNumber, branch, semester, department, isVerified, isActive, maxGroups, batchConfigs |
-| **Group** | name, members[], status (Forming/ProposalPending/Approved/Assigned/Dissolved), targetBatch, project, isArchived |
-| **Project** | title, description, status (Draft/Pending/Approved/Rejected), group, faculty, updates[], midTermEvaluation, endTermEvaluation, submissions[], studentFeedback[], isArchived |
-| **Event** | type (group_formation/mid_term/end_term), startDate, endDate, extensionDate, isActive, batchYear, rubricParams |
+| **Group** | name, members[] (max 3), status (Forming/ProposalPending/Approved/Dissolved), targetBatch, project, isArchived |
+| **Project** | title, description, status (Draft/Pending/Approved/Rejected), group, faculty, updates[], midTermEvaluation, endTermEvaluation, finalReportEvaluation, submissions{}, studentFeedback[], isArchived, archivedMentorName |
+| **Event** | type (group_formation_project_proposal/mid_term_evaluation/end_term_evaluation), startDate, endDate, extensionDate, isActive, batchYear, rubricParams, createdBy |
 | **Panel** | faculty[], batchYear, room |
 
 ---
@@ -247,10 +247,10 @@ The portal is a standalone MERN-stack web application (MongoDB, Express.js, Reac
 |---|---|---|
 | `MONGO_URI` | Yes | Full MongoDB connection string |
 | `JWT_SECRET` | Yes | Secret for signing JWTs (min 32 chars recommended) |
-| `EMAIL_HOST` | Yes | SMTP host (e.g., `smtp.gmail.com`) |
-| `EMAIL_PORT` | Yes | SMTP port (e.g., `587`) |
-| `EMAIL_USER` | Yes | SMTP username/email address |
-| `EMAIL_PASS` | Yes | SMTP password or app password |
+| `EMAIL_HOST` | Recommended | SMTP host (e.g., `smtp.gmail.com`). Falls back to `smtp.gmail.com` if absent. |
+| `EMAIL_PORT` | Recommended | SMTP port (e.g., `587`). Falls back to `587` if absent. |
+| `EMAIL_USER` | Recommended | SMTP username/email address. Falls back to a placeholder — emails will fail silently. |
+| `EMAIL_PASS` | Recommended | SMTP password or app password. Falls back to a placeholder — emails will fail silently. |
 | `EMAIL_SECURE` | No | `true` for port 465, `false` otherwise |
 | `PORT` | No | Server port (default: 5000) |
 | `CLIENT_URL` | No | Frontend origin for CORS (default: `http://localhost:5173`) |
