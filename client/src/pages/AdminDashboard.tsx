@@ -1287,13 +1287,13 @@ const AdminDashboard: React.FC = () => {
                                                                 )}
                                                             </td>
                                                             <td className="px-6 py-4 text-right">
-                                                                <div className="flex items-center justify-end gap-1">
+                                                                <div className="flex items-center justify-end gap-2">
                                                                     <a
                                                                         href={`mailto:${f.email}`}
-                                                                        className="p-1.5 rounded-lg hover:bg-blue-50 text-neutral-400 hover:text-blue-600 transition-colors"
+                                                                        className="px-3 py-2 rounded-lg hover:bg-blue-100 text-blue-600 hover:text-blue-700 transition-colors font-medium text-xs flex items-center gap-1.5 border border-blue-200 hover:border-blue-300 cursor-pointer"
                                                                         title="Send email"
                                                                     >
-                                                                        <Mail className="w-4 h-4" />
+                                                                        <Mail className="w-4 h-4" /> Mail
                                                                     </a>
                                                                     <button
                                                                         onClick={() => handleToggleFacultyVerification(f)}

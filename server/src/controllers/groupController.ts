@@ -234,8 +234,9 @@ export const leaveGroup = async (req: Request, res: Response) => {
         // Remove user from group
         group.members = group.members.filter(m => m.toString() !== userId);
 
-        // If group becomes empty, dissolve it
+        // If group becomes empty, dissolve it and delete associated projects
         if (group.members.length === 0) {
+            await Project.deleteMany({ group: group._id });
             await Group.findByIdAndDelete(group._id);
             return res.json({ message: 'Left group. Group dissolved as it became empty.' });
         } else {
