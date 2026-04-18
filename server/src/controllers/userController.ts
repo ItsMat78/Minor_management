@@ -5,6 +5,7 @@ import Project from '../models/Project';
 import * as XLSX from 'xlsx';
 import fs from 'fs';
 import bcrypt from 'bcryptjs';
+import { publicUrlFor } from '../middleware/uploadMiddleware';
 
 export const getFaculty = async (req: Request, res: Response) => {
     try {
@@ -16,7 +17,7 @@ export const getFaculty = async (req: Request, res: Response) => {
         const batchYear = batchYearPrefix ? parseInt('20' + batchYearPrefix) : null;
 
         const facultyList = await User.find({ role: UserRole.FACULTY })
-            .select('name email department expertise currentStudents currentGroups maxStudents maxGroups batchConfigs isVerified')
+            .select('name email department expertise currentStudents currentGroups maxStudents maxGroups batchConfigs isVerified photoUrl')
             .lean();
 
         // Dynamically calculate counts for EACH faculty for THIS specific batch
@@ -114,10 +115,27 @@ export const getAllStudents = async (req: Request, res: Response) => {
             }
         }
 
-        // 2. Filter by Branch
-        const { branch, status: filterStatus, page: pageParam, limit: limitParam } = req.query;
-        if (branch && branch !== 'all') {
+        // 2. Filter by Branch / Batch / Verification / search
+        const { branch, status: filterStatus, page: pageParam, limit: limitParam, search, batch, verification } = req.query;
+        if (branch && branch !== 'all' && branch !== 'All') {
             query.branch = branch;
+        }
+        if (batch && batch !== 'All') {
+            const batchSuffix = (batch as string).slice(-2);
+            const batchClause = {
+                $or: [
+                    { rollNumber: { $regex: `^${batchSuffix}` }, targetBatch: { $in: [null, undefined, batch] } },
+                    { targetBatch: batch }
+                ]
+            };
+            query.$and = [...(query.$and || []), batchClause];
+        }
+        if (verification === 'Verified') query.isVerified = true;
+        if (verification === 'Unverified') query.isVerified = false;
+        if (search && typeof search === 'string' && search.trim()) {
+            const safe = search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const rx = new RegExp(safe, 'i');
+            query.$and = [...(query.$and || []), { $or: [{ name: rx }, { email: rx }, { rollNumber: rx }] }];
         }
 
         // Pagination (admin only — students always get their full cohort)
@@ -179,6 +197,51 @@ export const updateUser = async (req: Request, res: Response) => {
         res.json(user);
     } catch (error) {
         console.error("Error updating user:", error);
+        res.status(500).json({ message: 'Server error', error });
+    }
+};
+
+export const exportFaculty = async (req: Request, res: Response) => {
+    try {
+        const faculty = await User.find({ role: UserRole.FACULTY })
+            .select('name email department expertise maxStudents maxGroups currentStudents currentGroups isVerified photoUrl')
+            .lean();
+
+        const data = faculty.map((f: any) => ({
+            "Name": f.name,
+            "Email": f.email,
+            "Department": f.department || 'N/A',
+            "Expertise": (f.expertise || []).join(', '),
+            "Max Students": f.maxStudents || 21,
+            "Max Groups": f.maxGroups || 7,
+            "Activated": f.isVerified ? 'Yes' : 'No',
+        }));
+
+        const ws = XLSX.utils.json_to_sheet(data);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Faculty");
+        const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+        res.setHeader('Content-Disposition', 'attachment; filename="faculty_export.xlsx"');
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.send(buf);
+    } catch (error) {
+        console.error("Error exporting faculty:", error);
+        res.status(500).json({ message: 'Server error', error });
+    }
+};
+
+export const uploadProfilePhoto = async (req: Request, res: Response) => {
+    try {
+        const userId = (req as any).user.id;
+        const file = (req as any).file;
+        if (!file) return res.status(400).json({ message: 'No file uploaded' });
+
+        const photoUrl = publicUrlFor(req, file);
+
+        await User.findByIdAndUpdate(userId, { photoUrl });
+        res.json({ photoUrl });
+    } catch (error) {
+        console.error("Error uploading profile photo:", error);
         res.status(500).json({ message: 'Server error', error });
     }
 };
@@ -355,7 +418,8 @@ export const commitImport = async (req: Request, res: Response) => {
                     ...row,
                     password: defaultPassword,
                     isActive: false,
-                    isVerified: false
+                    isVerified: false,
+                    mustChangePassword: true
                 });
                 created++;
             } catch (err: any) {

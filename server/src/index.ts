@@ -2,6 +2,7 @@ import express from 'express';
 import dotenv from 'dotenv';
 import cors from 'cors';
 import mongoose from 'mongoose';
+import path from 'path';
 import { createServer } from 'http';
 import { initSocket } from './socket';
 
@@ -29,7 +30,9 @@ const port = process.env.PORT || 5000;
 
 app.use(cors());
 app.use(express.json());
-app.use('/uploads', express.static('uploads'));
+// Static file serving. UPLOAD_DIR can point to NAS/volume mount later.
+const uploadsPath = process.env.UPLOAD_DIR ? path.resolve(process.env.UPLOAD_DIR) : 'uploads';
+app.use('/uploads', express.static(uploadsPath));
 
 // Database Connection
 const mongoUri = process.env.MONGO_URI || 'mongodb://localhost:27017/minor_management';

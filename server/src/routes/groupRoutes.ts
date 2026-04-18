@@ -1,5 +1,5 @@
 import express from 'express';
-import { createGroup, getMyGroup, leaveGroup, getMyMentees, getAllGroups, updateGroup, getNextGroupNumber } from '../controllers/groupController';
+import { createGroup, getMyGroup, leaveGroup, getMyMentees, getAllGroups, updateGroup, getNextGroupNumber, acceptInvite, rejectInvite, getMyPendingInvites } from '../controllers/groupController';
 import { auth } from '../middleware/authMiddleware';
 import { UserRole } from '../models/User';
 
@@ -19,9 +19,12 @@ router.use(auth);
 router.post('/', createGroup);
 router.put('/:id', updateGroup);
 router.get('/my', getMyGroup);
+router.get('/my/invites', getMyPendingInvites);
 router.get('/mentees', getMyMentees);
 router.get('/', adminAuth, getAllGroups);
 router.get('/next-number', getNextGroupNumber);
 router.post('/leave', leaveGroup);
+router.post('/:id/accept', acceptInvite);
+router.post('/:id/reject', rejectInvite);
 
 export default router;

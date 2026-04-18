@@ -15,22 +15,32 @@ export interface IProject extends Document {
         comment: string;
         updatedAt: Date;
     }[];
+    studentEvaluations?: {
+        student: mongoose.Types.ObjectId;
+        stars: number;
+        attendance: 'present' | 'absent';
+        evalType: 'mid-term' | 'end-term';
+        updatedAt: Date;
+    }[];
     createdAt: Date;
     isArchived?: boolean;
     archivedMentorName?: string;
     updates: {
-        title?: string;
         content: string;
         date: Date;
         attachments?: string[];
         links?: string[];
+        createdBy?: mongoose.Types.ObjectId;
     }[];
     hasNewUpdate: boolean;
     submissions?: {
         midTermReport?: string;
         midTermPPT?: string;
+        midTermPlagiarism?: string;
         endTermReport?: string;
         endTermPPT?: string;
+        endTermPlagiarism?: string;
+        // Legacy fields — kept for backward compatibility with existing data, no longer written
         finalReport?: string;
         finalPPT?: string;
         plagiarismReport?: string;
@@ -99,19 +109,29 @@ const ProjectSchema: Schema = new Schema({
         comment: { type: String, required: true },
         updatedAt: { type: Date, default: Date.now }
     }],
+    studentEvaluations: [{
+        student: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+        stars: { type: Number, min: 0, max: 5, default: 0 },
+        attendance: { type: String, enum: ['present', 'absent'], default: 'present' },
+        evalType: { type: String, enum: ['mid-term', 'end-term'] },
+        updatedAt: { type: Date, default: Date.now }
+    }],
     updates: [{
-        title: { type: String },
         content: { type: String, required: true },
         date: { type: Date, default: Date.now },
         attachments: [{ type: String }],
-        links: [{ type: String }]
+        links: [{ type: String }],
+        createdBy: { type: Schema.Types.ObjectId, ref: 'User' }
     }],
     hasNewUpdate: { type: Boolean, default: false }, // Flag for faculty notification
     submissions: {
         midTermReport: { type: String },
         midTermPPT: { type: String },
+        midTermPlagiarism: { type: String },
         endTermReport: { type: String },
         endTermPPT: { type: String },
+        endTermPlagiarism: { type: String },
+        // Legacy fields — read-only
         finalReport: { type: String },
         finalPPT: { type: String },
         plagiarismReport: { type: String }

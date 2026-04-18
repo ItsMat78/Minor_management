@@ -417,8 +417,8 @@ const renderEvalCard = (item: any, activeTab: string, handleOpenEvaluation: any,
 const FacultyDashboard: React.FC = () => {
     const { user, logout, activeEvents } = useAuth();
     const navigate = useNavigate();
-    const [searchParams] = useSearchParams();
-    const initialTab = searchParams.get('tab') as 'proposals' | 'mentees' | 'profile' | 'directory' | null;
+    const [searchParams, setSearchParams] = useSearchParams();
+    const initialTab = searchParams.get('tab') as 'proposals' | 'mentees' | 'profile' | 'directory' | 'mid-term' | 'end-term' | null;
     const [projects, setProjects] = useState<Project[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedProject, setSelectedProject] = useState<Project | null>(null);
@@ -427,6 +427,15 @@ const FacultyDashboard: React.FC = () => {
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
     const [activeTab, setActiveTab] = useState<'proposals' | 'mentees' | 'profile' | 'directory' | 'mid-term' | 'end-term'>(initialTab || 'mentees'); // Removed 'final-report'
+
+    useEffect(() => {
+        const current = searchParams.get('tab');
+        if (current !== activeTab) {
+            const next = new URLSearchParams(searchParams);
+            next.set('tab', activeTab);
+            setSearchParams(next, { replace: true });
+        }
+    }, [activeTab]);
     const [mentees, setMentees] = useState<any[]>([]);
     const [students, setStudents] = useState<any[]>([]);
     const [loadingStudents, setLoadingStudents] = useState(false);
@@ -440,6 +449,9 @@ const FacultyDashboard: React.FC = () => {
     const [evaluationRemarks, setEvaluationRemarks] = useState<string>('');
     const [evaluationDetails, setEvaluationDetails] = useState<any>({});
     const [evaluationType, setEvaluationType] = useState<'mid-term' | 'end-term' | null>(null); // Removed 'final-report'
+    const [evaluationFeedback, setEvaluationFeedback] = useState<string>('');
+    const [savingFeedback, setSavingFeedback] = useState(false);
+    const [studentEvalData, setStudentEvalData] = useState<Record<string, { stars: number; attendance: 'present' | 'absent' }>>({});
 
     // Filters & Search
     const [searchTerm, setSearchTerm] = useState('');
@@ -630,8 +642,35 @@ const FacultyDashboard: React.FC = () => {
         setEvaluationDetails(initialDetails);
         setEvaluationMarks(existingEval?.marks || 0);
         setEvaluationRemarks(existingEval?.remarks || '');
-        // Restore the mode that was last used, defaulting to Direct Entry for new evaluations
+        setEvaluationFeedback(projectData?.feedback || '');
         setManualMarksMode(existingEval ? existingEval.evaluationMode !== 'rubric' : true);
+
+        // Initialize per-student evaluation data
+        const members = item.members || item.group?.members || [];
+        const existingStudentEvals = (projectData?.studentEvaluations || []).filter((e: any) => e.evalType === type);
+        const initStudentData: Record<string, { stars: number; attendance: 'present' | 'absent' }> = {};
+        members.forEach((m: any) => {
+            const ev = existingStudentEvals.find((e: any) => String(e.student?._id || e.student) === String(m._id));
+            initStudentData[m._id] = { stars: ev?.stars || 0, attendance: ev?.attendance || 'present' };
+        });
+        setStudentEvalData(initStudentData);
+    };
+
+    const handleSaveEvaluationFeedback = async () => {
+        if (!evaluatingProject) return;
+        const projectData = evaluatingProject.project || evaluatingProject;
+        const projectId = projectData._id;
+        setSavingFeedback(true);
+        try {
+            await api.put(`/projects/${projectId}/feedback`, { feedback: evaluationFeedback });
+            await fetchMentees();
+            await fetchPanelGroups();
+        } catch (error) {
+            console.error('Failed to save feedback', error);
+            alert('Failed to save feedback.');
+        } finally {
+            setSavingFeedback(false);
+        }
     };
 
     const handleDetailChange = (section: string, field: string, value: number | string) => {
@@ -718,6 +757,16 @@ const FacultyDashboard: React.FC = () => {
 
             await api.put(`/projects/${projectId}/evaluation`, payload);
 
+            // Save per-student evaluations
+            if (Object.keys(studentEvalData).length > 0) {
+                const evaluations = Object.entries(studentEvalData).map(([studentId, data]) => ({
+                    studentId,
+                    stars: data.stars,
+                    attendance: data.attendance,
+                }));
+                await api.put(`/projects/${projectId}/student-evaluations`, { evaluations, evalType: evaluationType });
+            }
+
             // Refresh Data
             await fetchMentees();
             await fetchPanelGroups();
@@ -727,6 +776,7 @@ const FacultyDashboard: React.FC = () => {
             setEvaluationMarks(0);
             setEvaluationRemarks('');
             setManualMarksMode(false);
+            setStudentEvalData({});
         } catch (error) {
             console.error("Failed to submit evaluation", error);
             alert("Failed to submit evaluation. Check console for details.");
@@ -943,8 +993,32 @@ const FacultyDashboard: React.FC = () => {
                         /* Profile View */
                         <div className="max-w-2xl mx-auto">
                             <div className="bg-white p-10 rounded-3xl border border-neutral-200 shadow-sm text-center">
-                                <div className="h-24 w-24 bg-indigo-100 rounded-full flex items-center justify-center mx-auto mb-6 text-indigo-600 font-bold text-3xl">
-                                    {user?.name.charAt(0)}
+                                <div className="relative inline-block mb-6">
+                                    {user?.photoUrl ? (
+                                        <img src={user.photoUrl} alt={user.name} className="h-24 w-24 rounded-full object-cover border-4 border-indigo-100 shadow-md mx-auto" />
+                                    ) : (
+                                        <div className="h-24 w-24 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-600 font-bold text-3xl mx-auto">
+                                            {user?.name.charAt(0)}
+                                        </div>
+                                    )}
+                                    <label className="absolute bottom-0 right-0 bg-indigo-600 text-white rounded-full p-1.5 cursor-pointer hover:bg-indigo-700 shadow-md" title="Upload photo">
+                                        <Settings className="w-3.5 h-3.5" />
+                                        <input
+                                            type="file"
+                                            accept="image/*"
+                                            className="hidden"
+                                            onChange={async (e) => {
+                                                const file = e.target.files?.[0];
+                                                if (!file) return;
+                                                const fd = new FormData();
+                                                fd.append('photo', file);
+                                                try {
+                                                    await api.post('/users/profile-photo', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+                                                    window.location.reload();
+                                                } catch { alert('Photo upload failed'); }
+                                            }}
+                                        />
+                                    </label>
                                 </div>
                                 <h2 className="text-3xl font-bold text-neutral-900">{user?.name}</h2>
                                 <p className="text-lg text-neutral-500 mt-2">{user?.email}</p>
@@ -1878,25 +1952,56 @@ const FacultyDashboard: React.FC = () => {
                                         </p>
                                     </div>
 
-                                    {/* Team Members */}
+                                    {/* Team Members with Star Rating & Attendance */}
                                     {((evaluatingProject?.members) || (evaluatingProject?.group?.members))?.length > 0 && (
                                         <div>
                                             <h4 className="flex items-center gap-2 text-sm font-bold text-neutral-900 mb-3">
                                                 <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
-                                                Team Members
+                                                Student Evaluation
                                             </h4>
-                                            <div className="space-y-2">
-                                                {(evaluatingProject?.members || evaluatingProject?.group?.members).map((member: any) => (
-                                                    <div key={member._id} className="flex items-center gap-3 p-2 rounded-xl hover:bg-neutral-50 transition-colors">
-                                                        <div className="w-8 h-8 rounded-full bg-indigo-50 text-indigo-700 flex items-center justify-center font-bold text-xs ring-1 ring-indigo-100">
-                                                            {member.name?.charAt(0) || '?'}
+                                            <div className="space-y-3">
+                                                {(evaluatingProject?.members || evaluatingProject?.group?.members).map((member: any) => {
+                                                    const sd = studentEvalData[member._id] || { stars: 0, attendance: 'present' };
+                                                    return (
+                                                        <div key={member._id} className="p-3 rounded-xl bg-neutral-50 border border-neutral-100">
+                                                            <div className="flex items-center gap-3 mb-2">
+                                                                <div className="w-8 h-8 rounded-full bg-indigo-50 text-indigo-700 flex items-center justify-center font-bold text-xs ring-1 ring-indigo-100 shrink-0">
+                                                                    {member.name?.charAt(0) || '?'}
+                                                                </div>
+                                                                <div className="flex-1 min-w-0">
+                                                                    <p className="text-sm font-bold text-neutral-900 truncate">{member.name}</p>
+                                                                    <p className="text-xs text-neutral-500 font-medium">{member.rollNumber}</p>
+                                                                </div>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setStudentEvalData(prev => ({
+                                                                        ...prev,
+                                                                        [member._id]: { ...sd, attendance: sd.attendance === 'present' ? 'absent' : 'present' }
+                                                                    }))}
+                                                                    className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider border-2 cursor-pointer transition-all select-none shadow-sm hover:scale-105 active:scale-95 ${sd.attendance === 'present' ? 'bg-emerald-500 text-white border-emerald-600 hover:bg-emerald-600' : 'bg-red-500 text-white border-red-600 hover:bg-red-600'}`}
+                                                                >
+                                                                    {sd.attendance === 'present' ? '✓ Present' : '✗ Absent'}
+                                                                </button>
+                                                            </div>
+                                                            <div className="flex items-center gap-1 ml-11">
+                                                                {[1,2,3,4,5].map(star => (
+                                                                    <button
+                                                                        key={star}
+                                                                        type="button"
+                                                                        onClick={() => setStudentEvalData(prev => ({
+                                                                            ...prev,
+                                                                            [member._id]: { ...sd, stars: star }
+                                                                        }))}
+                                                                        className={`text-lg transition-colors ${star <= sd.stars ? 'text-amber-400' : 'text-neutral-300 hover:text-amber-300'}`}
+                                                                    >
+                                                                        ★
+                                                                    </button>
+                                                                ))}
+                                                                <span className="text-xs text-neutral-400 ml-1">{sd.stars > 0 ? `${sd.stars}/5` : 'Rate'}</span>
+                                                            </div>
                                                         </div>
-                                                        <div>
-                                                            <p className="text-sm font-bold text-neutral-900">{member.name}</p>
-                                                            <p className="text-xs text-neutral-500 font-medium">{member.rollNumber}</p>
-                                                        </div>
-                                                    </div>
-                                                ))}
+                                                    );
+                                                })}
                                             </div>
                                         </div>
                                     )}
@@ -1931,6 +2036,28 @@ const FacultyDashboard: React.FC = () => {
                                                     );
                                                 })}
                                             </div>
+                                        </div>
+                                    )}
+
+                                    {evaluationType === 'end-term' && (
+                                        <div>
+                                            <h4 className="flex items-center gap-2 text-sm font-bold text-neutral-900 mb-3">
+                                                <div className="w-1.5 h-1.5 rounded-full bg-orange-500"></div>
+                                                Faculty Feedback
+                                            </h4>
+                                            <textarea
+                                                value={evaluationFeedback}
+                                                onChange={(e) => setEvaluationFeedback(e.target.value)}
+                                                placeholder="Share overall feedback visible to the team on their project..."
+                                                className="w-full px-3 py-2 rounded-xl border border-neutral-200 focus:outline-none focus:ring-2 focus:ring-orange-500/20 text-sm h-[120px] resize-none bg-orange-50/30"
+                                            />
+                                            <button
+                                                onClick={handleSaveEvaluationFeedback}
+                                                disabled={savingFeedback}
+                                                className="mt-2 w-full py-2 bg-orange-600 text-white text-xs font-bold rounded-lg hover:bg-orange-700 disabled:opacity-50"
+                                            >
+                                                {savingFeedback ? 'Saving...' : 'Save Feedback'}
+                                            </button>
                                         </div>
                                     )}
                                 </div>

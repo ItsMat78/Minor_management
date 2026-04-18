@@ -4,6 +4,7 @@ import Group from '../models/Group';
 import User, { UserRole } from '../models/User';
 import mongoose from 'mongoose';
 import { sendProposalStatusEmail, sendProposalSubmissionEmail, sendEmail } from '../utils/emailService';
+import { publicUrlFor } from '../middleware/uploadMiddleware';
 import Panel from '../models/Panel';
 
 // ... (imports)
@@ -17,6 +18,9 @@ export const createProject = async (req: Request, res: Response) => {
         const group = await Group.findOne({ members: userId });
         if (!group) {
             return res.status(400).json({ message: 'You must be in a group to propose a project' });
+        }
+        if (group.pendingMembers && group.pendingMembers.length > 0) {
+            return res.status(400).json({ message: 'All invited members must accept before submitting a proposal.' });
         }
 
         // Check if group already has a project pending or approved
@@ -95,6 +99,7 @@ export const getFacultyProjects = async (req: Request, res: Response) => {
                 path: 'group',
                 populate: { path: 'members', select: 'name email rollNumber branch' }
             })
+            .populate('updates.createdBy', 'name role')
             .sort({ hasNewUpdate: -1, createdAt: -1 });
         res.json(projects);
     } catch (error) {
@@ -254,7 +259,8 @@ export const getProjects = async (req: Request, res: Response) => {
 
         let projectQuery = Project.find(query)
             .populate('group', 'name members targetBatch')
-            .populate('faculty', 'name email')
+            .populate('faculty', 'name email department photoUrl')
+            .populate('updates.createdBy', 'name role')
             .sort({ createdAt: -1 });
 
         if (usePagination) {
@@ -292,7 +298,7 @@ export const getArchivedProjects = async (req: Request, res: Response) => {
 export const addUpdate = async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
-        const { title, content, links } = req.body;
+        const { content, links } = req.body;
         const userId = (req as any).user.id;
         const files = (req as any).files;
 
@@ -311,26 +317,23 @@ export const addUpdate = async (req: Request, res: Response) => {
 
         let fileUrls: string[] = [];
         if (files && files.length > 0) {
-            fileUrls = files.map((f: any) => `${req.protocol}://${req.get('host')}/uploads/${f.filename}`);
+            fileUrls = files.map((f: any) => publicUrlFor(req, f));
         }
 
         let linkUrls: string[] = [];
         if (links) {
             if (Array.isArray(links)) linkUrls = links;
             else if (typeof links === 'string') {
-                // If it's a comma separated string, split it.
-                // FormData usually sends arrays as duplicate keys or just strings.
-                // Our frontend sends comma separated string for now.
                 linkUrls = links.split(',').map((l: string) => l.trim()).filter(Boolean);
             }
         }
 
         project.updates.push({
-            title,
             content,
             date: new Date(),
             attachments: fileUrls,
-            links: linkUrls
+            links: linkUrls,
+            createdBy: userId
         });
         if (isFaculty) {
             project.hasNewUpdate = false;
@@ -339,16 +342,30 @@ export const addUpdate = async (req: Request, res: Response) => {
         }
         await project.save();
 
-        // Notify faculty mentor when a student posts an update
+        const groupName = group?.name || 'Unknown Group';
+        const authorUser = await User.findById(userId).select('name');
+        const authorName = authorUser?.name || 'Unknown';
+
+        // Notify faculty when a student posts an update
         if (isMember && !isFaculty && project.faculty) {
             const facultyUser = await User.findById(project.faculty).select('email name');
             if (facultyUser?.email) {
-                const groupName = group?.name || 'Unknown Group';
-                const updateHeading = title || 'New Progress Update';
-                const subject = `[Group ${groupName}] New Progress Update: ${updateHeading}`;
-                const text = `Group "${groupName}" has posted a new progress update titled "${updateHeading}". Please log in to the portal to review it.`;
-                const html = `<div style="font-family:sans-serif;padding:20px"><h2 style="color:#4f46e5">New Progress Update</h2><p><strong>Group:</strong> ${groupName}</p><p><strong>Update:</strong> ${updateHeading}</p><p style="color:#6b7280">${content}</p><p>Please log in to the Minor Management Portal to view the full update.</p></div>`;
-                sendEmail(facultyUser.email, subject, text, html).catch(err => console.error('Progress update email failed:', err));
+                const subject = `[Group ${groupName}] New Progress Update`;
+                const text = `${authorName} (Group "${groupName}") has posted a new progress update.\n\n${content}`;
+                const html = `<div style="font-family:sans-serif;padding:20px"><h2 style="color:#4f46e5">New Progress Update</h2><p><strong>Group:</strong> ${groupName}</p><p><strong>By:</strong> ${authorName}</p><p style="color:#6b7280">${content}</p><p>Please log in to the Minor Management Portal to view the full update.</p></div>`;
+                sendEmail(facultyUser.email, subject, text, html).catch(err => console.error('Progress update email to faculty failed:', err));
+            }
+        }
+
+        // Notify group members when faculty posts an update
+        if (isFaculty && group && group.members.length > 0) {
+            const memberUsers = await User.find({ _id: { $in: group.members } }).select('email');
+            const memberEmails = memberUsers.map((u: any) => u.email).filter(Boolean);
+            if (memberEmails.length > 0) {
+                const subject = `[Group ${groupName}] Your mentor posted a new update`;
+                const text = `${authorName} (Faculty Mentor) has posted a new update for Group ${groupName}.\n\n${content}`;
+                const html = `<div style="font-family:sans-serif;padding:20px"><h2 style="color:#4f46e5">New Mentor Update</h2><p><strong>Group:</strong> ${groupName}</p><p><strong>From:</strong> ${authorName} (Faculty Mentor)</p><p style="color:#6b7280">${content}</p><p>Please log in to the Minor Management Portal to view the full update.</p></div>`;
+                sendEmail(memberEmails, subject, text, html).catch(err => console.error('Progress update email to students failed:', err));
             }
         }
 
@@ -417,7 +434,7 @@ export const updateProject = async (req: Request, res: Response) => {
         }
 
         if (files && files.length > 0) {
-            const newUrls = files.map((f: any) => `${req.protocol}://${req.get('host')}/uploads/${f.filename}`);
+            const newUrls = files.map((f: any) => publicUrlFor(req, f));
             fileUrls = [...fileUrls, ...newUrls];
         }
 
@@ -600,16 +617,16 @@ export const uploadSubmissions = async (req: Request, res: Response) => {
             project.submissions = {};
         }
 
+        const urlOf = (f: Express.Multer.File) => publicUrlFor(req, f);
+
         if (evalType === 'mid_term_evaluation') {
-            if (files?.report) project.submissions.midTermReport = `/uploads/${files.report[0].filename}`;
-            if (files?.ppt) project.submissions.midTermPPT = `/uploads/${files.ppt[0].filename}`;
+            if (files?.report) project.submissions.midTermReport = urlOf(files.report[0]);
+            if (files?.ppt) project.submissions.midTermPPT = urlOf(files.ppt[0]);
+            if (files?.plagiarismReport) project.submissions.midTermPlagiarism = urlOf(files.plagiarismReport[0]);
         } else if (evalType === 'end_term_evaluation') {
-            if (files?.report) project.submissions.endTermReport = `/uploads/${files.report[0].filename}`;
-            if (files?.ppt) project.submissions.endTermPPT = `/uploads/${files.ppt[0].filename}`;
-        } else if (evalType === 'final_evaluation') {
-            if (files?.report) project.submissions.finalReport = `/uploads/${files.report[0].filename}`;
-            if (files?.ppt) project.submissions.finalPPT = `/uploads/${files.ppt[0].filename}`;
-            if (files?.plagiarismReport) project.submissions.plagiarismReport = `/uploads/${files.plagiarismReport[0].filename}`;
+            if (files?.report) project.submissions.endTermReport = urlOf(files.report[0]);
+            if (files?.ppt) project.submissions.endTermPPT = urlOf(files.ppt[0]);
+            if (files?.plagiarismReport) project.submissions.endTermPlagiarism = urlOf(files.plagiarismReport[0]);
         } else {
             return res.status(400).json({ message: 'Invalid evaluation type for submission' });
         }
@@ -674,6 +691,52 @@ export const setStudentFeedback = async (req: Request, res: Response) => {
         res.json({ message: 'Student feedback saved', studentFeedback: project.studentFeedback });
     } catch (error) {
         console.error('setStudentFeedback error:', error);
+        res.status(500).json({ message: 'Server error', error });
+    }
+};
+
+export const saveStudentEvaluations = async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const { evaluations, evalType } = req.body; // evaluations: [{studentId, stars, attendance}]
+        const userId = (req as any).user.id;
+
+        if (!evaluations || !Array.isArray(evaluations)) {
+            return res.status(400).json({ message: 'evaluations array required' });
+        }
+
+        const project = await Project.findById(id);
+        if (!project) return res.status(404).json({ message: 'Project not found' });
+
+        const isAuthorized = String(project.faculty) === userId || (req as any).user.role === 'Admin';
+        if (!isAuthorized) return res.status(403).json({ message: 'Not authorized' });
+
+        if (!project.studentEvaluations) project.studentEvaluations = [];
+
+        for (const ev of evaluations) {
+            const existing = project.studentEvaluations.find(
+                (e: any) => String(e.student) === ev.studentId && e.evalType === evalType
+            );
+            if (existing) {
+                existing.stars = ev.stars;
+                existing.attendance = ev.attendance;
+                existing.updatedAt = new Date();
+            } else {
+                project.studentEvaluations.push({
+                    student: new mongoose.Types.ObjectId(ev.studentId),
+                    stars: ev.stars,
+                    attendance: ev.attendance,
+                    evalType,
+                    updatedAt: new Date()
+                });
+            }
+        }
+
+        project.markModified('studentEvaluations');
+        await project.save();
+        res.json({ message: 'Student evaluations saved', studentEvaluations: project.studentEvaluations });
+    } catch (error) {
+        console.error('saveStudentEvaluations error:', error);
         res.status(500).json({ message: 'Server error', error });
     }
 };

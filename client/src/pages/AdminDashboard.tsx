@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import { Search, Users, Clock, CheckCircle, FileText, X, LogOut, ChevronDown, ChevronUp, Settings, Menu, Calendar, Download, AlertCircle, AlertTriangle, Save, Pencil, LayoutGrid, MoreVertical, Plus, Edit3, Power, Info, Trash2, Upload, Mail, Copy, Check, UserCheck, UserX, ShieldCheck, ShieldOff } from 'lucide-react';
@@ -29,8 +30,19 @@ export const getOriginalGroupBatchYear = (group: any) => {
 
 const AdminDashboard: React.FC = () => {
     const { user, logout } = useAuth();
-    const [activeTab, setActiveTab] = useState<'overview' | 'students' | 'groups' | 'faculty' | 'events' | 'exports' | 'panels'>('overview');
+    const [searchParams, setSearchParams] = useSearchParams();
+    const initialAdminTab = searchParams.get('tab') as 'overview' | 'students' | 'groups' | 'faculty' | 'events' | 'exports' | 'panels' | null;
+    const [activeTab, setActiveTab] = useState<'overview' | 'students' | 'groups' | 'faculty' | 'events' | 'exports' | 'panels'>(initialAdminTab || 'overview');
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+
+    useEffect(() => {
+        const current = searchParams.get('tab');
+        if (current !== activeTab) {
+            const next = new URLSearchParams(searchParams);
+            next.set('tab', activeTab);
+            setSearchParams(next, { replace: true });
+        }
+    }, [activeTab]);
 
     // Data State
     const [students, setStudents] = useState<any[]>([]);
@@ -117,6 +129,7 @@ const AdminDashboard: React.FC = () => {
     const [importFile, setImportFile] = useState<File | null>(null);
     const [importPreview, setImportPreview] = useState<{ validRows: any[], invalidRows: any[], totalRows: number } | null>(null);
     const [importLoading, setImportLoading] = useState(false);
+    const [smartImportTarget, setSmartImportTarget] = useState<'student' | 'faculty' | null>(null);
 
     // Excel full import state
     const [excelImportFile, setExcelImportFile] = useState<File | null>(null);
@@ -564,6 +577,22 @@ const AdminDashboard: React.FC = () => {
         }
     };
 
+    const handleExportFaculty = async () => {
+        try {
+            const response = await api.get('/users/faculty/export', { responseType: 'blob' });
+            const url = window.URL.createObjectURL(new Blob([response.data]));
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', 'faculty_export.xlsx');
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+        } catch (error) {
+            console.error('Faculty export failed', error);
+            alert('Failed to export faculty');
+        }
+    };
+
     const DEFAULT_RUBRICS: Record<string, any[]> = {
         mid_term_evaluation: [
             {
@@ -847,20 +876,6 @@ const AdminDashboard: React.FC = () => {
                                         </>
                                     )}
 
-                                    {/* Smart Import Button */}
-                                    {(activeTab === 'students' || activeTab === 'faculty') && (
-                                        <button
-                                            onClick={() => {
-                                                setImportFile(null);
-                                                setImportPreview(null);
-                                                setShowImportModal(true);
-                                            }}
-                                            className="px-4 py-2 bg-indigo-50 text-indigo-700 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-indigo-100 transition-colors border border-indigo-100 shadow-sm"
-                                        >
-                                            <Upload className="w-4 h-4" /> Import Data
-                                        </button>
-                                    )}
-
                                     {activeTab === 'groups' && (
                                         <>
                                             {/* Faculty Filter Dropdown */}
@@ -1047,28 +1062,6 @@ const AdminDashboard: React.FC = () => {
                                                             <p className="text-xs text-neutral-500">Add a student or faculty account</p>
                                                         </div>
                                                     </button>
-                                                    <button
-                                                        onClick={async () => {
-                                                            if (!window.confirm('This will mark ALL current students as inactive (isActive = false) for the new semester. This action cannot be undone easily. Proceed?')) return;
-                                                            try {
-                                                                const res = await api.post('/admin/mark-students-inactive');
-                                                                alert(`Done: ${res.data.modifiedCount} students marked inactive.`);
-                                                                const statsRes = await api.get('/admin/stats');
-                                                                setStats(statsRes.data);
-                                                            } catch (e: any) {
-                                                                alert('Failed: ' + (e.response?.data?.message || e.message));
-                                                            }
-                                                        }}
-                                                        className="flex items-center gap-3 p-4 rounded-2xl border border-neutral-200 hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700 transition-all text-left group"
-                                                    >
-                                                        <div className="w-10 h-10 rounded-full bg-rose-100 flex items-center justify-center text-rose-600 group-hover:scale-110 transition-transform">
-                                                            <UserX className="w-5 h-5" />
-                                                        </div>
-                                                        <div>
-                                                            <p className="font-bold text-neutral-900 group-hover:text-rose-700">Mark Students Inactive</p>
-                                                            <p className="text-xs text-neutral-500">Reset activation for new semester</p>
-                                                        </div>
-                                                    </button>
                                                 </div>
                                             </div>
                                         </div>
@@ -1080,12 +1073,11 @@ const AdminDashboard: React.FC = () => {
                                                     <h3 className="text-lg font-bold text-neutral-900 mb-4 flex items-center gap-2">
                                                         <LayoutGrid className="w-5 h-5 text-emerald-600" /> Group Status Breakdown
                                                     </h3>
-                                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                                                         {[
                                                             { label: 'Forming', val: stats?.groupsByStatus?.Forming ?? 0, color: 'amber' },
                                                             { label: 'Proposal Pending', val: stats?.groupsByStatus?.ProposalPending ?? 0, color: 'orange' },
                                                             { label: 'Approved', val: stats?.groupsByStatus?.Approved ?? 0, color: 'emerald' },
-                                                            { label: 'Assigned', val: stats?.groupsByStatus?.Assigned ?? 0, color: 'indigo' },
                                                         ].map(({ label, val, color }) => (
                                                             <div key={label} onClick={() => setActiveTab('groups')} className={`cursor-pointer p-4 rounded-2xl bg-${color}-50 border border-${color}-100 hover:shadow-md transition-all`}>
                                                                 <p className={`text-xs font-bold uppercase tracking-wider text-${color}-600 mb-1`}>{label}</p>
@@ -1263,10 +1255,19 @@ const AdminDashboard: React.FC = () => {
                                                     .map((f: any) => (
                                                         <tr key={f._id} className="hover:bg-neutral-50">
                                                             <td className="px-6 py-4">
-                                                                <div className="flex flex-col gap-0.5">
-                                                                    <span className="font-semibold text-neutral-900">{f.name}</span>
-                                                                    <span className="text-xs text-neutral-400">{f.email}</span>
-                                                                    {f.department && <span className="text-xs text-neutral-400">{f.department}</span>}
+                                                                <div className="flex items-center gap-3">
+                                                                    {f.photoUrl ? (
+                                                                        <img src={f.photoUrl} alt={f.name} className="w-9 h-9 rounded-full object-cover shrink-0 border border-neutral-200" />
+                                                                    ) : (
+                                                                        <div className="w-9 h-9 rounded-full bg-orange-100 text-orange-700 flex items-center justify-center font-bold text-sm shrink-0">
+                                                                            {f.name?.charAt(0) || 'F'}
+                                                                        </div>
+                                                                    )}
+                                                                    <div className="flex flex-col gap-0.5">
+                                                                        <span className="font-semibold text-neutral-900">{f.name}</span>
+                                                                        <span className="text-xs text-neutral-400">{f.email}</span>
+                                                                        {f.department && <span className="text-xs text-neutral-400">{f.department}</span>}
+                                                                    </div>
                                                                 </div>
                                                             </td>
                                                             <td className="px-6 py-4">
@@ -2012,6 +2013,25 @@ const AdminDashboard: React.FC = () => {
                                             </div>
                                         </div>
 
+                                        {/* ── Faculty Export ─────────────────────────────────── */}
+                                        <div className="bg-white rounded-2xl border border-neutral-200 p-6 flex items-center justify-between shadow-sm">
+                                            <div className="flex items-center gap-4">
+                                                <div className="h-12 w-12 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600">
+                                                    <Users className="w-6 h-6" />
+                                                </div>
+                                                <div>
+                                                    <h3 className="text-lg font-bold text-neutral-900">Faculty Directory Export</h3>
+                                                    <p className="text-sm text-neutral-500">Export faculty list with department, limits, and account status.</p>
+                                                </div>
+                                            </div>
+                                            <button
+                                                onClick={handleExportFaculty}
+                                                className="px-6 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition-colors flex items-center gap-2"
+                                            >
+                                                <Download className="w-4 h-4" /> Export Excel
+                                            </button>
+                                        </div>
+
                                         {/* ── Snapshot Export ──────────────────────────────────── */}
                                         <div className="bg-white rounded-2xl border border-neutral-200 p-6 flex items-center justify-between shadow-sm">
                                             <div className="flex items-center gap-4">
@@ -2048,6 +2068,56 @@ const AdminDashboard: React.FC = () => {
                                             <div className="flex-1 h-px bg-neutral-200" />
                                         </div>
 
+                                        {/* ── Faculty CSV Import ────────────────────────────────── */}
+                                        <div className="bg-white rounded-2xl border border-neutral-200 p-6 flex items-center justify-between shadow-sm">
+                                            <div className="flex items-center gap-4">
+                                                <div className="h-12 w-12 bg-rose-50 rounded-xl flex items-center justify-center text-rose-600">
+                                                    <Upload className="w-6 h-6" />
+                                                </div>
+                                                <div>
+                                                    <h3 className="text-lg font-bold text-neutral-900">Faculty CSV Import <span className="ml-2 text-xs font-semibold bg-rose-100 text-rose-700 px-2 py-0.5 rounded-full">Step 1</span></h3>
+                                                    <p className="text-sm text-neutral-500">Add faculty accounts by uploading a CSV/Excel with Name, Email, Department.</p>
+                                                </div>
+                                            </div>
+                                            <button
+                                                onClick={() => {
+                                                    setSmartImportTarget('faculty');
+                                                    setImportFile(null);
+                                                    setImportPreview(null);
+                                                    setSimpleImportResult(null);
+                                                    setShowImportModal(true);
+                                                }}
+                                                className="px-6 py-2 bg-rose-600 text-white rounded-lg font-medium hover:bg-rose-700 transition-colors flex items-center gap-2"
+                                            >
+                                                <Upload className="w-4 h-4" /> Import Faculty
+                                            </button>
+                                        </div>
+
+                                        {/* ── Student CSV Import ────────────────────────────────── */}
+                                        <div className="bg-white rounded-2xl border border-neutral-200 p-6 flex items-center justify-between shadow-sm">
+                                            <div className="flex items-center gap-4">
+                                                <div className="h-12 w-12 bg-emerald-50 rounded-xl flex items-center justify-center text-emerald-600">
+                                                    <Upload className="w-6 h-6" />
+                                                </div>
+                                                <div>
+                                                    <h3 className="text-lg font-bold text-neutral-900">Student CSV Import <span className="ml-2 text-xs font-semibold bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">Step 2</span></h3>
+                                                    <p className="text-sm text-neutral-500">Register student accounts (Name, Email, RollNumber) so they can receive activation OTPs.</p>
+                                                </div>
+                                            </div>
+                                            <button
+                                                onClick={() => {
+                                                    setSmartImportTarget('student');
+                                                    setImportFile(null);
+                                                    setImportPreview(null);
+                                                    setSimpleImportResult(null);
+                                                    setShowImportModal(true);
+                                                }}
+                                                className="px-6 py-2 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 transition-colors flex items-center gap-2"
+                                            >
+                                                <Upload className="w-4 h-4" /> Import Students
+                                            </button>
+                                        </div>
+
                                         {/* ── Full Excel Import ─────────────────────────────────── */}
                                         <div className="bg-white rounded-2xl border border-neutral-200 shadow-sm overflow-hidden">
                                             <div className="p-6 flex items-center justify-between">
@@ -2056,8 +2126,8 @@ const AdminDashboard: React.FC = () => {
                                                         <Upload className="w-6 h-6" />
                                                     </div>
                                                     <div>
-                                                        <h3 className="text-lg font-bold text-neutral-900">Full Excel Import <span className="ml-2 text-xs font-semibold bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">Step 2</span></h3>
-                                                        <p className="text-sm text-neutral-500">Import groups and projects from an IIITNR Excel sheet. Run the student CSV import (Step 1) first so students are matched by roll number.</p>
+                                                        <h3 className="text-lg font-bold text-neutral-900">Full Excel Import <span className="ml-2 text-xs font-semibold bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">Step 3</span></h3>
+                                                        <p className="text-sm text-neutral-500">Import groups and projects from an IIITNR Excel sheet. Run Faculty (Step 1) and Student (Step 2) CSV imports first so users are matched by email/roll number.</p>
                                                     </div>
                                                 </div>
                                             </div>
@@ -3459,7 +3529,7 @@ const AdminDashboard: React.FC = () => {
                             <div className="px-6 py-4 border-b border-neutral-100 flex items-center justify-between bg-neutral-50/50">
                                 <h3 className="text-xl font-bold text-neutral-800 flex items-center gap-2">
                                     <Upload className="w-5 h-5 text-indigo-600" />
-                                    Smart Import - {activeTab === 'students' ? 'Students' : 'Faculty'}{activeTab === 'students' && <span className="ml-2 text-xs font-semibold bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">Step 1</span>}
+                                    Smart Import - {smartImportTarget === 'student' ? 'Students' : 'Faculty'}
                                 </h3>
                                 <button onClick={() => setShowImportModal(false)} className="p-2 text-neutral-400 hover:bg-neutral-100 rounded-full transition-colors">
                                     <X className="w-5 h-5" />
@@ -3476,9 +3546,10 @@ const AdminDashboard: React.FC = () => {
                                         </div>
                                         <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl text-sm text-amber-800 space-y-1">
                                             <p className="font-semibold">Recommended import order</p>
-                                            <p><span className="font-medium">Step 1 — this screen:</span> Import the student CSV with real email addresses. This registers accounts so students can receive their activation OTP.</p>
-                                            <p><span className="font-medium">Step 2 — Full Excel Import:</span> Import the IIITNR sheet. It matches students by roll number to existing accounts and assigns them to groups and projects.</p>
-                                            <p className="text-xs text-amber-700 mt-1">All imported users start with password <strong>changeme</strong> and must activate via OTP on first login.</p>
+                                            <p><span className="font-medium">Step 1 — Faculty CSV:</span> Register faculty accounts.</p>
+                                            <p><span className="font-medium">Step 2 — Student CSV:</span> Register student accounts so they can receive activation OTPs.</p>
+                                            <p><span className="font-medium">Step 3 — Full Excel Import:</span> Import the IIITNR sheet to create groups and projects; users are matched by email / roll number.</p>
+                                            <p className="text-xs text-amber-700 mt-1">All imported users start with password <strong>changeme</strong>. Students must activate via OTP; faculty can sign in immediately and are forced to change the password on first login.</p>
                                         </div>
 
                                         <div className="border-2 border-dashed border-neutral-300 rounded-2xl p-10 text-center hover:bg-indigo-50 hover:border-indigo-300 transition-colors w-full cursor-pointer relative">
@@ -3492,7 +3563,7 @@ const AdminDashboard: React.FC = () => {
                                                         setImportLoading(true);
                                                         const formData = new FormData();
                                                         formData.append('file', file);
-                                                        formData.append('importType', activeTab === 'students' ? 'student' : 'faculty');
+                                                        formData.append('importType', smartImportTarget || 'student');
 
                                                         try {
                                                             const res = await api.post('/users/import-preview', formData, {
@@ -3592,7 +3663,7 @@ const AdminDashboard: React.FC = () => {
                                                             <th className="px-4 py-2 font-bold text-neutral-500">Name</th>
                                                             <th className="px-4 py-2 font-bold text-neutral-500">Email</th>
                                                             <th className="px-4 py-2 font-bold text-neutral-500">Branch/Dept</th>
-                                                            {activeTab === 'students' && <th className="px-4 py-2 font-bold text-neutral-500">Roll No</th>}
+                                                            {smartImportTarget === 'student' && <th className="px-4 py-2 font-bold text-neutral-500">Roll No</th>}
                                                         </tr>
                                                     </thead>
                                                     <tbody className="divide-y divide-neutral-100">
@@ -3601,7 +3672,7 @@ const AdminDashboard: React.FC = () => {
                                                                 <td className="px-4 py-2 font-medium text-neutral-900">{row.name}</td>
                                                                 <td className="px-4 py-2 text-neutral-500">{row.email}</td>
                                                                 <td className="px-4 py-2 text-neutral-500">{row.branch || row.department}</td>
-                                                                {activeTab === 'students' && <td className="px-4 py-2 font-mono text-neutral-600 pt-1">{row.rollNumber}</td>}
+                                                                {smartImportTarget === 'student' && <td className="px-4 py-2 font-mono text-neutral-600 pt-1">{row.rollNumber}</td>}
                                                             </tr>
                                                         ))}
                                                         {importPreview.validRows.length === 0 && (
@@ -3663,7 +3734,7 @@ const AdminDashboard: React.FC = () => {
                                             try {
                                                 const res = await api.post('/users/import-commit', { validRows: importPreview.validRows });
                                                 setSimpleImportResult({ created: res.data.created, total: res.data.total, errors: res.data.errors || [] });
-                                                if (activeTab === 'students') {
+                                                if (smartImportTarget === 'student') {
                                                     const resStudents = await api.get('/users/students');
                                                     setStudents(Array.isArray(resStudents.data) ? resStudents.data : []);
                                                 } else {

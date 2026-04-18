@@ -17,6 +17,7 @@ export interface IUser extends Document {
     targetBatch?: string; // For students (override batch)
     isVerified: boolean;
     isActive: boolean; // For migration flow activation
+    mustChangePassword: boolean; // Force change on first login for admin-created / imported accounts
     otp?: string;
     otpExpires?: Date;
     department?: string; // For faculty
@@ -30,6 +31,7 @@ export interface IUser extends Document {
         maxStudents: number;
         maxGroups: number;
     }[];
+    photoUrl?: string;
     createdAt: Date;
 }
 
@@ -44,6 +46,7 @@ const UserSchema: Schema = new Schema({
     targetBatch: { type: String },
     isVerified: { type: Boolean, default: false },
     isActive: { type: Boolean, default: true },
+    mustChangePassword: { type: Boolean, default: false },
     otp: { type: String },
     otpExpires: { type: Date },
     department: { type: String },
@@ -56,7 +59,8 @@ const UserSchema: Schema = new Schema({
         batchYear: Number,
         maxStudents: Number,
         maxGroups: Number
-    }]
+    }],
+    photoUrl: { type: String }
 }, {
     timestamps: true
 });

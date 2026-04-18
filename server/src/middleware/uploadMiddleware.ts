@@ -1,22 +1,46 @@
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import { Request } from 'express';
 
-// Ensure uploads directory exists (redundant if already created, but good for safety)
-const uploadDir = path.join(__dirname, '../../uploads');
+// Base uploads directory — override via UPLOAD_DIR env for NAS mounts
+const uploadDir = process.env.UPLOAD_DIR
+    ? path.resolve(process.env.UPLOAD_DIR)
+    : path.join(__dirname, '../../uploads');
 if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir, { recursive: true });
 }
 
+// Sub-bucket derived from the route path: /projects/:id/updates → "updates"
+const bucketFor = (req: Request) => {
+    const p = req.originalUrl || req.url || '';
+    if (p.includes('/submissions')) return 'submissions';
+    if (p.includes('/updates')) return 'updates';
+    if (p.includes('/profile-photo')) return 'avatars';
+    if (p.includes('/proposals') || p.includes('/projects')) return 'proposals';
+    if (p.includes('/import')) return 'imports';
+    return 'misc';
+};
+
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
-        cb(null, uploadDir);
+        const bucket = bucketFor(req as Request);
+        const dest = path.join(uploadDir, bucket);
+        if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true });
+        cb(null, dest);
     },
     filename: (req, file, cb) => {
         const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
         cb(null, uniqueSuffix + path.extname(file.originalname));
     }
 });
+
+// Build a public URL for an uploaded file — honours UPLOAD_BASE_URL when set
+export const publicUrlFor = (req: Request, file: Express.Multer.File): string => {
+    const base = process.env.UPLOAD_BASE_URL || `${req.protocol}://${req.get('host')}`;
+    const bucket = bucketFor(req);
+    return `${base.replace(/\/$/, '')}/uploads/${bucket}/${file.filename}`;
+};
 
 const fileFilter = (req: any, file: any, cb: any) => {
     // Accept images, docs, pdfs, ppts, zips, spreadsheets

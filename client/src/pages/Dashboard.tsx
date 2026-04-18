@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../utils/api';
 import { Layout, Users, CheckSquare, MessageSquare, Menu, Clock, Calendar, X, ChevronRight, Plus, Archive, FileText, Search, Square, AlertCircle, Trash2 } from 'lucide-react';
 import FilePreview from '../components/FilePreview';
@@ -37,6 +37,8 @@ interface Student {
 const Dashboard: React.FC = () => {
     const { user, logout, activeEvents } = useAuth();
     const navigate = useNavigate();
+    const [searchParams, setSearchParams] = useSearchParams();
+    const initialStudentTab = searchParams.get('tab') as 'directory' | 'project' | 'group' | 'archive' | null;
     const [group, setGroup] = useState<Group | null>(null);
     const [loading, setLoading] = useState(true);
     const [students, setStudents] = useState<Student[]>([]);
@@ -44,7 +46,16 @@ const Dashboard: React.FC = () => {
     const [selectedStudents, setSelectedStudents] = useState<Set<string>>(new Set());
     const [searchTerm, setSearchTerm] = useState('');
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-    const [activeTab, setActiveTab] = useState<'directory' | 'project' | 'group' | 'archive'>('directory');
+    const [activeTab, setActiveTab] = useState<'directory' | 'project' | 'group' | 'archive'>(initialStudentTab || 'directory');
+
+    useEffect(() => {
+        const current = searchParams.get('tab');
+        if (current !== activeTab) {
+            const next = new URLSearchParams(searchParams);
+            next.set('tab', activeTab);
+            setSearchParams(next, { replace: true });
+        }
+    }, [activeTab]);
     const getBatch = (roll?: string) => {
         if (!roll) return 'Unknown';
         return '20' + roll.toString().substring(0, 2);
@@ -78,7 +89,6 @@ const Dashboard: React.FC = () => {
     const [leavePassword, setLeavePassword] = useState('');
     const [leavingGroup, setLeavingGroup] = useState(false);
     const [updateContent, setUpdateContent] = useState('');
-    const [updateTitle, setUpdateTitle] = useState('');
     const [updateLinks, setUpdateLinks] = useState('');
     const [updateFiles, setUpdateFiles] = useState<FileList | null>(null);
     const [isUpdateDialogOpen, setIsUpdateDialogOpen] = useState(false);
@@ -164,16 +174,44 @@ const Dashboard: React.FC = () => {
         }
     };
 
+    const [pendingInvites, setPendingInvites] = useState<any[]>([]);
+    const [invitesLoading, setInvitesLoading] = useState(false);
+    const [respondingInviteId, setRespondingInviteId] = useState<string | null>(null);
+
+    const fetchPendingInvites = async () => {
+        setInvitesLoading(true);
+        try {
+            const res = await api.get('/groups/my/invites');
+            setPendingInvites(res.data || []);
+        } catch {
+            setPendingInvites([]);
+        } finally {
+            setInvitesLoading(false);
+        }
+    };
+
+    const handleRespondToInvite = async (groupId: string, action: 'accept' | 'reject') => {
+        setRespondingInviteId(groupId);
+        try {
+            await api.post(`/groups/${groupId}/${action}`);
+            await fetchPendingInvites();
+            if (action === 'accept') await fetchDashboardData();
+        } catch (err: any) {
+            alert(err.response?.data?.message || `Failed to ${action} invite.`);
+        } finally {
+            setRespondingInviteId(null);
+        }
+    };
+
     const fetchDashboardData = async () => {
         try {
-            // Fetch group info
             const groupRes = await api.get('/groups/my').catch(() => null);
             if (groupRes) {
                 setGroup(groupRes.data);
                 setActiveTab('project');
             }
-            // Initial fetch of students
             await fetchStudents();
+            await fetchPendingInvites();
         } catch (error) {
             console.error("Error fetching dashboard data", error);
         } finally {
@@ -268,12 +306,11 @@ const Dashboard: React.FC = () => {
     };
 
     const handlePostUpdate = async () => {
-        if (!group?.project?._id || !updateTitle.trim() || !updateContent.trim()) return;
+        if (!group?.project?._id || !updateContent.trim()) return;
 
         setIsUpdateSubmitting(true);
         try {
             const formData = new FormData();
-            formData.append('title', updateTitle);
             formData.append('content', updateContent);
             formData.append('links', updateLinks);
 
@@ -286,9 +323,7 @@ const Dashboard: React.FC = () => {
             await api.post(`/projects/${group.project._id}/updates`, formData, {
                 headers: { 'Content-Type': 'multipart/form-data' }
             });
-            // Refresh group data to show new update
             await fetchDashboardData();
-            setUpdateTitle('');
             setUpdateContent('');
             setUpdateLinks('');
             setUpdateFiles(null);
@@ -327,6 +362,13 @@ const Dashboard: React.FC = () => {
     // Final Deadline Check for students without groups
     const groupFormationEvent = activeEvents?.find(e => e.type === 'group_formation_project_proposal');
     const isFormationActive = groupFormationEvent && new Date(groupFormationEvent.extensionDate || groupFormationEvent.endDate) > new Date();
+
+    const _allGroupProjects = (group?.projects || (group?.project ? [group.project] : [])) as any[];
+    const approvedProjectForSidebar = _allGroupProjects.find((p: any) => p.status === 'Approved');
+    const hasMidTermSubs = !!(approvedProjectForSidebar?.submissions?.midTermReport || approvedProjectForSidebar?.submissions?.midTermPPT);
+    const hasEndTermSubs = !!(approvedProjectForSidebar?.submissions?.endTermReport || approvedProjectForSidebar?.submissions?.endTermPPT);
+    const midTermActive = activeEvents?.some(e => e.type === 'mid_term_evaluation');
+    const endTermActive = activeEvents?.some(e => e.type === 'end_term_evaluation');
 
 
 
@@ -367,6 +409,29 @@ const Dashboard: React.FC = () => {
                                 active={activeTab === 'group'}
                                 onClick={() => setActiveTab('group')}
                             />
+                            {approvedProjectForSidebar && (
+                                <div className="pt-3 border-t border-neutral-100 mt-2 space-y-1">
+                                    <p className="px-3 text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Deliverables</p>
+                                    <button
+                                        onClick={() => setActiveTab('project')}
+                                        className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-colors ${hasMidTermSubs ? 'text-emerald-700 hover:bg-emerald-50' : 'text-neutral-400 hover:bg-neutral-50'}`}
+                                    >
+                                        <CheckSquare className="w-4 h-4" />
+                                        Mid-Term Files
+                                        {hasMidTermSubs && <span className="ml-auto w-2 h-2 bg-emerald-500 rounded-full" />}
+                                        {midTermActive && !hasMidTermSubs && <span className="ml-auto text-[9px] text-amber-600 font-bold uppercase">Open</span>}
+                                    </button>
+                                    <button
+                                        onClick={() => setActiveTab('project')}
+                                        className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-colors ${hasEndTermSubs ? 'text-indigo-700 hover:bg-indigo-50' : 'text-neutral-400 hover:bg-neutral-50'}`}
+                                    >
+                                        <CheckSquare className="w-4 h-4" />
+                                        End-Term Files
+                                        {hasEndTermSubs && <span className="ml-auto w-2 h-2 bg-indigo-500 rounded-full" />}
+                                        {endTermActive && !hasEndTermSubs && <span className="ml-auto text-[9px] text-amber-600 font-bold uppercase">Open</span>}
+                                    </button>
+                                </div>
+                            )}
                         </>
                     )}
                     <SidebarItem
@@ -422,6 +487,46 @@ const Dashboard: React.FC = () => {
                     {activeTab === 'directory' && (
                         /* Directory View */
                         <div className="max-w-5xl mx-auto space-y-6">
+                            {pendingInvites.length > 0 && (
+                                <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-5">
+                                    <h3 className="text-sm font-bold text-indigo-900 mb-3 flex items-center gap-2">
+                                        <Users className="w-4 h-4" /> Pending Group Invitations
+                                    </h3>
+                                    <div className="space-y-3">
+                                        {pendingInvites.map((inv: any) => (
+                                            <div key={inv._id} className="bg-white p-4 rounded-xl border border-indigo-100 flex items-center justify-between gap-4">
+                                                <div>
+                                                    <p className="font-bold text-neutral-900 text-sm">
+                                                        {inv.name}
+                                                        {inv.groupNo !== undefined && <span className="ml-2 text-xs font-medium text-neutral-500">#{inv.groupNo}</span>}
+                                                    </p>
+                                                    <p className="text-xs text-neutral-500 mt-0.5">
+                                                        Invited by {inv.createdBy?.name || 'group creator'} ·
+                                                        {' '}{(inv.members?.length || 0)} accepted / {(inv.pendingMembers?.length || 0)} pending
+                                                    </p>
+                                                </div>
+                                                <div className="flex gap-2">
+                                                    <button
+                                                        onClick={() => handleRespondToInvite(inv._id, 'reject')}
+                                                        disabled={respondingInviteId === inv._id}
+                                                        className="px-3 py-1.5 text-xs font-bold text-red-700 bg-red-50 hover:bg-red-100 rounded-lg border border-red-100 disabled:opacity-50"
+                                                    >
+                                                        Decline
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleRespondToInvite(inv._id, 'accept')}
+                                                        disabled={respondingInviteId === inv._id}
+                                                        className="px-3 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg disabled:opacity-50"
+                                                    >
+                                                        Accept
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    {invitesLoading && <p className="text-xs text-neutral-400 mt-2">Refreshing...</p>}
+                                </div>
+                            )}
                             {!group && !isFormationActive ? (
                                 <motion.div
                                     initial={{ opacity: 0, y: 20 }}
@@ -859,6 +964,60 @@ const Dashboard: React.FC = () => {
                                                             )}
                                                         </div>
 
+                                                        {/* Final Deliverables Tray */}
+                                                        <div className="mb-8 bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-100 rounded-2xl p-6">
+                                                            <div className="flex items-center justify-between mb-4">
+                                                                <h3 className="text-lg font-bold text-neutral-900 flex items-center gap-2">
+                                                                    <Archive className="w-5 h-5 text-emerald-600" /> Final Deliverables
+                                                                </h3>
+                                                                {!approvedProject.isArchived && (midTermActive || endTermActive) && (
+                                                                    <button
+                                                                        onClick={() => setIsSubmitDialogOpen(true)}
+                                                                        className="text-xs font-bold text-emerald-700 flex items-center gap-1.5 bg-white px-3 py-1.5 rounded-lg hover:bg-emerald-50 transition-colors border border-emerald-200"
+                                                                    >
+                                                                        <Plus className="w-3.5 h-3.5" /> Upload / Replace
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                                {[
+                                                                    { label: 'Mid-Term', keys: { report: 'midTermReport', ppt: 'midTermPPT', plag: 'midTermPlagiarism' }, accent: 'indigo' },
+                                                                    { label: 'End-Term', keys: { report: 'endTermReport', ppt: 'endTermPPT', plag: 'endTermPlagiarism' }, accent: 'emerald' },
+                                                                ].map(({ label, keys, accent }) => {
+                                                                    const subs = approvedProject.submissions || {};
+                                                                    const slots = [
+                                                                        { name: 'Report', url: subs[keys.report] },
+                                                                        { name: 'Presentation', url: subs[keys.ppt] },
+                                                                        { name: 'Plagiarism Report', url: subs[keys.plag] },
+                                                                    ];
+                                                                    return (
+                                                                        <div key={label} className="bg-white p-4 rounded-xl border border-neutral-200">
+                                                                            <div className="flex items-center justify-between mb-3">
+                                                                                <h4 className="text-sm font-bold text-neutral-800">{label} Evaluation</h4>
+                                                                                <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-${accent}-50 text-${accent}-700 border border-${accent}-100`}>
+                                                                                    {slots.filter(s => s.url).length} / 3
+                                                                                </span>
+                                                                            </div>
+                                                                            <div className="space-y-2">
+                                                                                {slots.map((slot) => (
+                                                                                    <div key={slot.name} className="flex items-center justify-between text-xs">
+                                                                                        <span className="text-neutral-600 font-medium">{slot.name}</span>
+                                                                                        {slot.url ? (
+                                                                                            <a href={slot.url} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline font-semibold inline-flex items-center gap-1">
+                                                                                                <FileText className="w-3 h-3" /> View
+                                                                                            </a>
+                                                                                        ) : (
+                                                                                            <span className="text-neutral-400 italic">Not submitted</span>
+                                                                                        )}
+                                                                                    </div>
+                                                                                ))}
+                                                                            </div>
+                                                                        </div>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                        </div>
+
                                                         <div className="space-y-6">
                                                             <div className="flex flex-wrap items-center justify-between gap-4">
                                                                 <h3 className="text-lg font-bold text-neutral-900 flex items-center gap-2">
@@ -866,12 +1025,14 @@ const Dashboard: React.FC = () => {
                                                                 </h3>
                                                                 {!approvedProject.isArchived && (
                                                                     <div className="flex gap-2">
+                                                                        {(midTermActive || endTermActive) && (
                                                                         <button
                                                                             onClick={() => setIsSubmitDialogOpen(true)}
                                                                             className="text-sm font-bold text-emerald-700 flex items-center gap-1.5 bg-emerald-50 px-4 py-2 rounded-xl hover:bg-emerald-100 transition-colors border border-emerald-200 shadow-sm"
                                                                         >
                                                                             <FileText className="w-4 h-4" /> Upload Files
                                                                         </button>
+                                                                        )}
                                                                         <button
                                                                             onClick={() => setIsUpdateDialogOpen(true)}
                                                                             className="text-sm font-bold text-indigo-700 flex items-center gap-1.5 bg-indigo-50 px-4 py-2 rounded-xl hover:bg-indigo-100 transition-colors border border-indigo-200 shadow-sm"
@@ -891,7 +1052,16 @@ const Dashboard: React.FC = () => {
                                                                         <div className="bg-white p-5 rounded-xl border border-neutral-200 shadow-sm hover:shadow-md transition-shadow">
                                                                             <div className="flex justify-between items-start mb-2">
                                                                                 <div>
-                                                                                    {update.title && <h4 className="font-bold text-neutral-900">{update.title}</h4>}
+                                                                                    {update.createdBy?.name && (
+                                                                                        <h4 className="font-bold text-neutral-900">
+                                                                                            {update.createdBy.name}
+                                                                                            {update.createdBy.role && (
+                                                                                                <span className="ml-2 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
+                                                                                                    {update.createdBy.role}
+                                                                                                </span>
+                                                                                            )}
+                                                                                        </h4>
+                                                                                    )}
                                                                                     <span className="text-xs text-neutral-400 flex items-center gap-1 mt-1">
                                                                                         <Calendar className="w-3 h-3" />
                                                                                         {new Date(update.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
@@ -1061,7 +1231,7 @@ const Dashboard: React.FC = () => {
                                                 {/* Team Members */}
                                                 <div className="bg-white p-6 rounded-2xl border border-neutral-200 shadow-sm relative">
                                                     <h4 className="font-bold text-neutral-900 mb-4 flex items-center gap-2">
-                                                        <Users className="w-4 h-4 text-indigo-600" /> Team Members
+                                                        <Users className="w-4 h-4 text-indigo-600" /> Group {group.name}
                                                     </h4>
                                                     <div className="space-y-3">
                                                         {group.members.map((m: any) => (
@@ -1085,9 +1255,13 @@ const Dashboard: React.FC = () => {
                                                     </h4>
                                                     {approvedProject.faculty ? (
                                                         <div className="flex items-center gap-3 p-2 bg-orange-50/50 rounded-lg border border-orange-100 mb-4">
-                                                            <div className="w-8 h-8 rounded-full bg-orange-100 text-orange-700 flex items-center justify-center font-bold text-xs">
-                                                                {approvedProject.faculty.name?.charAt(0) || 'F'}
-                                                            </div>
+                                                            {approvedProject.faculty.photoUrl ? (
+                                                                <img src={approvedProject.faculty.photoUrl} alt={approvedProject.faculty.name} className="w-8 h-8 rounded-full object-cover shrink-0 border border-orange-200" />
+                                                            ) : (
+                                                                <div className="w-8 h-8 rounded-full bg-orange-100 text-orange-700 flex items-center justify-center font-bold text-xs shrink-0">
+                                                                    {approvedProject.faculty.name?.charAt(0) || 'F'}
+                                                                </div>
+                                                            )}
                                                             <div>
                                                                 <p className="text-sm font-medium text-neutral-900">{approvedProject.faculty.name || 'Assigned Faculty'}</p>
                                                                 <p className="text-xs text-neutral-500">{approvedProject.faculty.department || 'Department'}</p>
@@ -1377,16 +1551,6 @@ const Dashboard: React.FC = () => {
                         <Dialog.Title className="text-lg font-bold mb-4">Post Project Update</Dialog.Title>
                         <div className="space-y-4">
                             <div>
-                                <label className="block text-sm font-medium text-neutral-700 mb-1">Update Title</label>
-                                <input
-                                    type="text"
-                                    className="w-full px-3 py-2 rounded-lg border border-neutral-300 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                                    placeholder="e.g. Week 2 Progress"
-                                    value={updateTitle}
-                                    onChange={(e) => setUpdateTitle(e.target.value)}
-                                />
-                            </div>
-                            <div>
                                 <label className="block text-sm font-medium text-neutral-700 mb-1">Details</label>
                                 <textarea
                                     className="w-full px-3 py-2 rounded-lg border border-neutral-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 min-h-[100px]"
@@ -1423,7 +1587,7 @@ const Dashboard: React.FC = () => {
                                 </button>
                                 <button
                                     onClick={handlePostUpdate}
-                                    disabled={!updateTitle.trim() || !updateContent.trim() || isUpdateSubmitting}
+                                    disabled={!updateContent.trim() || isUpdateSubmitting}
                                     className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg disabled:opacity-50"
                                 >
                                     {isUpdateSubmitting ? 'Posting...' : 'Post Update'}
@@ -1458,9 +1622,17 @@ const Dashboard: React.FC = () => {
                                     onChange={(e) => setSubmitEvalType(e.target.value)}
                                 >
                                     <option value="mid_term_evaluation">Mid-Term Evaluation</option>
-                                    <option value="end_term_evaluation">End-Term Evaluation</option>
-                                    <option value="final_evaluation">Final Submission</option>
+                                    <option
+                                        value="end_term_evaluation"
+                                        disabled={activeEvents?.some(e => e.type === 'mid_term_evaluation')}
+                                        title={activeEvents?.some(e => e.type === 'mid_term_evaluation') ? 'End-Term submission is locked while Mid-Term evaluation is active' : undefined}
+                                    >
+                                        End-Term Evaluation{activeEvents?.some(e => e.type === 'mid_term_evaluation') ? ' (locked — mid-term in progress)' : ''}
+                                    </option>
                                 </select>
+                                {activeEvents?.some(e => e.type === 'mid_term_evaluation') && submitEvalType === 'end_term_evaluation' && (
+                                    <p className="text-xs text-amber-600 font-medium mt-1">End-Term submissions are unavailable while Mid-Term evaluation is active.</p>
+                                )}
                             </div>
 
                             <div className="p-5 bg-neutral-50 rounded-2xl border border-neutral-200 border-dashed space-y-4">
@@ -1488,21 +1660,17 @@ const Dashboard: React.FC = () => {
                                     {submitPPT && <p className="text-[10px] mt-1 text-indigo-600 font-medium ml-2">Selected: {submitPPT.name}</p>}
                                 </div>
 
-                                {submitEvalType === 'final_evaluation' && (
-                                    <>
-                                        <div className="h-px bg-neutral-200 w-full" />
-                                        <div>
-                                            <label className="block text-sm font-bold text-neutral-700 mb-1">Plagiarism Report (PDF)</label>
-                                            <input
-                                                type="file"
-                                                accept=".pdf"
-                                                onChange={(e) => setSubmitPlagiarism(e.target.files?.[0] || null)}
-                                                className="w-full text-sm text-neutral-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-red-50 file:text-red-700 hover:file:bg-red-100"
-                                            />
-                                            {submitPlagiarism && <p className="text-[10px] mt-1 text-red-600 font-medium ml-2">Selected: {submitPlagiarism.name}</p>}
-                                        </div>
-                                    </>
-                                )}
+                                <div className="h-px bg-neutral-200 w-full" />
+                                <div>
+                                    <label className="block text-sm font-bold text-neutral-700 mb-1">Plagiarism Report (PDF)</label>
+                                    <input
+                                        type="file"
+                                        accept=".pdf"
+                                        onChange={(e) => setSubmitPlagiarism(e.target.files?.[0] || null)}
+                                        className="w-full text-sm text-neutral-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-red-50 file:text-red-700 hover:file:bg-red-100"
+                                    />
+                                    {submitPlagiarism && <p className="text-[10px] mt-1 text-red-600 font-medium ml-2">Selected: {submitPlagiarism.name}</p>}
+                                </div>
                             </div>
                             
                             <div className="pt-2">

@@ -6,7 +6,7 @@ import { motion } from 'framer-motion';
 
 import {
     Clock, Users, FileText, Link as LinkIcon,
-    MessageSquare, Settings, LogOut, Menu, X, Plus, ChevronRight, Layout, GraduationCap, Medal
+    MessageSquare, Settings, LogOut, Menu, X, Plus, ChevronRight, Layout, GraduationCap, Medal, Archive
 } from 'lucide-react';
 import { Navigate } from 'react-router-dom';
 import FilePreview from '../components/FilePreview';
@@ -383,18 +383,64 @@ const MenteeGroupPage: React.FC = () => {
                                 )}
                             </div>
 
+                            {/* Final Deliverables Tray */}
+                            <div className="bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-100 rounded-3xl p-6">
+                                <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2 mb-4">
+                                    <Archive className="w-5 h-5 text-emerald-600" /> Final Deliverables
+                                </h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    {[
+                                        { label: 'Mid-Term', keys: { report: 'midTermReport', ppt: 'midTermPPT', plag: 'midTermPlagiarism' }, accent: 'indigo' },
+                                        { label: 'End-Term', keys: { report: 'endTermReport', ppt: 'endTermPPT', plag: 'endTermPlagiarism' }, accent: 'emerald' },
+                                    ].map(({ label, keys, accent }) => {
+                                        const subs = group.project?.submissions || {};
+                                        const slots = [
+                                            { name: 'Report', url: subs[keys.report] },
+                                            { name: 'Presentation', url: subs[keys.ppt] },
+                                            { name: 'Plagiarism Report', url: subs[keys.plag] },
+                                        ];
+                                        return (
+                                            <div key={label} className="bg-white p-4 rounded-2xl border border-neutral-200">
+                                                <div className="flex items-center justify-between mb-3">
+                                                    <h4 className="text-sm font-bold text-gray-800">{label} Evaluation</h4>
+                                                    <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-${accent}-50 text-${accent}-700 border border-${accent}-100`}>
+                                                        {slots.filter(s => s.url).length} / 3
+                                                    </span>
+                                                </div>
+                                                <div className="space-y-2">
+                                                    {slots.map((slot) => (
+                                                        <div key={slot.name} className="flex items-center justify-between text-xs">
+                                                            <span className="text-gray-600 font-medium">{slot.name}</span>
+                                                            {slot.url ? (
+                                                                <a href={slot.url} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline font-semibold inline-flex items-center gap-1">
+                                                                    <FileText className="w-3 h-3" /> View
+                                                                </a>
+                                                            ) : (
+                                                                <span className="text-gray-400 italic">Not submitted</span>
+                                                            )}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+
                             {/* Project Timeline */}
                             <div>
                                 <div className="flex items-center justify-between mb-6">
                                     <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
                                         <Clock className="w-5 h-5 text-indigo-600" /> Project Timeline
                                     </h3>
-                                    <button
-                                        onClick={() => setIsUpdateModalOpen(true)}
-                                        className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition-colors shadow-sm"
-                                    >
-                                        <Plus className="w-4 h-4" /> New Update
-                                    </button>
+                                    {user?.role !== 'Admin' && (
+                                        <button
+                                            onClick={() => setIsUpdateModalOpen(true)}
+                                            className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition-colors shadow-sm"
+                                        >
+                                            <Plus className="w-4 h-4" /> New Update
+                                        </button>
+                                    )}
                                 </div>
 
                                 {group.project?.updates && group.project.updates.length > 0 ? (
@@ -405,7 +451,16 @@ const MenteeGroupPage: React.FC = () => {
                                                 <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
                                                     <div className="flex justify-between items-start mb-3">
                                                         <div>
-                                                            {update.title && <h4 className="font-bold text-gray-900 text-sm mb-1">{update.title}</h4>}
+                                                            {update.createdBy?.name && (
+                                                                <h4 className="font-bold text-gray-900 text-sm mb-1">
+                                                                    {update.createdBy.name}
+                                                                    {update.createdBy.role && (
+                                                                        <span className="ml-2 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+                                                                            {update.createdBy.role}
+                                                                        </span>
+                                                                    )}
+                                                                </h4>
+                                                            )}
                                                             <span className="text-xs font-medium text-gray-500">
                                                                 {new Date(update.date).toLocaleDateString()} at {new Date(update.date).toLocaleTimeString()}
                                                             </span>
@@ -446,7 +501,7 @@ const MenteeGroupPage: React.FC = () => {
                             {/* Team Members */}
                             <div className="bg-white rounded-3xl border border-neutral-200 shadow-sm p-6">
                                 <h3 className="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
-                                    <Users className="w-5 h-5 text-indigo-600" /> Team Members
+                                    <Users className="w-5 h-5 text-indigo-600" /> Group {group.name}
                                 </h3>
                                 <div className="space-y-5">
                                     {group.members.map((member: any) => (
@@ -469,12 +524,34 @@ const MenteeGroupPage: React.FC = () => {
                                     <Users className="w-5 h-5 text-orange-600" /> Faculty Mentor
                                 </h3>
                                 <div className="p-4 bg-orange-50 rounded-2xl border border-orange-100 flex items-center gap-4">
-                                    <div className="h-10 w-10 rounded-full bg-orange-100 flex items-center justify-center font-bold text-orange-600 border border-orange-200 shrink-0">
-                                        {user?.name.charAt(0)}
-                                    </div>
-                                    <div className="overflow-hidden">
+                                    {user?.photoUrl ? (
+                                        <img src={user.photoUrl} alt={user.name} className="h-12 w-12 rounded-full object-cover border-2 border-orange-200 shadow-sm shrink-0" />
+                                    ) : (
+                                        <div className="h-12 w-12 rounded-full bg-orange-100 flex items-center justify-center font-bold text-orange-600 border-2 border-orange-200 shadow-sm shrink-0 text-lg">
+                                            {user?.name.charAt(0)}
+                                        </div>
+                                    )}
+                                    <div className="overflow-hidden flex-1">
                                         <p className="font-bold text-gray-900 text-sm truncate">{user?.name}</p>
                                         <p className="text-xs text-gray-500 truncate">{user?.department || 'Faculty'}</p>
+                                        <label className="mt-1 inline-flex items-center gap-1 text-[10px] font-bold text-orange-600 cursor-pointer hover:text-orange-800">
+                                            <Settings className="w-3 h-3" /> Change Photo
+                                            <input
+                                                type="file"
+                                                accept="image/*"
+                                                className="hidden"
+                                                onChange={async (e) => {
+                                                    const file = e.target.files?.[0];
+                                                    if (!file) return;
+                                                    const fd = new FormData();
+                                                    fd.append('photo', file);
+                                                    try {
+                                                        const res = await api.post('/users/profile-photo', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+                                                        window.location.reload();
+                                                    } catch { alert('Photo upload failed'); }
+                                                }}
+                                            />
+                                        </label>
                                     </div>
                                 </div>
                             </div>

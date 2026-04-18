@@ -18,16 +18,15 @@ export const getStats = async (req: Request, res: Response) => {
             _id: { $nin: groupedStudentIds } 
         });
 
-        // 2. Number of unactivated/activated accounts (verification status)
-        const unactivatedAccounts = await User.countDocuments({ isVerified: false });
-        const activatedAccounts = await User.countDocuments({ isVerified: true });
+        // 2. Number of unactivated/activated STUDENT accounts only
+        const unactivatedAccounts = await User.countDocuments({ role: UserRole.STUDENT, isVerified: false });
+        const activatedAccounts = await User.countDocuments({ role: UserRole.STUDENT, isVerified: true });
 
         // Group status breakdown
-        const [forming, proposalPending, approved, assigned] = await Promise.all([
+        const [forming, proposalPending, approved] = await Promise.all([
             Group.countDocuments({ status: 'Forming', isArchived: { $ne: true } }),
             Group.countDocuments({ status: 'ProposalPending', isArchived: { $ne: true } }),
             Group.countDocuments({ status: 'Approved', isArchived: { $ne: true } }),
-            Group.countDocuments({ status: 'Assigned', isArchived: { $ne: true } }),
         ]);
 
         res.json({
@@ -42,7 +41,6 @@ export const getStats = async (req: Request, res: Response) => {
                 Forming: forming,
                 ProposalPending: proposalPending,
                 Approved: approved,
-                Assigned: assigned,
             },
             // legacy shape preserved
             breakdown: { forming, approved }
@@ -84,6 +82,7 @@ export const createUser = async (req: Request, res: Response) => {
             expertise:   role === 'Faculty' ? expertise : undefined,
             isVerified:  role === 'Faculty',   // faculty active immediately
             isActive:    role === 'Faculty',
+            mustChangePassword: true,
         });
 
         await newUser.save();
@@ -128,23 +127,3 @@ export const createAdmin = async (req: Request, res: Response) => {
     }
 };
 
-/**
- * One-time migration: mark all student accounts as inactive (isActive=false).
- * POST /api/admin/mark-students-inactive
- * Auth: admin only
- */
-export const markStudentsInactive = async (req: Request, res: Response) => {
-    try {
-        const result = await User.updateMany(
-            { role: UserRole.STUDENT },
-            { $set: { isActive: false } }
-        );
-        res.json({
-            message: `Marked ${result.modifiedCount} of ${result.matchedCount} students as inactive.`,
-            matched: result.matchedCount,
-            modified: result.modifiedCount
-        });
-    } catch (error) {
-        res.status(500).json({ message: 'Server error', error });
-    }
-};

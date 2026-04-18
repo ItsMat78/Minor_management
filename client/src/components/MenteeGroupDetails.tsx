@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Clock, Users, MessageSquare, Plus, Link as LinkIcon, ArrowLeft, X } from 'lucide-react';
+import { Clock, Users, MessageSquare, Plus, Link as LinkIcon, ArrowLeft, X, FileText, Download } from 'lucide-react';
 import FilePreview from './FilePreview';
 import api from '../utils/api';
 
@@ -12,7 +12,6 @@ interface MenteeGroupDetailsProps {
 }
 
 const MenteeGroupDetails: React.FC<MenteeGroupDetailsProps> = ({ group, user, onBack, onUpdateSuccess }) => {
-    // Update Modal State
     const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
     const [updateTitle, setUpdateTitle] = useState('');
     const [updateContent, setUpdateContent] = useState('');
@@ -24,22 +23,14 @@ const MenteeGroupDetails: React.FC<MenteeGroupDetailsProps> = ({ group, user, on
         e.preventDefault();
         if (!group?.project?._id) return;
         setSubmittingUpdate(true);
-
         try {
             const formData = new FormData();
             formData.append('title', updateTitle);
             formData.append('content', updateContent);
             formData.append('links', updateLinks);
-            updateFiles.forEach(file => {
-                formData.append('files', file);
-            });
-
+            updateFiles.forEach(file => formData.append('files', file));
             await api.post(`/projects/${group.project._id}/updates`, formData);
-
-            // Notify parent to refresh data
             onUpdateSuccess();
-
-            // Reset and close
             setIsUpdateModalOpen(false);
             setUpdateTitle('');
             setUpdateContent('');
@@ -54,6 +45,29 @@ const MenteeGroupDetails: React.FC<MenteeGroupDetailsProps> = ({ group, user, on
     };
 
     if (!group) return <div>Group data not available via props.</div>;
+
+    const project = group.project;
+    const submissions = project?.submissions || {};
+    const faculty = project?.faculty;
+
+    const hasMidTerm = !!(submissions.midTermReport || submissions.midTermPPT || submissions.midTermPlagiarism);
+    const hasEndTerm = !!(submissions.endTermReport || submissions.endTermPPT || submissions.endTermPlagiarism);
+
+    const deliverableLink = (url: string | undefined, label: string) => {
+        if (!url) return null;
+        return (
+            <a
+                href={url}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center gap-2 px-3 py-2 bg-neutral-50 hover:bg-indigo-50 rounded-lg border border-neutral-200 hover:border-indigo-200 text-xs font-medium text-neutral-700 hover:text-indigo-700 transition-colors group"
+            >
+                <FileText className="w-3.5 h-3.5 text-neutral-400 group-hover:text-indigo-500" />
+                <span className="flex-1">{label}</span>
+                <Download className="w-3 h-3 opacity-0 group-hover:opacity-100 text-indigo-500 transition-opacity" />
+            </a>
+        );
+    };
 
     return (
         <div className="flex flex-col h-full">
@@ -74,25 +88,25 @@ const MenteeGroupDetails: React.FC<MenteeGroupDetailsProps> = ({ group, user, on
                     {/* Main Project Card */}
                     <div className="bg-white rounded-2xl border border-neutral-100 shadow-xl shadow-neutral-100/50 p-8">
                         <div className="flex flex-wrap items-center gap-3 mb-6">
-                            <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${group.project?.status === 'Approved' ? 'bg-emerald-100 text-emerald-700' :
-                                group.project?.status === 'Rejected' ? 'bg-red-100 text-red-700' :
+                            <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${project?.status === 'Approved' ? 'bg-emerald-100 text-emerald-700' :
+                                project?.status === 'Rejected' ? 'bg-red-100 text-red-700' :
                                     'bg-indigo-100 text-indigo-700'
                                 }`}>
-                                <span className={`w-1.5 h-1.5 rounded-full ${group.project?.status === 'Approved' ? 'bg-emerald-500' :
-                                    group.project?.status === 'Rejected' ? 'bg-red-500' :
+                                <span className={`w-1.5 h-1.5 rounded-full ${project?.status === 'Approved' ? 'bg-emerald-500' :
+                                    project?.status === 'Rejected' ? 'bg-red-500' :
                                         'bg-indigo-500'
                                     }`} />
-                                {group.project?.status || 'Active'}
+                                {project?.status || 'Active'}
                             </span>
 
-                            {group.project?.semester && (
+                            {project?.semester && (
                                 <span className="text-xs font-bold text-gray-500 bg-gray-100 px-3 py-1 rounded-lg border border-gray-200">
-                                    Semester {group.project.semester}
+                                    Semester {project.semester}
                                 </span>
                             )}
 
                             <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-3 py-1 rounded-lg border border-indigo-100 flex items-center gap-1.5">
-                                <Users className="w-3.5 h-3.5" /> {group.name}
+                                <Users className="w-3.5 h-3.5" /> Group {group.name}
                             </span>
 
                             {user?.role === 'Admin' && (
@@ -105,7 +119,7 @@ const MenteeGroupDetails: React.FC<MenteeGroupDetailsProps> = ({ group, user, on
                                             try {
                                                 await api.put(`/groups/${group._id}`, { targetBatch: val || null });
                                                 onUpdateSuccess();
-                                            } catch (err) {
+                                            } catch {
                                                 alert("Failed to change batch");
                                             }
                                         }}
@@ -122,16 +136,15 @@ const MenteeGroupDetails: React.FC<MenteeGroupDetailsProps> = ({ group, user, on
                         </div>
 
                         <h1 className="text-3xl font-bold text-gray-900 mb-4 capitalize leading-tight">
-                            {group.project?.title || 'Untitled Project'}
+                            {project?.title || 'Untitled Project'}
                         </h1>
                         <p className="text-gray-500 leading-relaxed text-sm mb-6">
-                            {group.project?.description || "No description provided."}
+                            {project?.description || "No description provided."}
                         </p>
 
-                        {/* Tags */}
-                        {group.project?.tags && group.project.tags.length > 0 && (
+                        {project?.tags && project.tags.length > 0 && (
                             <div className="flex flex-wrap gap-2 mb-6">
-                                {group.project.tags.map((tag: string, i: number) => (
+                                {project.tags.map((tag: string, i: number) => (
                                     <span key={i} className="px-3 py-1 bg-neutral-50 text-neutral-600 rounded-md text-xs font-semibold border border-neutral-100">
                                         {tag}
                                     </span>
@@ -139,32 +152,59 @@ const MenteeGroupDetails: React.FC<MenteeGroupDetailsProps> = ({ group, user, on
                             </div>
                         )}
 
-                        {/* Attachments */}
-                        {group.project?.attachments && group.project.attachments.length > 0 && (
+                        {project?.attachments && project.attachments.length > 0 && (
                             <div className="mb-6">
                                 <h5 className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-3 flex items-center gap-2">
-                                    <LinkIcon className="w-3 h-3" /> Attachments
+                                    <LinkIcon className="w-3 h-3" /> Proposal Attachments
                                 </h5>
                                 <div className="flex flex-wrap gap-2">
-                                    {group.project.attachments.map((url: string, index: number) => (
+                                    {project.attachments.map((url: string, index: number) => (
                                         <FilePreview key={index} url={url} description={`Attachment ${index + 1}`} />
                                     ))}
                                 </div>
                             </div>
                         )}
 
-                        {/* Faculty Feedback Box */}
-                        {group.project?.feedback && (
+                        {project?.feedback && (
                             <div className="mt-8 p-6 bg-orange-50 rounded-2xl border border-orange-100">
                                 <h5 className="text-sm font-bold text-orange-800 mb-2 flex items-center gap-2">
                                     <MessageSquare className="w-4 h-4" /> Faculty Feedback
                                 </h5>
-                                <p className="text-sm text-orange-700 leading-relaxed">
-                                    {group.project.feedback}
-                                </p>
+                                <p className="text-sm text-orange-700 leading-relaxed">{project.feedback}</p>
                             </div>
                         )}
                     </div>
+
+                    {/* Final Deliverables (read-only) */}
+                    {(hasMidTerm || hasEndTerm) && (
+                        <div className="bg-white rounded-2xl border border-neutral-100 shadow-sm p-6">
+                            <h3 className="text-lg font-bold text-gray-900 mb-5 flex items-center gap-2">
+                                <FileText className="w-5 h-5 text-indigo-600" /> Final Deliverables
+                            </h3>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                {hasMidTerm && (
+                                    <div>
+                                        <p className="text-xs font-bold uppercase tracking-widest text-neutral-400 mb-3">Mid-Term Submissions</p>
+                                        <div className="space-y-2">
+                                            {deliverableLink(submissions.midTermReport, 'Mid-Term Report')}
+                                            {deliverableLink(submissions.midTermPPT, 'Mid-Term Presentation')}
+                                            {deliverableLink(submissions.midTermPlagiarism, 'Plagiarism Report')}
+                                        </div>
+                                    </div>
+                                )}
+                                {hasEndTerm && (
+                                    <div>
+                                        <p className="text-xs font-bold uppercase tracking-widest text-neutral-400 mb-3">End-Term Submissions</p>
+                                        <div className="space-y-2">
+                                            {deliverableLink(submissions.endTermReport, 'End-Term Report')}
+                                            {deliverableLink(submissions.endTermPPT, 'End-Term Presentation')}
+                                            {deliverableLink(submissions.endTermPlagiarism, 'Plagiarism Report')}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
 
                     {/* Project Timeline */}
                     <div>
@@ -172,17 +212,19 @@ const MenteeGroupDetails: React.FC<MenteeGroupDetailsProps> = ({ group, user, on
                             <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
                                 <Clock className="w-5 h-5 text-indigo-600" /> Project Timeline
                             </h3>
-                            <button
-                                onClick={() => setIsUpdateModalOpen(true)}
-                                className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition-colors shadow-sm"
-                            >
-                                <Plus className="w-4 h-4" /> New Update
-                            </button>
+                            {user?.role !== 'Admin' && (
+                                <button
+                                    onClick={() => setIsUpdateModalOpen(true)}
+                                    className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition-colors shadow-sm"
+                                >
+                                    <Plus className="w-4 h-4" /> New Update
+                                </button>
+                            )}
                         </div>
 
-                        {group.project?.updates && group.project.updates.length > 0 ? (
+                        {project?.updates && project.updates.length > 0 ? (
                             <div className="relative border-l-2 border-indigo-100 ml-3 space-y-8 pl-8 pb-4">
-                                {group.project.updates.slice().reverse().map((update: any, i: number) => (
+                                {project.updates.slice().reverse().map((update: any, i: number) => (
                                     <div key={i} className="relative">
                                         <div className="absolute -left-[41px] top-1 h-5 w-5 rounded-full border-4 border-white bg-indigo-600 shadow-sm"></div>
                                         <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
@@ -192,6 +234,11 @@ const MenteeGroupDetails: React.FC<MenteeGroupDetailsProps> = ({ group, user, on
                                                     <span className="text-xs font-medium text-gray-500">
                                                         {new Date(update.date).toLocaleDateString()} at {new Date(update.date).toLocaleTimeString()}
                                                     </span>
+                                                    {update.createdBy && (
+                                                        <span className={`ml-2 text-xs font-bold px-2 py-0.5 rounded-full ${update.createdBy.role === 'Faculty' ? 'bg-orange-50 text-orange-700' : 'bg-indigo-50 text-indigo-700'}`}>
+                                                            {update.createdBy.name} · {update.createdBy.role}
+                                                        </span>
+                                                    )}
                                                 </div>
                                             </div>
                                             <div className="text-gray-600 text-sm whitespace-pre-wrap leading-relaxed mb-4">
@@ -226,10 +273,10 @@ const MenteeGroupDetails: React.FC<MenteeGroupDetailsProps> = ({ group, user, on
                 {/* Right Column - Team & Mentor (1/4 width) */}
                 <div className="xl:col-span-1 space-y-6">
                     <div className="sticky top-6 space-y-6">
-                        {/* Team Members */}
+                        {/* Group Members */}
                         <div className="bg-white rounded-2xl border border-neutral-200 shadow-sm p-6 max-h-[400px] overflow-y-auto">
                             <h3 className="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
-                                <Users className="w-5 h-5 text-indigo-600" /> Team Members
+                                <Users className="w-5 h-5 text-indigo-600" /> Group {group.name}
                             </h3>
                             <div className="space-y-4">
                                 {group.members.map((member: any) => (
@@ -248,16 +295,20 @@ const MenteeGroupDetails: React.FC<MenteeGroupDetailsProps> = ({ group, user, on
 
                         {/* Faculty Mentor */}
                         <div className="bg-white rounded-2xl border border-neutral-200 shadow-sm p-6">
-                            <h3 className="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
-                                <Users className="w-5 h-5 text-orange-600" /> Faculty Mentor
+                            <h3 className="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2">
+                                <Users className="w-4 h-4 text-orange-600" /> Faculty Mentor
                             </h3>
                             <div className="flex items-center gap-3 p-2 bg-orange-50/50 rounded-lg border border-orange-100">
-                                <div className="h-8 w-8 rounded-full bg-orange-100 flex items-center justify-center font-bold text-orange-700 shrink-0 text-xs text-orange-600 border border-orange-200">
-                                    {(group.project?.faculty?.name || user?.name || 'F').charAt(0)}
-                                </div>
+                                {faculty?.photoUrl ? (
+                                    <img src={faculty.photoUrl} alt={faculty.name} className="h-9 w-9 rounded-full object-cover shrink-0 border border-orange-200" />
+                                ) : (
+                                    <div className="h-9 w-9 rounded-full bg-orange-100 flex items-center justify-center font-bold text-orange-700 shrink-0 text-sm border border-orange-200">
+                                        {(faculty?.name || user?.name || 'F').charAt(0)}
+                                    </div>
+                                )}
                                 <div className="overflow-hidden">
-                                    <p className="font-bold text-gray-900 text-sm truncate">{group.project?.faculty?.name || user?.name || 'Unassigned'}</p>
-                                    <p className="text-xs text-gray-500 truncate">{group.project?.faculty?.department || user?.department || 'Faculty'}</p>
+                                    <p className="font-bold text-gray-900 text-sm truncate">{faculty?.name || user?.name || 'Unassigned'}</p>
+                                    <p className="text-xs text-gray-500 truncate">{faculty?.department || user?.department || 'Faculty'}</p>
                                 </div>
                             </div>
                         </div>
@@ -316,11 +367,7 @@ const MenteeGroupDetails: React.FC<MenteeGroupDetailsProps> = ({ group, user, on
                                 <input
                                     type="file"
                                     multiple
-                                    onChange={(e) => {
-                                        if (e.target.files) {
-                                            setUpdateFiles(Array.from(e.target.files));
-                                        }
-                                    }}
+                                    onChange={(e) => { if (e.target.files) setUpdateFiles(Array.from(e.target.files)); }}
                                     className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
                                 />
                             </div>

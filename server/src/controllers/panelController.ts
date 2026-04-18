@@ -10,7 +10,7 @@ export const exportEvaluations = async (req: any, res: Response) => {
         const { batchYear, evalType } = req.query; // evalType: 'midterm' or 'full'
 
         // Get all groups and filter by batch
-        const allGroups = await Group.find({ status: { $in: ['Approved', 'Assigned', 'Pending'] }, isArchived: { $ne: true } })
+        const allGroups = await Group.find({ status: { $in: ['Approved', 'Pending'] }, isArchived: { $ne: true } })
             .populate('members', 'name rollNumber branch department')
             .populate({
                 path: 'project',
@@ -281,7 +281,7 @@ export const getPanels = async (req: any, res: Response) => {
         // Populate groups for each panel based on faculty
         const panelsWithGroups = await Promise.all(panels.map(async (panel: any) => {
             const panelFacultyIds = panel.faculty.map((f: any) => f._id.toString());
-            const groups = await Group.find({ status: { $in: ['Approved', 'Assigned', 'Forming', 'Pending'] }, isArchived: { $ne: true } })
+            const groups = await Group.find({ status: { $in: ['Approved', 'Forming', 'Pending'] }, isArchived: { $ne: true } })
                 .populate('members', 'name rollNumber email branch')
                 .populate({ path: 'project', populate: { path: 'faculty', select: 'name email' } })
                 .lean();
@@ -340,7 +340,7 @@ export const getMyPanelEvaluationGroups = async (req: any, res: Response) => {
 
             // Get all groups allocated to these faculty members, specifically those with approved projects
             const groups = await Group.find({
-                status: { $in: ['Approved', 'Assigned', 'Forming', 'Pending'] },
+                status: { $in: ['Approved', 'Forming', 'Pending'] },
                 isArchived: { $ne: true }
             }).populate('members', 'name rollNumber email branch')
                 .populate({
@@ -397,7 +397,7 @@ export const exportPanels = async (req: any, res: Response) => {
         const panels = await Panel.find(query).populate('faculty', 'name email').lean();
 
         // Get groups similarly, but cache groups
-        const groups = await Group.find({ status: { $in: ['Approved', 'Assigned', 'Pending'] }, isArchived: { $ne: true } })
+        const groups = await Group.find({ status: { $in: ['Approved', 'Pending'] }, isArchived: { $ne: true } })
             .populate('members', 'name rollNumber')
             .populate({
                 path: 'project',

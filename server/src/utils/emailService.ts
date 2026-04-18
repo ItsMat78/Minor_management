@@ -20,13 +20,16 @@ export const transporter = nodemailer.createTransport({
  */
 export const sendEmail = async (to: string | string[], subject: string, text: string, html?: string) => {
     try {
-        const mailOptions = {
-            from: `"Minor Project Management" <${process.env.EMAIL_USER || 'no-reply@minor-management.edu'}>`,
+        const fromAddress = process.env.EMAIL_USER || 'no-reply@minor-management.edu';
+        const replyTo = process.env.EMAIL_REPLY_TO;
+        const mailOptions: any = {
+            from: `"Minor Project Management" <${fromAddress}>`,
             to: Array.isArray(to) ? to.join(', ') : to,
             subject,
             text,
-            html: html || text, // Fallback to plain text if no HTML provided
+            html: html || text,
         };
+        if (replyTo) mailOptions.replyTo = replyTo;
 
         const info = await transporter.sendMail(mailOptions);
         console.log(`[EmailService] Sent to ${to}: ${info.messageId}`);
@@ -57,13 +60,40 @@ export const sendEventNotificationEmail = async (emails: string[], eventTitle: s
 };
 
 export const sendGroupCreationEmail = async (emails: string[], groupName: string) => {
-    const subject = `Group Formation Successful: ${groupName}`;
-    const text = `You have successfully joined the group "${groupName}". Please coordinate with your members to submit a project proposal.`;
+    const subject = `Group Formation Started: ${groupName}`;
+    const text = `You have started the group "${groupName}". Invitations have been sent to your proposed members. The group will be finalised once all members accept.`;
     const html = `
         <div style="font-family: sans-serif; padding: 20px;">
-            <h2 style="color: #10b981;">Group Formation Successful!</h2>
-            <p>You have been successfully registered under the group name: <strong>${groupName}</strong>.</p>
-            <p>Please log in to the portal to manage your group and start drafting your project proposal.</p>
+            <h2 style="color: #10b981;">Group Formation Started</h2>
+            <p>Your group has been created under the name: <strong>${groupName}</strong>.</p>
+            <p>We've sent invitations to your proposed members. Your group dashboard will unlock once every member has accepted.</p>
+        </div>
+    `;
+    await sendEmail(emails, subject, text, html);
+};
+
+export const sendGroupInviteEmail = async (email: string, inviterName: string, groupName: string) => {
+    const subject = `You have been invited to group "${groupName}"`;
+    const text = `${inviterName} has invited you to join their Minor Project group "${groupName}". Log in to the portal to accept or decline.`;
+    const html = `
+        <div style="font-family: sans-serif; padding: 20px;">
+            <h2 style="color: #4f46e5;">Group Invitation</h2>
+            <p><strong>${inviterName}</strong> has invited you to join the group <strong>${groupName}</strong>.</p>
+            <p>Please log in to the Minor Management Portal to accept or decline this invite. The group dashboard will only unlock once all members accept.</p>
+        </div>
+    `;
+    await sendEmail(email, subject, text, html);
+};
+
+export const sendGroupInviteResponseEmail = async (emails: string[], responderName: string, groupName: string, response: 'accepted' | 'rejected') => {
+    const color = response === 'accepted' ? '#10b981' : '#dc2626';
+    const subject = `${responderName} has ${response} the invite to "${groupName}"`;
+    const text = `${responderName} has ${response} your group invitation for "${groupName}".`;
+    const html = `
+        <div style="font-family: sans-serif; padding: 20px;">
+            <h2 style="color: ${color};">Group Invite ${response === 'accepted' ? 'Accepted' : 'Declined'}</h2>
+            <p><strong>${responderName}</strong> has <span style="color:${color};font-weight:bold">${response}</span> the invite for group <strong>${groupName}</strong>.</p>
+            <p>Log in to the portal to view the current group status.</p>
         </div>
     `;
     await sendEmail(emails, subject, text, html);

@@ -1,6 +1,6 @@
 
 import express from 'express';
-import { getFaculty, getAllStudents, updateUser, exportStudents, previewImport, commitImport } from '../controllers/userController';
+import { getFaculty, getAllStudents, updateUser, exportStudents, exportFaculty, uploadProfilePhoto, previewImport, commitImport } from '../controllers/userController';
 import { auth, adminAuth } from '../middleware/authMiddleware';
 import { upload } from '../middleware/uploadMiddleware';
 
@@ -16,8 +16,10 @@ router.use(auth);
 
 router.get('/faculty', getFaculty);
 router.get('/students/export', exportStudents);
+router.get('/faculty/export', adminAuth, exportFaculty);
 router.get('/students', getAllStudents);
 router.put('/:id', adminAuth, updateUser);
+router.post('/profile-photo', upload.single('photo'), uploadProfilePhoto);
 
 // Import Routes (admin only)
 router.post('/import-preview', adminAuth, upload.single('file'), previewImport);

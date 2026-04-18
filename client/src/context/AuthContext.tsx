@@ -14,6 +14,8 @@ interface User {
     maxGroups?: number;
     currentStudents?: number;
     currentGroups?: number;
+    mustChangePassword?: boolean;
+    photoUrl?: string;
 }
 
 interface Event {
@@ -29,11 +31,12 @@ interface Event {
 interface AuthContextType {
     user: User | null;
     loading: boolean;
-    login: (token: string, user: User) => void;
+    login: (token: string, user: User, rememberMe?: boolean) => void;
     logout: () => void;
     isAuthenticated: boolean;
     activeEvents: Event[];
     refreshActiveEvents: () => Promise<void>;
+    refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -54,8 +57,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
     };
 
+    const refreshUser = async () => {
+        try {
+            const res = await api.get('/auth/me');
+            setUser(res.data);
+        } catch (error) {
+            console.error("Failed to refresh user", error);
+        }
+    };
+
     useEffect(() => {
-        const token = localStorage.getItem('token');
+        const token = localStorage.getItem('token') || sessionStorage.getItem('token');
         if (token) {
             api.get('/auth/me')
                 .then(res => {
@@ -64,6 +76,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 })
                 .catch(() => {
                     localStorage.removeItem('token');
+                    sessionStorage.removeItem('token');
                 })
                 .finally(() => setLoading(false));
         } else {
@@ -71,20 +84,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
     }, []);
 
-    const login = async (token: string, userData: User) => {
-        localStorage.setItem('token', token);
+    const login = async (token: string, userData: User, rememberMe = false) => {
+        if (rememberMe) {
+            localStorage.setItem('token', token);
+        } else {
+            sessionStorage.setItem('token', token);
+        }
         setUser(userData);
         await refreshActiveEvents();
     };
 
     const logout = () => {
         localStorage.removeItem('token');
+        sessionStorage.removeItem('token');
         setUser(null);
         setActiveEvents([]);
     };
 
     return (
-        <AuthContext.Provider value={{ user, loading, login, logout, isAuthenticated: !!user, activeEvents, refreshActiveEvents }}>
+        <AuthContext.Provider value={{ user, loading, login, logout, isAuthenticated: !!user, activeEvents, refreshActiveEvents, refreshUser }}>
             {children}
         </AuthContext.Provider>
     );

@@ -1,23 +1,28 @@
-import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Loader2, ArrowRight, User, Lock } from 'lucide-react';
+import { Loader2, ArrowRight, User, Lock, KeyRound } from 'lucide-react';
 
 const Login: React.FC = () => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
+    const [rememberMe, setRememberMe] = useState(false);
     const [error, setError] = useState('');
+    const [info, setInfo] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [isOtpMode, setIsOtpMode] = useState(false);
     const [otp, setOtp] = useState('');
+    const [resendCooldown, setResendCooldown] = useState(0);
     const { login, isAuthenticated, user } = useAuth();
     const navigate = useNavigate();
 
-    React.useEffect(() => {
+    useEffect(() => {
         if (isAuthenticated && user) {
-            if (user.role === 'Admin') {
+            if ((user as any).mustChangePassword) {
+                navigate('/change-password', { replace: true });
+            } else if (user.role === 'Admin') {
                 navigate('/admin', { replace: true });
             } else {
                 navigate('/dashboard', { replace: true });
@@ -25,7 +30,12 @@ const Login: React.FC = () => {
         }
     }, [isAuthenticated, user, navigate]);
 
-    // URLs for assets - These would ideally be local assets or hosted on a reliable CDN
+    useEffect(() => {
+        if (resendCooldown <= 0) return;
+        const t = setTimeout(() => setResendCooldown(c => c - 1), 1000);
+        return () => clearTimeout(t);
+    }, [resendCooldown]);
+
     const LOGO_URL = "/logo.svg";
     const CAMPUS_BG_URL = "/cover.jpeg";
 
@@ -33,29 +43,35 @@ const Login: React.FC = () => {
         e.preventDefault();
         setIsLoading(true);
         setError('');
+        setInfo('');
 
         try {
             if (isOtpMode) {
                 const res = await api.post('/auth/verify-otp', { email, otp });
-                login(res.data.token, res.data.user);
+                login(res.data.token, res.data.user, rememberMe);
 
-                if (res.data.user.role === 'Admin') {
+                if (res.data.user.mustChangePassword) {
+                    navigate('/change-password');
+                } else if (res.data.user.role === 'Admin') {
                     navigate('/admin');
                 } else {
                     navigate('/dashboard');
                 }
             } else {
                 const res = await api.post('/auth/login', { email, password });
-                
+
                 if (res.data.requiresActivation) {
                     setIsOtpMode(true);
-                    setError(res.data.message || 'Please enter the OTP sent to your email.');
+                    setInfo(res.data.message || 'Please enter the OTP sent to your email.');
+                    setResendCooldown(60);
                     return;
                 }
 
-                login(res.data.token, res.data.user);
+                login(res.data.token, res.data.user, rememberMe);
 
-                if (res.data.user.role === 'Admin') {
+                if (res.data.user.mustChangePassword) {
+                    navigate('/change-password');
+                } else if (res.data.user.role === 'Admin') {
                     navigate('/admin');
                 } else {
                     navigate('/dashboard');
@@ -68,39 +84,44 @@ const Login: React.FC = () => {
         }
     };
 
+    const handleResend = async () => {
+        if (resendCooldown > 0) return;
+        setError('');
+        setInfo('');
+        try {
+            await api.post('/auth/resend-otp', { email });
+            setInfo('A new OTP has been sent to your email.');
+            setResendCooldown(60);
+        } catch (err: any) {
+            const retry = err.response?.data?.retryAfter;
+            if (retry) setResendCooldown(retry);
+            setError(err.response?.data?.message || 'Could not resend OTP.');
+        }
+    };
+
     return (
         <div className="relative flex min-h-screen items-center justify-center overflow-hidden">
-            {/* Background Image with Overlay */}
             <div
                 className="absolute inset-0 z-0 bg-cover bg-center bg-no-repeat"
-                style={{
-                    backgroundImage: `url('${CAMPUS_BG_URL}')`,
-                }}
+                style={{ backgroundImage: `url('${CAMPUS_BG_URL}')` }}
             >
                 <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px]" />
             </div>
 
-            {/* Login Card */}
             <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.6, ease: "easeOut" }}
                 className="relative z-10 w-full max-w-md overflow-hidden rounded-2xl bg-white/95 shadow-2xl backdrop-blur-xl md:bg-white/90"
             >
-                {/* Header Section */}
                 <div className="bg-gradient-to-r from-blue-900 to-blue-800 p-8 text-center text-white">
                     <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-white p-2 shadow-lg">
-                        <img
-                            src={LOGO_URL}
-                            alt="IIITNR Logo"
-                            className="h-full w-full object-contain"
-                        />
+                        <img src={LOGO_URL} alt="IIITNR Logo" className="h-full w-full object-contain" />
                     </div>
                     <h1 className="text-2xl font-bold tracking-tight">IIIT Naya Raipur</h1>
                     <p className="mt-1 text-blue-100 opacity-90">Project Management Portal</p>
                 </div>
 
-                {/* Form Section */}
                 <div className="p-8 pt-6">
                     <form onSubmit={handleSubmit} className="space-y-5">
                         <AnimatePresence>
@@ -112,6 +133,16 @@ const Login: React.FC = () => {
                                     className="rounded-lg bg-red-50 p-3 text-sm text-red-600 border border-red-100 flex items-center"
                                 >
                                     <span className="mr-2">⚠️</span> {error}
+                                </motion.div>
+                            )}
+                            {info && (
+                                <motion.div
+                                    initial={{ opacity: 0, height: 0 }}
+                                    animate={{ opacity: 1, height: 'auto' }}
+                                    exit={{ opacity: 0, height: 0 }}
+                                    className="rounded-lg bg-blue-50 p-3 text-sm text-blue-700 border border-blue-100"
+                                >
+                                    {info}
                                 </motion.div>
                             )}
                         </AnimatePresence>
@@ -147,32 +178,54 @@ const Login: React.FC = () => {
                                     </div>
                                 </>
                             ) : (
-                                <div className="relative">
-                                    <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-gray-500">
-                                        <Lock size={18} />
+                                <>
+                                    <div className="relative">
+                                        <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-gray-500">
+                                            <KeyRound size={18} />
+                                        </div>
+                                        <input
+                                            type="text"
+                                            required
+                                            value={otp}
+                                            onChange={(e) => setOtp(e.target.value)}
+                                            className="block w-full rounded-lg border border-gray-300 bg-gray-50 py-3 pl-10 pr-3 text-gray-900 placeholder-gray-500 transition-all focus:border-blue-600 focus:bg-white focus:ring-2 focus:ring-blue-600/20 focus:outline-none tracking-widest text-center text-lg font-bold"
+                                            placeholder="Enter 6-digit OTP"
+                                            maxLength={6}
+                                        />
                                     </div>
-                                    <input
-                                        type="text"
-                                        required
-                                        value={otp}
-                                        onChange={(e) => setOtp(e.target.value)}
-                                        className="block w-full rounded-lg border border-gray-300 bg-gray-50 py-3 pl-10 pr-3 text-gray-900 placeholder-gray-500 transition-all focus:border-blue-600 focus:bg-white focus:ring-2 focus:ring-blue-600/20 focus:outline-none tracking-widest text-center text-lg font-bold"
-                                        placeholder="Enter 6-digit OTP"
-                                        maxLength={6}
-                                    />
-                                </div>
+                                    <div className="flex items-center justify-between text-xs">
+                                        <button
+                                            type="button"
+                                            onClick={() => { setIsOtpMode(false); setOtp(''); setError(''); setInfo(''); }}
+                                            className="font-medium text-gray-600 hover:text-blue-800 hover:underline"
+                                        >
+                                            ← Back to login
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={handleResend}
+                                            disabled={resendCooldown > 0}
+                                            className="font-medium text-blue-700 hover:text-blue-900 hover:underline disabled:text-gray-400 disabled:hover:no-underline"
+                                        >
+                                            {resendCooldown > 0 ? `Resend OTP in ${resendCooldown}s` : 'Resend OTP'}
+                                        </button>
+                                    </div>
+                                </>
                             )}
                         </div>
 
                         {!isOtpMode && (
-                            <div className="flex items-center justify-between text-sm">
-                                <label className="flex items-center space-x-2 text-gray-600 cursor-pointer">
-                                    <input type="checkbox" className="h-4 w-4 rounded border-gray-300 text-blue-800 focus:ring-blue-800" />
-                                    <span>Remember me</span>
+                            <div className="flex items-center gap-2">
+                                <input
+                                    type="checkbox"
+                                    id="rememberMe"
+                                    checked={rememberMe}
+                                    onChange={(e) => setRememberMe(e.target.checked)}
+                                    className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                />
+                                <label htmlFor="rememberMe" className="text-sm text-gray-600 cursor-pointer select-none">
+                                    Remember me
                                 </label>
-                                <a href="#" className="font-medium text-blue-700 hover:text-blue-900 hover:underline">
-                                    Forgot Password?
-                                </a>
                             </div>
                         )}
 
@@ -192,11 +245,9 @@ const Login: React.FC = () => {
                         </button>
                     </form>
 
-                    <p className="mt-6 text-center text-sm text-gray-500">
-                        Don't have an account?{' '}
-                        <Link to="/signup" className="font-semibold text-blue-900 hover:underline">
-                            Sign up
-                        </Link>
+                    <p className="mt-6 text-center text-xs text-gray-500">
+                        Accounts are created by the Minor Project Coordinator.<br />
+                        Contact <a href="mailto:btechminiproject@iiitnr.edu.in" className="text-blue-800 hover:underline">btechminiproject@iiitnr.edu.in</a> if you can't sign in.
                     </p>
 
                     <div className="mt-8 text-center text-xs text-gray-500">
@@ -210,4 +261,3 @@ const Login: React.FC = () => {
 };
 
 export default Login;
-
