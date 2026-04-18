@@ -1,5 +1,0 @@
-Name,Email,RollNumber,Branch,Semester
-Test Student 1,test1@domain.com,23CS001,Computer Science,4
-Test Student 2,test2@domain.com,23CS002,Information Tech,4
-Duplicate Email,test1@domain.com,23CS003,CSE,4
-Missing Roll,test3@domain.com,,CSE,4
