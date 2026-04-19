@@ -52,11 +52,6 @@ const AdminDashboard: React.FC = () => {
     const [loading, setLoading] = useState(false);
     const [panels, setPanels] = useState<any[]>([]);
 
-    // Pagination state
-    const PAGE_SIZE = 50;
-    const [studentsPage, setStudentsPage] = useState(1);
-    const [studentsTotalPages, setStudentsTotalPages] = useState(1);
-    const [studentsTotalCount, setStudentsTotalCount] = useState(0);
     const [showAutoCreateModal, setShowAutoCreateModal] = useState(false);
     const [autoCreateFaculties, setAutoCreateFaculties] = useState<any[]>([]);
     const [showAutoCreateBatchSelect, setShowAutoCreateBatchSelect] = useState(false);
@@ -132,10 +127,12 @@ const AdminDashboard: React.FC = () => {
     const [smartImportTarget, setSmartImportTarget] = useState<'student' | 'faculty' | null>(null);
 
     // Excel full import state
+    const [showExcelImportModal, setShowExcelImportModal] = useState(false);
     const [excelImportFile, setExcelImportFile] = useState<File | null>(null);
     const [excelImportSemester, setExcelImportSemester] = useState('');
     const [excelImportLoading, setExcelImportLoading] = useState(false);
     const [excelImportPreview, setExcelImportPreview] = useState<any | null>(null);
+    const [excelImportPreviewTab, setExcelImportPreviewTab] = useState<'students' | 'faculty' | 'groups' | 'warnings'>('warnings');
     const [excelImportExpanded, setExcelImportExpanded] = useState<Set<number>>(new Set());
 
     // Snapshot import state
@@ -151,6 +148,7 @@ const AdminDashboard: React.FC = () => {
     // Import result state (shown after commit)
     const [simpleImportResult, setSimpleImportResult] = useState<{ created: number; total: number; errors: { email: string; name: string; reason: string }[] } | null>(null);
     const [excelImportResult, setExcelImportResult] = useState<{ created: any; errors: { groupNumber: string; student?: string; reason: string }[] } | null>(null);
+    const [excelImportResultTab, setExcelImportResultTab] = useState<'students' | 'faculty' | 'groups' | 'errors'>('students');
     const [snapshotImportResult, setSnapshotImportResult] = useState<{ result: any; errors: { type: string; key: string; reason: string }[] } | null>(null);
 
 
@@ -159,14 +157,8 @@ const AdminDashboard: React.FC = () => {
             setLoading(true);
             try {
                 if (activeTab === 'students') {
-                    const res = await api.get(`/users/students?page=${studentsPage}&limit=${PAGE_SIZE}`);
-                    if (res.data && res.data.data) {
-                        setStudents(res.data.data);
-                        setStudentsTotalPages(res.data.pages || 1);
-                        setStudentsTotalCount(res.data.total || 0);
-                    } else {
-                        setStudents(Array.isArray(res.data) ? res.data : []);
-                    }
+                    const res = await api.get('/users/students');
+                    setStudents(Array.isArray(res.data) ? res.data : (res.data?.data ?? []));
                 } else if (activeTab === 'faculty') {
                     const res = await api.get('/users/faculty');
                     setFaculty(Array.isArray(res.data) ? res.data : []);
@@ -217,7 +209,7 @@ const AdminDashboard: React.FC = () => {
         if (activeTab === 'groups') {
             setViewGroup(null); // Reset detail view on tab change
         }
-    }, [activeTab, filterBatch, studentsPage]);
+    }, [activeTab, filterBatch]);
 
     // Reset sort when tab changes
     useEffect(() => {
@@ -1193,41 +1185,6 @@ const AdminDashboard: React.FC = () => {
                                                 </tbody>
                                             </table>
                                         </div>
-                                        {/* Pagination controls */}
-                                        {studentsTotalPages > 1 && (
-                                            <div className="flex items-center justify-between mt-4 px-1">
-                                                <span className="text-sm text-neutral-500">
-                                                    Page {studentsPage} of {studentsTotalPages} &middot; {studentsTotalCount} students
-                                                </span>
-                                                <div className="flex gap-2">
-                                                    <button
-                                                        disabled={studentsPage <= 1}
-                                                        onClick={() => setStudentsPage(p => Math.max(1, p - 1))}
-                                                        className="px-3 py-1.5 text-sm font-medium rounded-lg border border-neutral-200 hover:bg-neutral-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                                                    >
-                                                        ← Prev
-                                                    </button>
-                                                    {Array.from({ length: Math.min(5, studentsTotalPages) }, (_, i) => {
-                                                        const start = Math.max(1, Math.min(studentsPage - 2, studentsTotalPages - 4));
-                                                        const p = start + i;
-                                                        return p <= studentsTotalPages ? (
-                                                            <button
-                                                                key={p}
-                                                                onClick={() => setStudentsPage(p)}
-                                                                className={`px-3 py-1.5 text-sm font-medium rounded-lg border transition-colors ${p === studentsPage ? 'bg-indigo-600 text-white border-indigo-600' : 'border-neutral-200 hover:bg-neutral-50'}`}
-                                                            >{p}</button>
-                                                        ) : null;
-                                                    })}
-                                                    <button
-                                                        disabled={studentsPage >= studentsTotalPages}
-                                                        onClick={() => setStudentsPage(p => Math.min(studentsTotalPages, p + 1))}
-                                                        className="px-3 py-1.5 text-sm font-medium rounded-lg border border-neutral-200 hover:bg-neutral-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                                                    >
-                                                        Next →
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        )}
                                     </>
                                 )}
 
@@ -2127,205 +2084,13 @@ const AdminDashboard: React.FC = () => {
                                                     </div>
                                                     <div>
                                                         <h3 className="text-lg font-bold text-neutral-900">Full Excel Import <span className="ml-2 text-xs font-semibold bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">Step 3</span></h3>
-                                                        <p className="text-sm text-neutral-500">Import groups and projects from an IIITNR Excel sheet. Run Faculty (Step 1) and Student (Step 2) CSV imports first so users are matched by email/roll number.</p>
+                                                        <p className="text-sm text-neutral-500">Import groups and projects from an IIITNR Excel sheet. Run Faculty (Step 1) and Student (Step 2) CSV imports first.</p>
                                                     </div>
                                                 </div>
-                                            </div>
-                                            <div className="px-6 pb-6 space-y-4">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="flex-1">
-                                                        <label className="block text-xs font-semibold text-neutral-500 mb-1 uppercase tracking-wider">Semester</label>
-                                                        <select
-                                                            value={excelImportSemester}
-                                                            onChange={e => setExcelImportSemester(e.target.value)}
-                                                            className="w-full px-3 py-2 bg-neutral-50 rounded-lg border border-neutral-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                                                        >
-                                                            <option value="">Select semester</option>
-                                                            {[1, 2, 3, 4, 5, 6, 7, 8].map(s => <option key={s} value={s}>Semester {s}</option>)}
-                                                        </select>
-                                                    </div>
-                                                    <div className="flex-1">
-                                                        <label className="block text-xs font-semibold text-neutral-500 mb-1 uppercase tracking-wider">Excel File</label>
-                                                        <label className="flex items-center gap-2 px-4 py-2 bg-neutral-50 border border-neutral-200 rounded-lg cursor-pointer hover:bg-indigo-50 hover:border-indigo-200 transition-colors text-sm font-medium text-neutral-700">
-                                                            <Upload className="w-4 h-4" />
-                                                            {excelImportFile ? excelImportFile.name : 'Choose .xlsx file'}
-                                                            <input type="file" accept=".xlsx,.xls" className="hidden" onChange={e => { setExcelImportFile(e.target.files?.[0] || null); setExcelImportPreviewError(null); }} />
-                                                        </label>
-                                                    </div>
-                                                    <div className="pt-5">
-                                                        <button
-                                                            disabled={!excelImportFile || excelImportLoading}
-                                                            onClick={async () => {
-                                                                if (!excelImportFile) return;
-                                                                setExcelImportLoading(true);
-                                                                setExcelImportPreview(null);
-                                                                setExcelImportPreviewError(null);
-                                                                try {
-                                                                    const fd = new FormData();
-                                                                    fd.append('file', excelImportFile);
-                                                                    fd.append('semester', excelImportSemester);
-                                                                    const res = await api.post('/import/excel/preview', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
-                                                                    setExcelImportPreview(res.data);
-                                                                    setExcelImportExpanded(new Set());
-                                                                } catch (err: any) {
-                                                                    setExcelImportPreviewError(err.response?.data?.message || 'Preview failed. Check the file format and try again.');
-                                                                } finally {
-                                                                    setExcelImportLoading(false);
-                                                                }
-                                                            }}
-                                                            className="px-5 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
-                                                        >
-                                                            {excelImportLoading ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Analyzing...</> : 'Preview'}
-                                                        </button>
-                                                    </div>
-                                                </div>
-
-                                                {excelImportPreviewError && (
-                                                    <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
-                                                        <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
-                                                        <p className="text-sm text-red-700">{excelImportPreviewError}</p>
-                                                    </div>
-                                                )}
-
-                                                {excelImportPreview && (
-                                                    <div className="space-y-4">
-                                                        {/* Summary cards */}
-                                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                                                            {[
-                                                                { label: 'Groups', value: excelImportPreview.summary.totalGroups, color: 'indigo' },
-                                                                { label: 'New Students', value: excelImportPreview.summary.newStudents, color: 'green' },
-                                                                { label: 'Existing Students', value: excelImportPreview.summary.existingStudents, color: 'amber' },
-                                                                { label: 'New Faculty', value: excelImportPreview.summary.newFaculty, color: 'violet' }
-                                                            ].map(({ label, value, color }) => (
-                                                                <div key={label} className={`bg-${color}-50 rounded-xl p-4 border border-${color}-100`}>
-                                                                    <p className={`text-xs font-bold text-${color}-600 uppercase tracking-wider`}>{label}</p>
-                                                                    <p className={`text-2xl font-black text-${color}-700 mt-1`}>{value}</p>
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                        {excelImportPreview.summary.studentsAlreadyGrouped > 0 && (
-                                                            <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl p-4">
-                                                                <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-                                                                <p className="text-sm text-amber-800"><strong>{excelImportPreview.summary.studentsAlreadyGrouped}</strong> student(s) are already in active groups and will be placed in existing groups (no duplicate group created).</p>
-                                                            </div>
-                                                        )}
-
-                                                        {/* Group list */}
-                                                        <div className="border border-neutral-200 rounded-xl overflow-hidden">
-                                                            <div className="bg-neutral-50 px-4 py-2 text-xs font-bold text-neutral-500 uppercase tracking-wider">
-                                                                Groups to Import ({excelImportPreview.groups.length})
-                                                            </div>
-                                                            <div className="divide-y divide-neutral-100 max-h-64 overflow-y-auto">
-                                                                {excelImportPreview.groups.map((g: any, idx: number) => (
-                                                                    <div key={idx}>
-                                                                        <button
-                                                                            onClick={() => setExcelImportExpanded(prev => {
-                                                                                const next = new Set(prev);
-                                                                                next.has(idx) ? next.delete(idx) : next.add(idx);
-                                                                                return next;
-                                                                            })}
-                                                                            className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-neutral-50 transition-colors text-left"
-                                                                        >
-                                                                            <div className="flex items-center gap-3">
-                                                                                <span className="text-xs font-bold text-neutral-500 w-8">#{g.groupNumber}</span>
-                                                                                <span className="text-sm font-medium text-neutral-800 truncate max-w-xs">{g.projectTitle}</span>
-                                                                                <span className="text-xs text-neutral-400">{g.students.length} students</span>
-                                                                                {g.faculty.status === 'new' && <span className="px-2 py-0.5 bg-violet-100 text-violet-700 rounded-full text-xs font-medium">New Faculty</span>}
-                                                                            </div>
-                                                                            <ChevronDown className={`w-4 h-4 text-neutral-400 transition-transform ${excelImportExpanded.has(idx) ? 'rotate-180' : ''}`} />
-                                                                        </button>
-                                                                        {excelImportExpanded.has(idx) && (
-                                                                            <div className="px-4 pb-3 bg-neutral-50 border-t border-neutral-100">
-                                                                                <p className="text-xs text-neutral-500 mb-2 font-medium">Faculty: <span className="text-neutral-700">{g.faculty.name || '—'} {g.faculty.status === 'new' ? '(will be created)' : '(existing)'}</span></p>
-                                                                                <div className="space-y-1">
-                                                                                    {g.students.map((s: any, si: number) => (
-                                                                                        <div key={si} className="flex items-center gap-2 text-xs">
-                                                                                            <span className={`w-2 h-2 rounded-full flex-shrink-0 ${s.status === 'new' ? 'bg-green-400' : 'bg-amber-400'}`} />
-                                                                                            <span className="text-neutral-700 font-medium">{s.name}</span>
-                                                                                            <span className="text-neutral-400">{s.roll}</span>
-                                                                                            <span className="text-neutral-400">{s.branch}</span>
-                                                                                            {s.inGroup && <span className="text-amber-600 font-medium">(already in group)</span>}
-                                                                                        </div>
-                                                                                    ))}
-                                                                                </div>
-                                                                            </div>
-                                                                        )}
-                                                                    </div>
-                                                                ))}
-                                                            </div>
-                                                        </div>
-
-                                                        <div className="flex gap-3 justify-end">
-                                                            <button
-                                                                onClick={() => { setExcelImportPreview(null); setExcelImportFile(null); }}
-                                                                className="px-4 py-2 border border-neutral-200 rounded-lg text-sm font-medium hover:bg-neutral-50 transition-colors"
-                                                            >
-                                                                Cancel
-                                                            </button>
-                                                            <button
-                                                                disabled={excelImportLoading}
-                                                                onClick={async () => {
-                                                                    setExcelImportLoading(true);
-                                                                    try {
-                                                                        const res = await api.post('/import/excel/commit', {
-                                                                            groups: excelImportPreview.groups,
-                                                                            semester: parseInt(excelImportSemester) || 0
-                                                                        });
-                                                                        setExcelImportResult({ created: res.data.created, errors: res.data.errors || [] });
-                                                                        setExcelImportPreview(null);
-                                                                    } catch (err: any) {
-                                                                        setExcelImportResult({ created: {}, errors: [{ groupNumber: '—', reason: err.response?.data?.message || 'Server error' }] });
-                                                                    } finally {
-                                                                        setExcelImportLoading(false);
-                                                                    }
-                                                                }}
-                                                                className="px-5 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors flex items-center gap-2"
-                                                            >
-                                                                {excelImportLoading ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Importing...</> : <><Save className="w-4 h-4" /> Confirm & Import</>}
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                )}
-
-                                                {/* Excel import result */}
-                                                {excelImportResult && (
-                                                    <div className="mt-4 space-y-3">
-                                                        <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
-                                                            {[
-                                                                { label: 'Students', value: excelImportResult.created.students ?? 0, color: 'green' },
-                                                                { label: 'Faculty', value: excelImportResult.created.faculty ?? 0, color: 'violet' },
-                                                                { label: 'Groups', value: excelImportResult.created.groups ?? 0, color: 'indigo' },
-                                                                { label: 'Projects', value: excelImportResult.created.projects ?? 0, color: 'blue' },
-                                                                { label: 'Skipped', value: excelImportResult.created.skipped ?? 0, color: 'amber' },
-                                                            ].map(({ label, value, color }) => (
-                                                                <div key={label} className={`bg-${color}-50 rounded-xl p-3 border border-${color}-100 text-center`}>
-                                                                    <p className={`text-xs font-bold text-${color}-600 uppercase tracking-wider`}>{label}</p>
-                                                                    <p className={`text-xl font-black text-${color}-700 mt-1`}>{value}</p>
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                        {excelImportResult.errors.length > 0 && (
-                                                            <div className="border border-red-200 rounded-xl overflow-hidden">
-                                                                <div className="bg-red-50 px-4 py-2 text-xs font-bold text-red-700 uppercase tracking-wider">Errors ({excelImportResult.errors.length})</div>
-                                                                <div className="divide-y divide-red-100 max-h-48 overflow-y-auto">
-                                                                    {excelImportResult.errors.map((e, i) => (
-                                                                        <div key={i} className="px-4 py-2 text-xs flex gap-3">
-                                                                            <span className="font-medium text-neutral-700 w-16 flex-shrink-0">Grp #{e.groupNumber}</span>
-                                                                            {e.student && <span className="text-neutral-500 w-28 truncate flex-shrink-0">{e.student}</span>}
-                                                                            <span className="text-red-600">{e.reason}</span>
-                                                                        </div>
-                                                                    ))}
-                                                                </div>
-                                                            </div>
-                                                        )}
-                                                        <div className="flex justify-end">
-                                                            <button onClick={() => { setExcelImportResult(null); setExcelImportFile(null); setExcelImportSemester(''); }}
-                                                                className="px-4 py-2 bg-neutral-900 text-white rounded-lg text-sm font-medium hover:bg-neutral-800 transition-colors">
-                                                                Done
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                )}
+                                                <button onClick={() => setShowExcelImportModal(true)}
+                                                    className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition-colors flex items-center gap-2">
+                                                    <Upload className="w-4 h-4" /> Import
+                                                </button>
                                             </div>
                                         </div>
 
@@ -3520,6 +3285,544 @@ const AdminDashboard: React.FC = () => {
                             </div>
                         </motion.div>
                     </div>
+                )}
+
+                {/* Full Excel Import Modal */}
+                {showExcelImportModal && (
+                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                        <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} className="bg-white rounded-3xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
+                            {/* Header */}
+                            <div className="px-6 py-4 border-b border-neutral-100 flex items-center justify-between bg-neutral-50/50">
+                                <h3 className="text-xl font-bold text-neutral-800 flex items-center gap-2">
+                                    <Upload className="w-5 h-5 text-indigo-600" /> Full Excel Import
+                                </h3>
+                                <button onClick={() => { setShowExcelImportModal(false); setExcelImportFile(null); setExcelImportSemester(''); setExcelImportPreview(null); setExcelImportPreviewError(null); }}
+                                    className="p-2 text-neutral-400 hover:bg-neutral-100 rounded-full transition-colors"><X className="w-5 h-5" /></button>
+                            </div>
+
+                            <div className="p-6 overflow-y-auto flex-1 space-y-5">
+                                {!excelImportPreview ? (
+                                    <>
+                                        <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4 text-sm text-indigo-800 space-y-1">
+                                            <p><strong>Instructions:</strong> Upload the IIITNR Excel sheet with groups and projects.</p>
+                                            <p>Select the correct semester so dropper students (mismatched roll prefix) are assigned the right batch.</p>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="block text-sm font-bold text-neutral-700 mb-1.5">Semester <span className="text-red-500">*</span></label>
+                                                <select value={excelImportSemester} onChange={e => setExcelImportSemester(e.target.value)}
+                                                    className="w-full px-3 py-2.5 bg-neutral-50 rounded-xl border border-neutral-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20">
+                                                    <option value="">Select semester…</option>
+                                                    {[1, 2, 3, 4, 5, 6, 7, 8].map(s => <option key={s} value={s}>Semester {s}</option>)}
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-bold text-neutral-700 mb-1.5">Excel File <span className="text-red-500">*</span></label>
+                                                <label className="flex items-center gap-2 px-4 py-2.5 bg-neutral-50 border border-neutral-200 rounded-xl cursor-pointer hover:bg-indigo-50 hover:border-indigo-200 transition-colors text-sm font-medium text-neutral-700">
+                                                    <Upload className="w-4 h-4 flex-shrink-0" />
+                                                    <span className="truncate">{excelImportFile ? excelImportFile.name : 'Choose .xlsx file'}</span>
+                                                    <input type="file" accept=".xlsx,.xls" className="hidden" onChange={e => { setExcelImportFile(e.target.files?.[0] || null); setExcelImportPreviewError(null); }} />
+                                                </label>
+                                            </div>
+                                        </div>
+                                        {!excelImportSemester && excelImportFile && (
+                                            <p className="text-xs text-amber-700 font-medium flex items-center gap-1.5">
+                                                <AlertTriangle className="w-3.5 h-3.5" /> Select a semester before previewing.
+                                            </p>
+                                        )}
+                                        {excelImportPreviewError && (
+                                            <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+                                                <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+                                                <p className="text-sm text-red-700">{excelImportPreviewError}</p>
+                                            </div>
+                                        )}
+                                    </>
+                                ) : (
+                                    <>
+                                        {/* Stat cards */}
+                                        <div className="grid grid-cols-5 gap-2">
+                                            <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-3 text-center">
+                                                <p className="text-2xl font-black text-indigo-700">{excelImportPreview.summary.totalGroups}</p>
+                                                <p className="text-xs font-bold text-indigo-500 mt-0.5">Groups</p>
+                                            </div>
+                                            <div className="bg-green-50 border border-green-100 rounded-xl p-3 text-center">
+                                                <p className="text-2xl font-black text-green-700">{excelImportPreview.summary.newStudents}</p>
+                                                <p className="text-xs font-bold text-green-500 mt-0.5">New Students</p>
+                                            </div>
+                                            <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 text-center">
+                                                <p className="text-2xl font-black text-amber-700">{excelImportPreview.summary.existingStudents}</p>
+                                                <p className="text-xs font-bold text-amber-500 mt-0.5">Existing</p>
+                                            </div>
+                                            <div className="bg-violet-50 border border-violet-100 rounded-xl p-3 text-center">
+                                                <p className="text-2xl font-black text-violet-700">{excelImportPreview.summary.newFaculty}</p>
+                                                <p className="text-xs font-bold text-violet-500 mt-0.5">New Faculty</p>
+                                            </div>
+                                            <div className="bg-orange-50 border border-orange-100 rounded-xl p-3 text-center">
+                                                <p className="text-2xl font-black text-orange-700">{excelImportPreview.summary.droppers ?? 0}</p>
+                                                <p className="text-xs font-bold text-orange-500 mt-0.5">Droppers</p>
+                                            </div>
+                                        </div>
+                                        {/* Tab bar */}
+                                        <div className="flex border-b border-neutral-200 gap-1 -mx-6 px-6">
+                                            <button onClick={() => setExcelImportPreviewTab('students')}
+                                                className={`px-4 py-2 text-xs font-bold flex items-center gap-1.5 border-b-2 -mb-px transition-colors ${excelImportPreviewTab === 'students' ? 'border-green-500 text-green-700 bg-green-50' : 'border-transparent text-neutral-500 hover:text-neutral-700'}`}>
+                                                New Students
+                                                <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${excelImportPreviewTab === 'students' ? 'bg-green-100 text-green-700' : 'bg-neutral-100 text-neutral-500'}`}>{excelImportPreview.summary.newStudents}</span>
+                                            </button>
+                                            <button onClick={() => setExcelImportPreviewTab('faculty')}
+                                                className={`px-4 py-2 text-xs font-bold flex items-center gap-1.5 border-b-2 -mb-px transition-colors ${excelImportPreviewTab === 'faculty' ? 'border-violet-500 text-violet-700 bg-violet-50' : 'border-transparent text-neutral-500 hover:text-neutral-700'}`}>
+                                                New Faculty
+                                                <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${excelImportPreviewTab === 'faculty' ? 'bg-violet-100 text-violet-700' : 'bg-neutral-100 text-neutral-500'}`}>{excelImportPreview.summary.newFaculty}</span>
+                                            </button>
+                                            <button onClick={() => setExcelImportPreviewTab('groups')}
+                                                className={`px-4 py-2 text-xs font-bold flex items-center gap-1.5 border-b-2 -mb-px transition-colors ${excelImportPreviewTab === 'groups' ? 'border-indigo-500 text-indigo-700 bg-indigo-50' : 'border-transparent text-neutral-500 hover:text-neutral-700'}`}>
+                                                Groups
+                                                <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${excelImportPreviewTab === 'groups' ? 'bg-indigo-100 text-indigo-700' : 'bg-neutral-100 text-neutral-500'}`}>{excelImportPreview.summary.totalGroups}</span>
+                                            </button>
+                                            <button onClick={() => setExcelImportPreviewTab('warnings')}
+                                                className={`px-4 py-2 text-xs font-bold flex items-center gap-1.5 border-b-2 -mb-px transition-colors ${excelImportPreviewTab === 'warnings' ? 'border-amber-500 text-amber-700 bg-amber-50' : 'border-transparent text-neutral-500 hover:text-neutral-700'}`}>
+                                                Warnings
+                                                {(() => {
+                                                    let c = 0;
+                                                    for (const g of excelImportPreview.groups) {
+                                                        if (g.faculty.status === 'none') c++;
+                                                        for (const s of g.students) { if (s.inGroup || !s.roll || s.missingEmail || s.isDropper) c++; }
+                                                    }
+                                                    return <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${excelImportPreviewTab === 'warnings' ? 'bg-amber-100 text-amber-700' : 'bg-neutral-100 text-neutral-500'}`}>{c}</span>;
+                                                })()}
+                                            </button>
+                                        </div>
+                                        {/* Tab content */}
+                                        <div className="border border-neutral-200 rounded-xl overflow-hidden">
+                                            {excelImportPreviewTab === 'students' && (
+                                                excelImportPreview.groups.flatMap((g: any) => g.students.filter((s: any) => s.status === 'new')).length > 0 ? (
+                                                    <div className="max-h-64 overflow-y-auto">
+                                                        <table className="w-full text-left text-sm">
+                                                            <thead className="bg-neutral-50 sticky top-0">
+                                                                <tr>
+                                                                    <th className="px-4 py-2 font-bold text-neutral-500 text-xs uppercase">Name</th>
+                                                                    <th className="px-4 py-2 font-bold text-neutral-500 text-xs uppercase">Roll</th>
+                                                                    <th className="px-4 py-2 font-bold text-neutral-500 text-xs uppercase">Branch</th>
+                                                                    <th className="px-4 py-2 font-bold text-neutral-500 text-xs uppercase">Group</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody className="divide-y divide-neutral-100">
+                                                                {excelImportPreview.groups.flatMap((g: any) =>
+                                                                    g.students.filter((s: any) => s.status === 'new').map((s: any, si: number) => (
+                                                                        <tr key={`${g.groupNumber}-${si}`} className="hover:bg-neutral-50">
+                                                                            <td className="px-4 py-2 font-medium text-neutral-900">
+                                                                                {s.name}
+                                                                                {s.isDropper && <span className="ml-1.5 px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-[10px] font-bold">DROPPER</span>}
+                                                                            </td>
+                                                                            <td className="px-4 py-2 font-mono text-neutral-600 text-xs">{s.roll || '—'}</td>
+                                                                            <td className="px-4 py-2 text-neutral-500">{s.branch}</td>
+                                                                            <td className="px-4 py-2 text-neutral-400 text-xs">#{g.groupNumber}</td>
+                                                                        </tr>
+                                                                    ))
+                                                                )}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                ) : <p className="px-4 py-8 text-center text-sm text-neutral-400">No new students — all are existing accounts.</p>
+                                            )}
+                                            {excelImportPreviewTab === 'faculty' && (
+                                                excelImportPreview.groups.filter((g: any) => g.faculty.status === 'new').length > 0 ? (
+                                                    <div className="max-h-64 overflow-y-auto">
+                                                        <table className="w-full text-left text-sm">
+                                                            <thead className="bg-neutral-50 sticky top-0">
+                                                                <tr>
+                                                                    <th className="px-4 py-2 font-bold text-neutral-500 text-xs uppercase">Name</th>
+                                                                    <th className="px-4 py-2 font-bold text-neutral-500 text-xs uppercase">Email</th>
+                                                                    <th className="px-4 py-2 font-bold text-neutral-500 text-xs uppercase">Group</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody className="divide-y divide-neutral-100">
+                                                                {excelImportPreview.groups.filter((g: any) => g.faculty.status === 'new').map((g: any) => (
+                                                                    <tr key={g.groupNumber} className="hover:bg-neutral-50">
+                                                                        <td className="px-4 py-2 font-medium text-neutral-900">{g.faculty.name}</td>
+                                                                        <td className="px-4 py-2 text-neutral-500 text-xs">{g.faculty.email}</td>
+                                                                        <td className="px-4 py-2 text-neutral-400 text-xs">#{g.groupNumber}</td>
+                                                                    </tr>
+                                                                ))}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                ) : <p className="px-4 py-8 text-center text-sm text-neutral-400">No new faculty — all are existing accounts.</p>
+                                            )}
+                                            {excelImportPreviewTab === 'groups' && (
+                                                <div className="divide-y divide-neutral-100 max-h-64 overflow-y-auto">
+                                                    {excelImportPreview.groups.map((g: any, idx: number) => {
+                                                        const hasDropper = g.students.some((s: any) => s.isDropper);
+                                                        return (
+                                                        <div key={idx} className={hasDropper ? 'bg-red-50/60' : ''}>
+                                                            <button onClick={() => setExcelImportExpanded(prev => { const next = new Set(prev); next.has(idx) ? next.delete(idx) : next.add(idx); return next; })}
+                                                                className={`w-full flex items-center justify-between px-4 py-2.5 transition-colors text-left ${hasDropper ? 'hover:bg-red-100/60' : 'hover:bg-neutral-50'}`}>
+                                                                <div className="flex items-center gap-3">
+                                                                    <span className={`text-xs font-bold w-8 ${hasDropper ? 'text-red-500' : 'text-neutral-500'}`}>#{g.groupNumber}</span>
+                                                                    <span className="text-sm font-medium text-neutral-800 truncate max-w-xs">{g.projectTitle}</span>
+                                                                    <span className="text-xs text-neutral-400">{g.students.length} students</span>
+                                                                    {hasDropper && <span className="px-2 py-0.5 bg-red-100 text-red-700 rounded-full text-xs font-bold">Dropper</span>}
+                                                                    {g.faculty.status === 'new' && <span className="px-2 py-0.5 bg-violet-100 text-violet-700 rounded-full text-xs font-medium">New Faculty</span>}
+                                                                </div>
+                                                                <ChevronDown className={`w-4 h-4 transition-transform ${hasDropper ? 'text-red-400' : 'text-neutral-400'} ${excelImportExpanded.has(idx) ? 'rotate-180' : ''}`} />
+                                                            </button>
+                                                            {excelImportExpanded.has(idx) && (
+                                                                <div className={`px-4 pb-3 border-t ${hasDropper ? 'bg-red-50 border-red-100' : 'bg-neutral-50 border-neutral-100'}`}>
+                                                                    <p className="text-xs text-neutral-500 mb-2 font-medium">Faculty: <span className="text-neutral-700">{g.faculty.name || '—'} {g.faculty.status === 'new' ? '(will be created)' : '(existing)'}</span></p>
+                                                                    <div className="space-y-1">
+                                                                        {g.students.map((s: any, si: number) => (
+                                                                            <div key={si} className="flex items-center gap-2 text-xs">
+                                                                                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${s.isDropper ? 'bg-red-400' : s.status === 'new' ? 'bg-green-400' : 'bg-amber-400'}`} />
+                                                                                <span className={`font-medium ${s.isDropper ? 'text-red-700' : 'text-neutral-700'}`}>{s.name}</span>
+                                                                                <span className="text-neutral-400">{s.roll}</span>
+                                                                                <span className="text-neutral-400">{s.branch}</span>
+                                                                                {s.inGroup && <span className="text-amber-600 font-medium">(already in group)</span>}
+                                                                                {s.isDropper && <span className="text-red-600 font-bold">DROPPER</span>}
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            )}
+                                            {excelImportPreviewTab === 'warnings' && (() => {
+                                                const issues: { groupNumber: string; subject: string; issue: string; severity: 'error' | 'warning' }[] = [];
+                                                const missingEmailStudents: { name: string; roll: string; branch: string }[] = [];
+                                                for (const g of excelImportPreview.groups) {
+                                                    if (g.faculty.status === 'none') issues.push({ groupNumber: g.groupNumber, subject: 'Faculty', issue: 'No faculty specified — will be created without a mentor', severity: 'warning' });
+                                                    for (const s of g.students) {
+                                                        if (s.inGroup) issues.push({ groupNumber: g.groupNumber, subject: s.name, issue: 'Already in an active group — will be skipped', severity: 'warning' });
+                                                        if (!s.roll) issues.push({ groupNumber: g.groupNumber, subject: s.name, issue: 'Missing roll number', severity: 'error' });
+                                                        if (s.missingEmail) {
+                                                            issues.push({ groupNumber: g.groupNumber, subject: s.name, issue: 'No email — cannot create account (see fix below)', severity: 'error' });
+                                                            missingEmailStudents.push({ name: s.name, roll: s.roll || '', branch: s.branch || '' });
+                                                        }
+                                                        if (s.isDropper) issues.push({ groupNumber: g.groupNumber, subject: s.name, issue: `Dropper — roll ${s.roll} → batch overridden to ${excelImportPreview.expectedBatch}`, severity: 'warning' });
+                                                    }
+                                                }
+                                                return (
+                                                    <div className="flex flex-col">
+                                                        {missingEmailStudents.length > 0 && (
+                                                            <div className="mx-4 mt-3 mb-1 rounded-xl border border-red-200 bg-red-50 p-4">
+                                                                <p className="text-sm font-bold text-red-800 mb-1">{missingEmailStudents.length} student{missingEmailStudents.length !== 1 ? 's' : ''} missing email — cannot be imported</p>
+                                                                <p className="text-xs text-red-600 mb-3">These students have no email in the Excel file and no existing account. Follow these steps to fix:</p>
+                                                                <ol className="text-xs text-red-700 space-y-1 mb-3 list-none">
+                                                                    <li className="flex gap-2"><span className="font-black bg-red-200 text-red-800 rounded-full w-4 h-4 flex items-center justify-center flex-shrink-0 text-[10px]">1</span><span>Download the template below — it has their name and roll pre-filled.</span></li>
+                                                                    <li className="flex gap-2"><span className="font-black bg-red-200 text-red-800 rounded-full w-4 h-4 flex items-center justify-center flex-shrink-0 text-[10px]">2</span><span>Open the file and fill in the <strong>Email</strong> column for each student.</span></li>
+                                                                    <li className="flex gap-2"><span className="font-black bg-red-200 text-red-800 rounded-full w-4 h-4 flex items-center justify-center flex-shrink-0 text-[10px]">3</span><span>Go to <strong>Exports → Import Students</strong> and upload that file. Their accounts will be created.</span></li>
+                                                                    <li className="flex gap-2"><span className="font-black bg-red-200 text-red-800 rounded-full w-4 h-4 flex items-center justify-center flex-shrink-0 text-[10px]">4</span><span>Come back here and re-run this groups import — those students will now be found automatically.</span></li>
+                                                                </ol>
+                                                                <button
+                                                                    onClick={() => {
+                                                                        const header = ['Name', 'Roll Number', 'Branch', 'Email'];
+                                                                        const rows = missingEmailStudents.map(s => [s.name, s.roll, s.branch, '']);
+                                                                        const csv = [header, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+                                                                        const blob = new Blob([csv], { type: 'text/csv' });
+                                                                        const url = URL.createObjectURL(blob);
+                                                                        const a = document.createElement('a');
+                                                                        a.href = url;
+                                                                        a.download = 'students_missing_email.csv';
+                                                                        a.click();
+                                                                        URL.revokeObjectURL(url);
+                                                                    }}
+                                                                    className="inline-flex items-center gap-2 px-3 py-1.5 bg-red-700 hover:bg-red-800 text-white text-xs font-bold rounded-lg transition-colors"
+                                                                >
+                                                                    <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                                                                    Download student template ({missingEmailStudents.length})
+                                                                </button>
+                                                            </div>
+                                                        )}
+                                                        {issues.length === 0
+                                                            ? <p className="px-4 py-8 text-center text-sm text-neutral-400">No issues detected.</p>
+                                                            : <div className="max-h-48 overflow-y-auto divide-y divide-neutral-100 mt-2">
+                                                                {issues.map((issue, i) => (
+                                                                    <div key={i} className="px-4 py-2.5 flex items-center gap-3 text-sm">
+                                                                        <span className={`w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0 ${issue.severity === 'error' ? 'bg-red-100' : 'bg-amber-100'}`}>
+                                                                            <AlertTriangle className={`w-3 h-3 ${issue.severity === 'error' ? 'text-red-600' : 'text-amber-600'}`} />
+                                                                        </span>
+                                                                        <span className="font-bold text-neutral-600 w-12 flex-shrink-0">#{issue.groupNumber}</span>
+                                                                        <span className="text-neutral-500 w-32 truncate flex-shrink-0">{issue.subject}</span>
+                                                                        <span className={issue.severity === 'error' ? 'text-red-600' : 'text-amber-600'}>{issue.issue}</span>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        }
+                                                    </div>
+                                                );
+                                            })()}
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+
+                            {/* Footer */}
+                            <div className="px-6 py-4 border-t border-neutral-100 flex justify-between items-center bg-neutral-50/30">
+                                <button onClick={() => { if (excelImportPreview) { setExcelImportPreview(null); setExcelImportPreviewError(null); setExcelImportPreviewTab('warnings'); } else { setShowExcelImportModal(false); setExcelImportFile(null); setExcelImportSemester(''); } }}
+                                    className="px-5 py-2.5 text-neutral-600 font-bold hover:bg-neutral-100 rounded-xl transition-colors text-sm">
+                                    {excelImportPreview ? '← Back' : 'Cancel'}
+                                </button>
+                                {!excelImportPreview ? (
+                                    <button
+                                        disabled={!excelImportFile || !excelImportSemester || excelImportLoading}
+                                        onClick={async () => {
+                                            if (!excelImportFile) return;
+                                            setExcelImportLoading(true);
+                                            setExcelImportPreviewError(null);
+                                            try {
+                                                const fd = new FormData();
+                                                fd.append('file', excelImportFile);
+                                                fd.append('semester', excelImportSemester);
+                                                const res = await api.post('/import/excel/preview', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+                                                setExcelImportPreview(res.data);
+                                                setExcelImportExpanded(new Set());
+                                            } catch (err: any) {
+                                                setExcelImportPreviewError(err.response?.data?.message || 'Preview failed. Check the file format and try again.');
+                                            } finally {
+                                                setExcelImportLoading(false);
+                                            }
+                                        }}
+                                        className="px-5 py-2.5 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2 text-sm"
+                                    >
+                                        {excelImportLoading ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Analyzing…</> : 'Preview Import'}
+                                    </button>
+                                ) : (() => {
+                                    const blockingErrors = excelImportPreview.groups.reduce((count: number, g: any) => {
+                                        return count + g.students.filter((s: any) => !s.roll || s.missingEmail).length;
+                                    }, 0);
+                                    return (
+                                        <div className="flex items-center gap-3">
+                                            {blockingErrors > 0 && (
+                                                <p className="text-xs text-red-600 font-medium flex items-center gap-1">
+                                                    <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+                                                    {blockingErrors} error{blockingErrors !== 1 ? 's' : ''} must be fixed — check the Warnings tab
+                                                </p>
+                                            )}
+                                            <button
+                                                disabled={excelImportLoading || blockingErrors > 0}
+                                                onClick={async () => {
+                                                    setExcelImportLoading(true);
+                                                    try {
+                                                        const res = await api.post('/import/excel/commit', {
+                                                            groups: excelImportPreview.groups,
+                                                            semester: parseInt(excelImportSemester) || 0
+                                                        });
+                                                        setExcelImportResult({ created: res.data.created, errors: res.data.errors || [] });
+                                                        setExcelImportPreview(null);
+                                                        setShowExcelImportModal(false);
+                                                        setExcelImportFile(null);
+                                                        setExcelImportSemester('');
+                                                    } catch (err: any) {
+                                                        setExcelImportResult({ created: {}, errors: [{ groupNumber: '—', reason: err.response?.data?.message || 'Server error' }] });
+                                                        setShowExcelImportModal(false);
+                                                    } finally {
+                                                        setExcelImportLoading(false);
+                                                    }
+                                                }}
+                                                className="px-5 py-2.5 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2 text-sm"
+                                            >
+                                                {excelImportLoading ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Importing…</> : <><Save className="w-4 h-4" />Confirm & Import</>}
+                                            </button>
+                                        </div>
+                                    );
+                                })()}
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+
+                {/* Excel Import Result Modal */}
+                {excelImportResult && (
+                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[70] p-4"
+                        onClick={() => { setExcelImportResult(null); setExcelImportResultTab('students'); setExcelImportFile(null); setExcelImportSemester(''); }}>
+                        <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col"
+                            onClick={e => e.stopPropagation()}>
+                            {/* Header */}
+                            <div className="px-6 py-4 border-b border-neutral-100 flex items-center justify-between bg-green-50/60">
+                                <div>
+                                    <h3 className="text-lg font-bold text-neutral-900 flex items-center gap-2">
+                                        <CheckCircle className="w-5 h-5 text-green-600" /> Import Complete
+                                    </h3>
+                                    <p className="text-xs text-neutral-500 mt-0.5">
+                                        {excelImportResult.created.students ?? 0} students · {excelImportResult.created.faculty ?? 0} faculty · {excelImportResult.created.groups ?? 0} groups created
+                                        {(excelImportResult.created.skipped ?? 0) > 0 && ` · ${excelImportResult.created.skipped} skipped`}
+                                    </p>
+                                </div>
+                                <button onClick={() => { setExcelImportResult(null); setExcelImportResultTab('students'); setExcelImportFile(null); setExcelImportSemester(''); }}
+                                    className="p-2 text-neutral-400 hover:bg-neutral-100 rounded-full transition-colors"><X className="w-5 h-5" /></button>
+                            </div>
+                            {/* Tab bar */}
+                            <div className="flex border-b border-neutral-200 px-4 pt-2 gap-1">
+                                <button onClick={() => setExcelImportResultTab('students')}
+                                    className={`px-4 py-2 text-xs font-bold flex items-center gap-1.5 border-b-2 -mb-px transition-colors ${excelImportResultTab === 'students' ? 'border-green-500 text-green-700 bg-green-50' : 'border-transparent text-neutral-500 hover:text-neutral-700'}`}>
+                                    New Students
+                                    <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${excelImportResultTab === 'students' ? 'bg-green-100 text-green-700' : 'bg-neutral-100 text-neutral-500'}`}>{excelImportResult.created.students ?? 0}</span>
+                                </button>
+                                <button onClick={() => setExcelImportResultTab('faculty')}
+                                    className={`px-4 py-2 text-xs font-bold flex items-center gap-1.5 border-b-2 -mb-px transition-colors ${excelImportResultTab === 'faculty' ? 'border-violet-500 text-violet-700 bg-violet-50' : 'border-transparent text-neutral-500 hover:text-neutral-700'}`}>
+                                    New Faculty
+                                    <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${excelImportResultTab === 'faculty' ? 'bg-violet-100 text-violet-700' : 'bg-neutral-100 text-neutral-500'}`}>{excelImportResult.created.faculty ?? 0}</span>
+                                </button>
+                                <button onClick={() => setExcelImportResultTab('groups')}
+                                    className={`px-4 py-2 text-xs font-bold flex items-center gap-1.5 border-b-2 -mb-px transition-colors ${excelImportResultTab === 'groups' ? 'border-indigo-500 text-indigo-700 bg-indigo-50' : 'border-transparent text-neutral-500 hover:text-neutral-700'}`}>
+                                    Groups
+                                    <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${excelImportResultTab === 'groups' ? 'bg-indigo-100 text-indigo-700' : 'bg-neutral-100 text-neutral-500'}`}>{excelImportResult.created.groups ?? 0}</span>
+                                </button>
+                                <button onClick={() => setExcelImportResultTab('errors')}
+                                    className={`px-4 py-2 text-xs font-bold flex items-center gap-1.5 border-b-2 -mb-px transition-colors ${excelImportResultTab === 'errors' ? 'border-red-500 text-red-700 bg-red-50' : 'border-transparent text-neutral-500 hover:text-neutral-700'}`}>
+                                    Warnings
+                                    <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${excelImportResultTab === 'errors' ? 'bg-red-100 text-red-700' : 'bg-neutral-100 text-neutral-500'}`}>
+                                        {(excelImportResult.created.studentList?.length ?? 0) + (excelImportResult.created.facultyList?.length ?? 0) + (excelImportResult.errors?.length ?? 0)}
+                                    </span>
+                                </button>
+                            </div>
+                            {/* Tab content */}
+                            <div className="flex-1 overflow-y-auto">
+                                {excelImportResultTab === 'students' && (
+                                    excelImportResult.created.studentList?.length > 0 ? (
+                                        <table className="w-full text-left text-sm">
+                                            <thead className="bg-neutral-50 sticky top-0">
+                                                <tr>
+                                                    <th className="px-4 py-2.5 font-bold text-neutral-500 text-xs uppercase tracking-wider">Name</th>
+                                                    <th className="px-4 py-2.5 font-bold text-neutral-500 text-xs uppercase tracking-wider">Roll No</th>
+                                                    <th className="px-4 py-2.5 font-bold text-neutral-500 text-xs uppercase tracking-wider">Branch</th>
+                                                    <th className="px-4 py-2.5 font-bold text-neutral-500 text-xs uppercase tracking-wider">Email</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-neutral-100">
+                                                {excelImportResult.created.studentList.map((s: any, i: number) => (
+                                                    <tr key={i} className="hover:bg-neutral-50">
+                                                        <td className="px-4 py-2.5 font-medium text-neutral-900">
+                                                            {s.name}
+                                                            {s.isDropper && <span className="ml-2 px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-[10px] font-bold">DROPPER</span>}
+                                                        </td>
+                                                        <td className="px-4 py-2.5 font-mono text-neutral-600 text-xs">{s.roll || '—'}</td>
+                                                        <td className="px-4 py-2.5 text-neutral-500">{s.branch}</td>
+                                                        <td className="px-4 py-2.5 text-neutral-400 text-xs">{s.email}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    ) : (
+                                        <p className="px-4 py-10 text-center text-sm text-neutral-400">No new students were created.</p>
+                                    )
+                                )}
+                                {excelImportResultTab === 'faculty' && (
+                                    excelImportResult.created.facultyList?.length > 0 ? (
+                                        <table className="w-full text-left text-sm">
+                                            <thead className="bg-neutral-50 sticky top-0">
+                                                <tr>
+                                                    <th className="px-4 py-2.5 font-bold text-neutral-500 text-xs uppercase tracking-wider">Name</th>
+                                                    <th className="px-4 py-2.5 font-bold text-neutral-500 text-xs uppercase tracking-wider">Email</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-neutral-100">
+                                                {excelImportResult.created.facultyList.map((f: any, i: number) => (
+                                                    <tr key={i} className="hover:bg-neutral-50">
+                                                        <td className="px-4 py-2.5 font-medium text-neutral-900">{f.name}</td>
+                                                        <td className="px-4 py-2.5 text-neutral-500">{f.email}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    ) : (
+                                        <p className="px-4 py-10 text-center text-sm text-neutral-400">No new faculty were created.</p>
+                                    )
+                                )}
+                                {excelImportResultTab === 'groups' && (
+                                    excelImportResult.created.groupList?.length > 0 ? (
+                                        <table className="w-full text-left text-sm">
+                                            <thead className="bg-neutral-50 sticky top-0">
+                                                <tr>
+                                                    <th className="px-4 py-2.5 font-bold text-neutral-500 text-xs uppercase tracking-wider">Group #</th>
+                                                    <th className="px-4 py-2.5 font-bold text-neutral-500 text-xs uppercase tracking-wider">Project Title</th>
+                                                    <th className="px-4 py-2.5 font-bold text-neutral-500 text-xs uppercase tracking-wider">Members</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-neutral-100">
+                                                {excelImportResult.created.groupList.map((g: any, i: number) => (
+                                                    <tr key={i} className="hover:bg-neutral-50">
+                                                        <td className="px-4 py-2.5 font-bold text-neutral-700">#{g.groupNumber}</td>
+                                                        <td className="px-4 py-2.5 text-neutral-800">{g.projectTitle}</td>
+                                                        <td className="px-4 py-2.5 text-neutral-500">{g.memberCount}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    ) : (
+                                        <p className="px-4 py-10 text-center text-sm text-neutral-400">No groups were created.</p>
+                                    )
+                                )}
+                                {excelImportResultTab === 'errors' && (
+                                    <div className="divide-y divide-neutral-100">
+                                        {(excelImportResult.created.studentList?.length ?? 0) > 0 && (
+                                            <>
+                                                <div className="px-4 py-2 bg-green-50 text-xs font-bold text-green-700 uppercase tracking-wider">
+                                                    Students Created ({excelImportResult.created.studentList.length})
+                                                </div>
+                                                {excelImportResult.created.studentList.map((s: any, i: number) => (
+                                                    <div key={`s-${i}`} className="px-4 py-2.5 flex items-center gap-3 text-sm hover:bg-green-50/40">
+                                                        <span className="w-4 h-4 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
+                                                            <CheckCircle className="w-3 h-3 text-green-600" />
+                                                        </span>
+                                                        <span className="font-medium text-neutral-900 w-40 truncate">{s.name}</span>
+                                                        <span className="font-mono text-neutral-500 text-xs w-24">{s.roll || '—'}</span>
+                                                        <span className="text-neutral-400 text-xs">{s.email}</span>
+                                                        {s.isDropper && <span className="ml-auto px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-[10px] font-bold flex-shrink-0">DROPPER</span>}
+                                                    </div>
+                                                ))}
+                                            </>
+                                        )}
+                                        {(excelImportResult.created.facultyList?.length ?? 0) > 0 && (
+                                            <>
+                                                <div className="px-4 py-2 bg-violet-50 text-xs font-bold text-violet-700 uppercase tracking-wider">
+                                                    Faculty Created ({excelImportResult.created.facultyList.length})
+                                                </div>
+                                                {excelImportResult.created.facultyList.map((f: any, i: number) => (
+                                                    <div key={`f-${i}`} className="px-4 py-2.5 flex items-center gap-3 text-sm hover:bg-violet-50/40">
+                                                        <span className="w-4 h-4 rounded-full bg-violet-100 flex items-center justify-center flex-shrink-0">
+                                                            <CheckCircle className="w-3 h-3 text-violet-600" />
+                                                        </span>
+                                                        <span className="font-medium text-neutral-900 w-40 truncate">{f.name}</span>
+                                                        <span className="text-neutral-400 text-xs">{f.email}</span>
+                                                    </div>
+                                                ))}
+                                            </>
+                                        )}
+                                        {(excelImportResult.errors?.length ?? 0) > 0 && (
+                                            <>
+                                                <div className="px-4 py-2 bg-red-50 text-xs font-bold text-red-700 uppercase tracking-wider">
+                                                    Errors ({excelImportResult.errors.length})
+                                                </div>
+                                                {excelImportResult.errors.map((e, i) => (
+                                                    <div key={`e-${i}`} className="px-4 py-2.5 flex items-center gap-3 text-sm hover:bg-red-50/40">
+                                                        <span className="w-4 h-4 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+                                                            <AlertTriangle className="w-3 h-3 text-red-600" />
+                                                        </span>
+                                                        <span className="font-bold text-neutral-700 w-16 flex-shrink-0">#{e.groupNumber}</span>
+                                                        <span className="text-neutral-500 w-32 truncate flex-shrink-0">{e.student || '—'}</span>
+                                                        <span className="text-red-600">{e.reason}</span>
+                                                    </div>
+                                                ))}
+                                            </>
+                                        )}
+                                        {(excelImportResult.created.studentList?.length ?? 0) === 0 &&
+                                         (excelImportResult.created.facultyList?.length ?? 0) === 0 &&
+                                         (excelImportResult.errors?.length ?? 0) === 0 && (
+                                            <p className="px-4 py-10 text-center text-sm text-neutral-400">Nothing to report.</p>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                            {/* Footer */}
+                            <div className="px-6 py-4 border-t border-neutral-100 flex justify-end bg-neutral-50/30">
+                                <button onClick={() => { setExcelImportResult(null); setExcelImportResultTab('students'); setExcelImportFile(null); setExcelImportSemester(''); }}
+                                    className="px-5 py-2.5 bg-neutral-900 text-white rounded-xl text-sm font-bold hover:bg-neutral-800 transition-colors">Done</button>
+                            </div>
+                        </motion.div>
+                    </motion.div>
                 )}
 
                 {/* Smart Import Modal */}

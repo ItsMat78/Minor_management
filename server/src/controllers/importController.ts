@@ -29,12 +29,10 @@ const toFacultyEmail = (name: string) =>
         .replace(/[^a-z0-9]+/g, '.')
         .replace(/^\.|\.$/, '') + '@iiitnr.edu.in';
 
-const toStudentEmail = (roll: string) =>
-    roll.trim().toLowerCase() + '@iiitnr.edu.in';
 
 // ─── Excel parser ─────────────────────────────────────────────────────────────
 
-interface RawStudent { name: string; roll: string; branch: string }
+interface RawStudent { name: string; roll: string; branch: string; email: string }
 interface ParsedGroup {
     groupNumber: string;
     projectTitle: string;
@@ -92,7 +90,9 @@ function parseIIITNRExcel(filePath: string): ParsedGroup[] {
                 current = { groupNumber: 'UNK', projectTitle: '', projectDomain: '', facultyName: '', batchYear: '', students: [] };
                 groups.push(current);
             }
-            current.students.push({ name: colB, roll: colC, branch: branchFromRoll(colC) });
+            // colD is treated as email when it contains '@'; otherwise left empty
+            const emailVal = colD.includes('@') ? colD.toLowerCase() : '';
+            current.students.push({ name: colB, roll: colC, branch: branchFromRoll(colC), email: emailVal });
 
             // Derive batchYear from first roll number we see
             if (!current.batchYear && colC && /^\d{2}/.test(colC)) {
@@ -106,11 +106,25 @@ function parseIIITNRExcel(filePath: string): ParsedGroup[] {
 
 // ─── Excel import preview ─────────────────────────────────────────────────────
 
+/** Derive expected batch year from semester number and current date.
+ *  Odd semesters run Jul–Dec, even semesters run Jan–Jun.
+ *  e.g. Sem 4 in Apr 2026 → 2026 - 4/2 = 2024 */
+function expectedBatchFromSemester(semester: number): number | undefined {
+    if (!semester || semester < 1) return undefined;
+    const year = new Date().getFullYear();
+    return semester % 2 === 0
+        ? year - semester / 2
+        : year - Math.floor((semester - 1) / 2);
+}
+
 export const previewExcelImport = async (req: Request, res: Response) => {
     try {
         if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
 
         const semester = parseInt(req.body.semester) || 0;
+        const expectedBatch = expectedBatchFromSemester(semester);
+        const expectedPrefix = expectedBatch ? String(expectedBatch).slice(-2) : null;
+
         const rawGroups = parseIIITNRExcel(req.file.path);
         fs.unlinkSync(req.file.path);
 
@@ -129,10 +143,15 @@ export const previewExcelImport = async (req: Request, res: Response) => {
 
         const previewGroups = rawGroups.map(g => {
             const students = g.students.map(s => {
-                const email = s.roll ? toStudentEmail(s.roll) : '';
+                // Email must come from the Excel file; we do not derive it from roll
+                const email = s.email || '';
                 const existing =
-                    (s.roll ? byRoll.get(s.roll.toLowerCase()) : undefined) ||
-                    (email   ? byEmail.get(email.toLowerCase())  : undefined);
+                    (s.roll  ? byRoll.get(s.roll.toLowerCase())   : undefined) ||
+                    (email   ? byEmail.get(email.toLowerCase())    : undefined);
+                // isDropper is informational: roll prefix doesn't match the selected semester's expected batch.
+                // For existing students this is a real dropper scenario; for new students it's a batch-override note.
+                // Either way the commit will assign them to the expected batch.
+                const isDropper = !!(expectedPrefix && s.roll && !s.roll.startsWith(expectedPrefix));
                 return {
                     name:       s.name,
                     roll:       s.roll,
@@ -140,7 +159,9 @@ export const previewExcelImport = async (req: Request, res: Response) => {
                     email,
                     status:     existing ? 'existing' : 'new',
                     existingId: existing ? String(existing._id) : null,
-                    inGroup:    existing ? groupedStudentIds.has(String(existing._id)) : false
+                    inGroup:    existing ? groupedStudentIds.has(String(existing._id)) : false,
+                    isDropper,
+                    missingEmail: !existing && !email   // new student with no email = unresolvable
                 };
             });
 
@@ -153,7 +174,7 @@ export const previewExcelImport = async (req: Request, res: Response) => {
                 groupNumber:   g.groupNumber,
                 projectTitle:  g.projectTitle  || `Group ${g.groupNumber} Project`,
                 projectDomain: g.projectDomain || 'General',
-                batchYear:     g.batchYear,
+                batchYear:     expectedBatch ? String(expectedBatch) : g.batchYear,
                 semester,
                 students,
                 faculty: {
@@ -168,14 +189,17 @@ export const previewExcelImport = async (req: Request, res: Response) => {
         const allStudents = previewGroups.flatMap(g => g.students);
         res.json({
             groups: previewGroups,
+            expectedBatch,
             summary: {
-                totalGroups:           previewGroups.length,
-                totalStudents:         allStudents.length,
-                newStudents:           allStudents.filter(s => s.status === 'new').length,
-                existingStudents:      allStudents.filter(s => s.status === 'existing').length,
+                totalGroups:            previewGroups.length,
+                totalStudents:          allStudents.length,
+                newStudents:            allStudents.filter(s => s.status === 'new').length,
+                existingStudents:       allStudents.filter(s => s.status === 'existing').length,
                 studentsAlreadyGrouped: allStudents.filter(s => s.inGroup).length,
-                newFaculty:            previewGroups.filter(g => g.faculty.status === 'new').length,
-                existingFaculty:       previewGroups.filter(g => g.faculty.status === 'existing').length
+                droppers:               allStudents.filter(s => s.isDropper).length,
+                missingEmails:          allStudents.filter(s => s.missingEmail).length,
+                newFaculty:             previewGroups.filter(g => g.faculty.status === 'new').length,
+                existingFaculty:        previewGroups.filter(g => g.faculty.status === 'existing').length
             }
         });
     } catch (err) {
@@ -188,11 +212,19 @@ export const previewExcelImport = async (req: Request, res: Response) => {
 
 export const commitExcelImport = async (req: Request, res: Response) => {
     try {
-        const { groups } = req.body as { groups: any[] };
+        const { groups, semester } = req.body as { groups: any[]; semester?: number };
         if (!groups?.length) return res.status(400).json({ message: 'No group data provided' });
 
+        const expectedBatch = expectedBatchFromSemester(semester || 0);
+        const expectedPrefix = expectedBatch ? String(expectedBatch).slice(-2) : null;
+
         const defaultPassword = await bcrypt.hash('changeme', 10);
-        const created = { students: 0, faculty: 0, groups: 0, projects: 0, skipped: 0 };
+        const created = {
+            students: 0, faculty: 0, groups: 0, projects: 0, skipped: 0,
+            studentList: [] as { name: string; roll: string; email: string; branch: string; isDropper: boolean }[],
+            facultyList: [] as { name: string; email: string }[],
+            groupList:   [] as { groupNumber: string; projectTitle: string; memberCount: number }[],
+        };
         const errors: { groupNumber: string; student?: string; reason: string }[] = [];
 
         for (const g of groups) {
@@ -218,6 +250,7 @@ export const commitExcelImport = async (req: Request, res: Response) => {
                                 isActive:   true
                             });
                             created.faculty++;
+                            created.facultyList.push({ name: g.faculty.name, email: g.faculty.email });
                         }
                     }
                 }
@@ -241,20 +274,31 @@ export const commitExcelImport = async (req: Request, res: Response) => {
                         if (existing) {
                             memberIds.push(existing._id as mongoose.Types.ObjectId);
                         } else {
+                            if (!s.roll) {
+                                errors.push({ groupNumber: g.groupNumber, student: s.name, reason: 'No roll number — cannot create student account' });
+                                continue;
+                            }
+                            if (!s.email) {
+                                errors.push({ groupNumber: g.groupNumber, student: s.name, reason: 'No email in Excel — cannot create student account (add an email column or import students first)' });
+                                continue;
+                            }
+                            // New students are never droppers; they're simply enrolled into the selected batch
+                            const studentBatch = expectedBatch ? String(expectedBatch) : (g.batchYear || undefined);
                             const newStudent = await User.create({
                                 name:        s.name,
-                                email:       s.email || `${s.roll || 'unknown'}@iiitnr.edu.in`,
+                                email:       s.email,
                                 password:    defaultPassword,
                                 role:        UserRole.STUDENT,
-                                rollNumber:  s.roll  || undefined,
+                                rollNumber:  s.roll,
                                 branch:      s.branch || 'CSE',
                                 semester:    g.semester || undefined,
-                                targetBatch: g.batchYear || undefined,
+                                targetBatch: studentBatch,
                                 isVerified:  false,
                                 isActive:    false
                             });
                             memberIds.push(newStudent._id as mongoose.Types.ObjectId);
                             created.students++;
+                            created.studentList.push({ name: s.name, roll: s.roll, email: s.email, branch: s.branch || 'CSE', isDropper: false });
                         }
                     } catch (sErr: any) {
                         const reason = sErr.code === 11000 ? 'Duplicate email or roll number' : (sErr.message || 'Unknown error');
@@ -284,13 +328,15 @@ export const commitExcelImport = async (req: Request, res: Response) => {
                 if (availableIds.length === 0) { created.skipped++; continue; }
 
                 // 4. Create group with only the available members
+                const groupBatch = expectedBatch ? String(expectedBatch) : (g.batchYear || undefined);
                 const groupDoc = await Group.create({
                     name:        g.groupNumber,
                     members:     availableIds,
                     status:      'Approved',
-                    targetBatch: g.batchYear || undefined
+                    targetBatch: groupBatch
                 });
                 created.groups++;
+                created.groupList.push({ groupNumber: g.groupNumber, projectTitle: g.projectTitle || `Group ${g.groupNumber} Project`, memberCount: availableIds.length });
 
                 // 5. Create project — skip if group already has an approved project
                 const existingProject = await Project.findOne({ group: groupDoc._id, status: 'Approved' });

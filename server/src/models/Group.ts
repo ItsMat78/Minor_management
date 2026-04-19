@@ -27,13 +27,13 @@ const GroupSchema: Schema = new Schema({
     timestamps: true
 });
 
-// Enforce total member limit (accepted + pending must be <= 3)
-GroupSchema.pre('validate', function (this: IGroup, next: any) {
+// Enforce total member limit only for student-created groups (createdBy is set)
+GroupSchema.pre('validate', async function (this: IGroup) {
+    if (!this.createdBy) return; // admin-imported groups have no createdBy — skip limit
     const total = (this.members?.length || 0) + (this.pendingMembers?.length || 0);
     if (total > 3) {
-        return next(new Error('Group (accepted + pending) cannot exceed 3 members.'));
+        throw new Error('Group (accepted + pending) cannot exceed 3 members.');
     }
-    next();
 });
 
 export default mongoose.model<IGroup>('Group', GroupSchema);
