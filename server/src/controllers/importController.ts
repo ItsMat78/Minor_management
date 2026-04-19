@@ -181,7 +181,8 @@ export const previewExcelImport = async (req: Request, res: Response) => {
                 const email = s.email || '';
                 const existing =
                     (s.roll  ? byRoll.get(s.roll.toLowerCase())   : undefined) ||
-                    (email   ? byEmail.get(email.toLowerCase())    : undefined);
+                    (email   ? byEmail.get(email.toLowerCase())    : undefined) ||
+                    (!s.roll && !email ? allUsers.find(u => u.role === 'Student' && norm(u.name) === norm(s.name)) : undefined);
                 // isDropper is informational: roll prefix doesn't match the selected semester's expected batch.
                 // For existing students this is a real dropper scenario; for new students it's a batch-override note.
                 // Either way the commit will assign them to the expected batch.
@@ -306,7 +307,10 @@ export const commitExcelImport = async (req: Request, res: Response) => {
                         const lookupQ: any[] = [];
                         if (s.roll)  lookupQ.push({ rollNumber: s.roll });
                         if (s.email) lookupQ.push({ email: s.email });
-                        const existing = lookupQ.length ? await User.findOne({ $or: lookupQ }).lean() : null;
+                        let existing = lookupQ.length ? await User.findOne({ $or: lookupQ }).lean() : null;
+                        if (!existing && !s.roll && !s.email && s.name) {
+                            existing = await User.findOne({ role: UserRole.STUDENT, name: new RegExp(`^${s.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') }).lean();
+                        }
 
                         if (existing) {
                             memberIds.push(existing._id as mongoose.Types.ObjectId);

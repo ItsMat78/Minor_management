@@ -97,13 +97,15 @@ const Dashboard: React.FC = () => {
 
     // Archive State
     const [archivedGroups, setArchivedGroups] = useState<any[]>([]);
+    const [archivedOrphanProjects, setArchivedOrphanProjects] = useState<any[]>([]);
     const [loadingArchive, setLoadingArchive] = useState(false);
 
     const fetchArchivedProjects = async () => {
         setLoadingArchive(true);
         try {
             const res = await api.get('/projects/archived');
-            setArchivedGroups(res.data);
+            setArchivedGroups(res.data.groups ?? []);
+            setArchivedOrphanProjects(res.data.orphanProjects ?? []);
         } catch (error) {
             console.error('Failed to fetch archived projects', error);
         } finally {
@@ -1469,7 +1471,7 @@ const Dashboard: React.FC = () => {
 
                                 {loadingArchive ? (
                                     <div className="text-center py-12 text-neutral-400">Loading archive...</div>
-                                ) : archivedGroups.length === 0 ? (
+                                ) : archivedGroups.length === 0 && archivedOrphanProjects.length === 0 ? (
                                     <div className="text-center py-12 text-neutral-400">
                                         <Archive className="w-10 h-10 mx-auto mb-3 opacity-40" />
                                         <p className="font-medium">No archived projects yet.</p>
@@ -1525,6 +1527,38 @@ const Dashboard: React.FC = () => {
                                                 </div>
                                             );
                                         })}
+                                        {archivedOrphanProjects.map((p: any) => (
+                                            <div key={p._id} className="p-5 rounded-xl border border-neutral-200 hover:border-indigo-200 hover:bg-neutral-50 transition-colors">
+                                                <div className="flex justify-between items-start mb-3">
+                                                    <div className="flex gap-2">
+                                                        {p.archivedBatch && <span className="px-2 py-0.5 bg-neutral-100 text-neutral-600 text-xs rounded font-medium">Batch {p.archivedBatch}</span>}
+                                                        {p.archivedGroupName && <span className="px-2 py-0.5 bg-indigo-50 text-indigo-600 text-xs rounded font-medium">Group {p.archivedGroupName}</span>}
+                                                    </div>
+                                                    <span className="px-2 py-0.5 bg-amber-50 text-amber-600 text-xs rounded font-medium">Archived</span>
+                                                </div>
+                                                <h4 className="font-bold text-neutral-900 mb-1 line-clamp-2">{p.title}</h4>
+                                                <p className="text-sm text-neutral-500 line-clamp-2 mb-3">{p.description || 'No description.'}</p>
+                                                {p.archivedMentorName && (
+                                                    <div className="flex items-center gap-2 text-xs text-neutral-400">
+                                                        <Users className="w-3.5 h-3.5" />
+                                                        <span>{p.archivedMentorName}</span>
+                                                    </div>
+                                                )}
+                                                {(p.midTermEvaluation || p.endTermEvaluation || p.finalReportEvaluation) && (
+                                                    <div className="mt-3 pt-3 border-t border-neutral-100 flex flex-wrap gap-3 text-xs text-neutral-600">
+                                                        {p.midTermEvaluation?.totalMarks != null && (
+                                                            <span><span className="font-semibold">Mid:</span> {p.midTermEvaluation.totalMarks}</span>
+                                                        )}
+                                                        {p.endTermEvaluation?.totalMarks != null && (
+                                                            <span><span className="font-semibold">End:</span> {p.endTermEvaluation.totalMarks}</span>
+                                                        )}
+                                                        {p.finalReportEvaluation?.totalMarks != null && (
+                                                            <span><span className="font-semibold">Final:</span> {p.finalReportEvaluation.totalMarks}</span>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))}
                                     </div>
                                 )}
                             </div>

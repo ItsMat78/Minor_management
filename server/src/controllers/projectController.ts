@@ -279,7 +279,9 @@ export const getProjects = async (req: Request, res: Response) => {
 export const getArchivedProjects = async (req: Request, res: Response) => {
     try {
         const userId = (req as any).user.id;
+        const me = await User.findById(userId).select('email').lean() as any;
 
+        // Live archived groups (member _id is stable across roll/branch changes)
         const archivedGroups = await Group.find({ members: userId, isArchived: true })
             .populate({
                 path: 'project',
@@ -289,7 +291,14 @@ export const getArchivedProjects = async (req: Request, res: Response) => {
             .sort({ updatedAt: -1 })
             .lean();
 
-        res.json(archivedGroups);
+        // Snapshot-imported orphan projects: match by email (unchanged across branch transfers)
+        const orphanProjects = me?.email ? await Project.find({
+            isArchived: true,
+            $or: [{ group: null }, { group: { $exists: false } }],
+            'archivedMembers.email': me.email
+        }).lean() : [];
+
+        res.json({ groups: archivedGroups, orphanProjects });
     } catch (error) {
         res.status(500).json({ message: 'Server error', error });
     }

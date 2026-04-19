@@ -230,6 +230,23 @@ export const exportFaculty = async (req: Request, res: Response) => {
     }
 };
 
+export const deleteUser = async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const user = await User.findById(id);
+        if (!user) return res.status(404).json({ message: 'User not found' });
+
+        // Remove from groups
+        await Group.updateMany({ members: user._id }, { $pull: { members: user._id } });
+
+        await User.findByIdAndDelete(id);
+        res.json({ message: 'User deleted' });
+    } catch (error) {
+        console.error('Error deleting user:', error);
+        res.status(500).json({ message: 'Server error', error });
+    }
+};
+
 export const uploadProfilePhoto = async (req: Request, res: Response) => {
     try {
         const userId = (req as any).user.id;

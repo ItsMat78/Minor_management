@@ -1,9 +1,16 @@
 # Software Requirements Specification (SRS)
 ## Minor Project Management Portal — IIIT Naya Raipur
 
-**Version:** 1.0  
-**Date:** April 2026  
+**Version:** 1.1
+**Date:** April 2026
 **Institution:** Dr. SPM International Institute of Information Technology, Naya Raipur
+
+### Revision History
+
+| Version | Date | Changes |
+|---|---|---|
+| 1.0 | Apr 2026 | Initial release |
+| 1.1 | Apr 2026 | Added: directory edit/delete (FR-ADM-11), name-fallback in Excel import (FR-ADM-06 amended), email column in archive participants (FR-ADM-12), email-based archived-project lookup for branch changers (FR-STU-08 amended), orphan snapshot-imported archived projects surfaced to students (FR-STU-09). |
 
 ---
 
@@ -106,7 +113,8 @@ The portal is a standalone MERN-stack web application (MongoDB, Express.js, Reac
 | FR-STU-05 | A student shall be able to post progress updates (text, links, file attachments) on any active project. |
 | FR-STU-06 | A student shall be able to view their mentor's feedback and per-student comments. |
 | FR-STU-07 | A student shall be able to submit files (PDF, PPT, ZIP) during an active evaluation event. |
-| FR-STU-08 | A student shall be able to view all archived projects and groups from previous semesters. |
+| FR-STU-08 | A student shall be able to view all archived projects and groups from previous semesters. Archived projects linked to live groups are matched by the student's user `_id` (stable across roll-number edits for branch transfers). |
+| FR-STU-09 | Archived projects imported from an external JSON snapshot (orphan projects with no live `group` reference) shall additionally be resolved for the signed-in student by matching `archivedMembers.email` against the user's email. Email is used as the stable identifier because roll numbers may change for branch transfers. The response payload shape is `{ groups, orphanProjects }`; both sets are rendered in the student's Archive view. |
 
 ### 3.3 Faculty Module
 
@@ -129,11 +137,13 @@ The portal is a standalone MERN-stack web application (MongoDB, Express.js, Reac
 | FR-ADM-03 | When a new Group Formation event is created, all existing non-archived groups and projects shall be automatically archived and mentors detached. |
 | FR-ADM-04 | An admin shall be able to create evaluation panels by assigning faculty members and a batch year. |
 | FR-ADM-05 | An admin shall be able to view and manage the full student directory with filtering by batch, branch, group status, and verification status. |
-| FR-ADM-06 | An admin shall be able to import students from an XLSX file (two-phase preview + commit), with per-row error reporting on duplicates and missing fields. |
+| FR-ADM-06 | An admin shall be able to import students from an XLSX file (two-phase preview + commit), with per-row error reporting on duplicates and missing fields. When a student row lacks both a roll number and an email in the Excel file, the preview and commit phases shall fall back to an exact (case-insensitive) name match against existing `Student` users so that students previously imported via CSV (for the missing-email flow) are recognised as existing accounts on re-import. The frontend shall suppress the "Missing roll number" and "Missing email" warnings for rows whose student is resolved by this fallback (`s.existingId` set). |
 | FR-ADM-07 | An admin shall be able to export students, panels, and evaluations to formatted XLSX files. |
 | FR-ADM-08 | An admin shall be able to export and import a full database snapshot (JSON) for backup and restoration. |
 | FR-ADM-09 | An admin shall be able to execute a one-time "Mark Students Inactive" operation resetting all students for a new semester. |
 | FR-ADM-10 | The admin dashboard overview shall display: Total Students, Ungrouped Students, Activated/Unactivated Accounts, Total Groups, Total Faculty, Total Projects, and a group-status breakdown (Forming, Pending, Approved, Assigned). |
+| FR-ADM-11 | An admin shall be able to edit and delete student and faculty accounts directly from the respective directory tabs. Editable fields: **Student** — name, email, roll number, branch; **Faculty** — name, email, department. Deletion shall be gated by a confirmation dialog that names the user, restates that the user will be removed from any groups they belong to, and warns the action is irreversible. On successful delete, the server shall additionally `$pull` the user's `_id` from `Group.members` across all groups. Both directory lists shall be re-fetched (not client-side filtered) after save/delete to reflect the authoritative server state. |
+| FR-ADM-12 | The admin Archive → Participants table shall include an **Email** column sourced from the archived snapshot (live group members' denormalised email or imported `archivedMembers.email`). |
 
 ### 3.5 Notification Module
 
@@ -157,7 +167,7 @@ The portal is a standalone MERN-stack web application (MongoDB, Express.js, Reac
 |---|---|
 | NFR-SEC-01 | All passwords shall be stored as bcrypt hashes (salt rounds ≥ 10). |
 | NFR-SEC-02 | The `JWT_SECRET` environment variable shall be required at server startup; the server shall exit unconditionally with `process.exit(1)` if it is absent (no `NODE_ENV` check). |
-| NFR-SEC-03 | `PUT /api/users/:id` is guarded by the `adminAuth` middleware so only admins can call it. Note: the controller passes `req.body` directly to `findByIdAndUpdate` without field filtering, so admins can update any field including `role`. |
+| NFR-SEC-03 | `PUT /api/users/:id` and `DELETE /api/users/:id` are guarded by the `adminAuth` middleware so only admins can call them. Note: the update controller passes `req.body` directly to `findByIdAndUpdate` without field filtering, so admins can update any field including `role`. The delete controller additionally cascades by pulling the user's `_id` out of `Group.members` to avoid dangling references. |
 | NFR-SEC-04 | Admin-only routes (`/api/admin/*`, import routes) shall require the `adminAuth` middleware. |
 | NFR-SEC-05 | Role-based filtering shall be applied on `GET /api/projects`: students see only their own group's project; faculty see only mentored projects; admins see all. |
 
@@ -218,7 +228,7 @@ The portal is a standalone MERN-stack web application (MongoDB, Express.js, Reac
 |---|---|
 | **User** | name, email, password (hashed), role (Student/Faculty/Admin), rollNumber, branch, semester, department, isVerified, isActive, maxGroups, batchConfigs |
 | **Group** | name, members[] (max 3), status (Forming/ProposalPending/Approved/Dissolved), targetBatch, project, isArchived |
-| **Project** | title, description, status (Draft/Pending/Approved/Rejected), group, faculty, updates[], midTermEvaluation, endTermEvaluation, finalReportEvaluation, submissions{}, studentFeedback[], isArchived, archivedMentorName |
+| **Project** | title, description, status (Draft/Pending/Approved/Rejected), group, faculty, updates[], midTermEvaluation, endTermEvaluation, finalReportEvaluation, submissions{}, studentFeedback[], isArchived, archivedMentorName, archivedGroupName, archivedBatch, archivedMembers[{ name, email, rollNumber, branch }] (denormalised for orphan snapshot-imported archives; email is the stable key for per-student lookup across branch transfers) |
 | **Event** | type (group_formation_project_proposal/mid_term_evaluation/end_term_evaluation), startDate, endDate, extensionDate, isActive, batchYear, rubricParams, createdBy |
 | **Panel** | faculty[], batchYear, room |
 

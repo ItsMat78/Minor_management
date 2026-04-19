@@ -81,6 +81,9 @@ const AdminDashboard: React.FC = () => {
     const [configStudentBatch, setConfigStudentBatch] = useState<any>(null); // For student batch override modal
     const [configBatchMenuOpen, setConfigBatchMenuOpen] = useState<string | null>(null); // To toggle menu per row
     const [studentBatchMenuOpen, setStudentBatchMenuOpen] = useState<string | null>(null); // To toggle student menu per row
+    const [editingUser, setEditingUser] = useState<any>(null); // Edit student/faculty modal
+    const [editUserForm, setEditUserForm] = useState<any>({});
+    const [deleteConfirm, setDeleteConfirm] = useState<any>(null); // User pending deletion
     const [expandedPanelGroups, setExpandedPanelGroups] = useState<Record<string, boolean>>({});
 
     // Limits State
@@ -706,6 +709,46 @@ const AdminDashboard: React.FC = () => {
         } catch { alert('Failed to update faculty verification.'); }
     };
 
+    const handleEditUser = (user: any) => {
+        setEditingUser(user);
+        setEditUserForm({
+            name: user.name || '',
+            email: user.email || '',
+            rollNumber: user.rollNumber || '',
+            branch: user.branch || '',
+            department: user.department || '',
+        });
+    };
+
+    const handleSaveUser = async () => {
+        try {
+            await api.put(`/users/${editingUser._id}`, editUserForm);
+            if (editingUser.role === 'Student') {
+                const res = await api.get('/users/students');
+                setStudents(Array.isArray(res.data) ? res.data : (res.data?.data ?? []));
+            } else {
+                const res = await api.get('/users/faculty');
+                setFaculty(Array.isArray(res.data) ? res.data : []);
+            }
+            setEditingUser(null);
+        } catch { alert('Failed to save changes.'); }
+    };
+
+    const handleDeleteUser = async () => {
+        if (!deleteConfirm) return;
+        try {
+            await api.delete(`/users/${deleteConfirm._id}`);
+            if (deleteConfirm.role === 'Student') {
+                const res = await api.get('/users/students');
+                setStudents(Array.isArray(res.data) ? res.data : (res.data?.data ?? []));
+            } else {
+                const res = await api.get('/users/faculty');
+                setFaculty(Array.isArray(res.data) ? res.data : []);
+            }
+            setDeleteConfirm(null);
+        } catch { alert('Failed to delete user.'); }
+    };
+
     const handleCreateAdmin = async (e: React.FormEvent) => {
         e.preventDefault();
         try {
@@ -1198,6 +1241,18 @@ const AdminDashboard: React.FC = () => {
                                                                                 >
                                                                                     <AlertCircle className="w-4 h-4" /> Override batch
                                                                                 </button>
+                                                                                <button
+                                                                                    onClick={() => { handleEditUser(student); setStudentBatchMenuOpen(null); }}
+                                                                                    className="w-full text-left px-4 py-2 text-sm text-neutral-700 hover:bg-amber-50 hover:text-amber-600 flex items-center gap-2 transition-colors"
+                                                                                >
+                                                                                    <Pencil className="w-4 h-4" /> Edit student
+                                                                                </button>
+                                                                                <button
+                                                                                    onClick={() => { setDeleteConfirm(student); setStudentBatchMenuOpen(null); }}
+                                                                                    className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 transition-colors"
+                                                                                >
+                                                                                    <Trash2 className="w-4 h-4" /> Delete student
+                                                                                </button>
                                                                             </div>
                                                                         )}
                                                                     </div>
@@ -1291,6 +1346,20 @@ const AdminDashboard: React.FC = () => {
                                                                         title="Configure limits"
                                                                     >
                                                                         <Settings className="w-4 h-4" />
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => handleEditUser(f)}
+                                                                        className="p-1.5 rounded-lg hover:bg-amber-50 text-neutral-400 hover:text-amber-600 transition-colors"
+                                                                        title="Edit faculty"
+                                                                    >
+                                                                        <Pencil className="w-4 h-4" />
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => setDeleteConfirm(f)}
+                                                                        className="p-1.5 rounded-lg hover:bg-red-50 text-neutral-400 hover:text-red-600 transition-colors"
+                                                                        title="Delete faculty"
+                                                                    >
+                                                                        <Trash2 className="w-4 h-4" />
                                                                     </button>
                                                                 </div>
                                                             </td>
@@ -2248,6 +2317,7 @@ const AdminDashboard: React.FC = () => {
                                                                 <thead className="bg-neutral-50 text-neutral-500 uppercase text-xs">
                                                                     <tr>
                                                                         <th className="text-left px-4 py-3">Name</th>
+                                                                        <th className="text-left px-4 py-3">Email</th>
                                                                         <th className="text-left px-4 py-3">Roll</th>
                                                                         <th className="text-left px-4 py-3">Branch</th>
                                                                         <th className="text-left px-4 py-3">Batch</th>
@@ -2262,6 +2332,7 @@ const AdminDashboard: React.FC = () => {
                                                                     {archiveData.participants.map((m: any) => (
                                                                         <tr key={m._id + (m.groupName || '')} className="border-t border-neutral-100 hover:bg-neutral-50">
                                                                             <td className="px-4 py-3 font-semibold text-neutral-900">{m.name}</td>
+                                                                            <td className="px-4 py-3 text-neutral-700 text-xs">{m.email || '—'}</td>
                                                                             <td className="px-4 py-3 text-neutral-700">{m.rollNumber || '—'}</td>
                                                                             <td className="px-4 py-3 text-neutral-700">{m.branch || '—'}</td>
                                                                             <td className="px-4 py-3 text-neutral-700">{m.batchYear || '—'}</td>
@@ -2748,6 +2819,72 @@ const AdminDashboard: React.FC = () => {
                             <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-3">
                                 <button onClick={() => setConfigBatchGroup(null)} className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition">Cancel</button>
                                 <button onClick={() => handleUpdateBatchViaModal((document.getElementById('targetBatchUpdate') as HTMLSelectElement).value)} className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition">Save Batch</button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Edit user modal */}
+                {editingUser && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm">
+                        <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden flex flex-col animate-in fade-in zoom-in duration-200">
+                            <div className="px-6 py-4 border-b border-neutral-100 flex items-center justify-between">
+                                <h3 className="text-lg font-bold text-neutral-900">Edit {editingUser.role === 'Student' ? 'Student' : 'Faculty'}</h3>
+                                <button onClick={() => setEditingUser(null)} className="p-1.5 rounded-lg hover:bg-neutral-100 text-neutral-400"><X className="w-5 h-5" /></button>
+                            </div>
+                            <div className="px-6 py-5 flex flex-col gap-4">
+                                <div className="flex flex-col gap-1">
+                                    <label className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Name</label>
+                                    <input className="border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" value={editUserForm.name} onChange={e => setEditUserForm((f: any) => ({ ...f, name: e.target.value }))} />
+                                </div>
+                                <div className="flex flex-col gap-1">
+                                    <label className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Email</label>
+                                    <input className="border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" value={editUserForm.email} onChange={e => setEditUserForm((f: any) => ({ ...f, email: e.target.value }))} />
+                                </div>
+                                {editingUser.role === 'Student' && (<>
+                                    <div className="flex flex-col gap-1">
+                                        <label className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Roll Number</label>
+                                        <input className="border border-neutral-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-300" value={editUserForm.rollNumber} onChange={e => setEditUserForm((f: any) => ({ ...f, rollNumber: e.target.value }))} />
+                                    </div>
+                                    <div className="flex flex-col gap-1">
+                                        <label className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Branch</label>
+                                        <select className="border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" value={editUserForm.branch} onChange={e => setEditUserForm((f: any) => ({ ...f, branch: e.target.value }))}>
+                                            <option>CSE</option><option>ECE</option><option>DSAI</option>
+                                        </select>
+                                    </div>
+                                </>)}
+                                {editingUser.role === 'Faculty' && (
+                                    <div className="flex flex-col gap-1">
+                                        <label className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Department</label>
+                                        <input className="border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" value={editUserForm.department} onChange={e => setEditUserForm((f: any) => ({ ...f, department: e.target.value }))} />
+                                    </div>
+                                )}
+                            </div>
+                            <div className="px-6 py-4 border-t border-neutral-100 flex justify-end gap-3">
+                                <button onClick={() => setEditingUser(null)} className="px-4 py-2 rounded-lg border border-neutral-200 text-sm font-medium text-neutral-600 hover:bg-neutral-50">Cancel</button>
+                                <button onClick={handleSaveUser} className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold">Save changes</button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Delete confirm modal */}
+                {deleteConfirm && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm">
+                        <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden flex flex-col animate-in fade-in zoom-in duration-200">
+                            <div className="px-6 py-4 border-b border-neutral-100 flex items-center gap-3">
+                                <div className="w-9 h-9 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+                                    <Trash2 className="w-5 h-5 text-red-600" />
+                                </div>
+                                <h3 className="text-lg font-bold text-neutral-900">Delete {deleteConfirm.role === 'Student' ? 'Student' : 'Faculty'}?</h3>
+                            </div>
+                            <div className="px-6 py-5">
+                                <p className="text-sm text-neutral-600">You are about to permanently delete <span className="font-semibold text-neutral-900">{deleteConfirm.name}</span> ({deleteConfirm.email}).</p>
+                                <p className="text-sm text-red-600 mt-2 font-medium">This will remove them from any groups they belong to. This action cannot be undone.</p>
+                            </div>
+                            <div className="px-6 py-4 border-t border-neutral-100 flex justify-end gap-3">
+                                <button onClick={() => setDeleteConfirm(null)} className="px-4 py-2 rounded-lg border border-neutral-200 text-sm font-medium text-neutral-600 hover:bg-neutral-50">Cancel</button>
+                                <button onClick={handleDeleteUser} className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-semibold">Delete permanently</button>
                             </div>
                         </div>
                     </div>
@@ -3507,7 +3644,7 @@ const AdminDashboard: React.FC = () => {
                                                     let c = 0;
                                                     for (const g of excelImportPreview.groups) {
                                                         if (g.faculty.status === 'none') c++;
-                                                        for (const s of g.students) { if (s.inGroup || !s.roll || s.missingEmail || s.isDropper) c++; }
+                                                        for (const s of g.students) { if (s.inGroup || (!s.roll && !s.existingId) || s.missingEmail || s.isDropper) c++; }
                                                     }
                                                     return <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${excelImportPreviewTab === 'warnings' ? 'bg-amber-100 text-amber-700' : 'bg-neutral-100 text-neutral-500'}`}>{c}</span>;
                                                 })()}
@@ -3616,7 +3753,7 @@ const AdminDashboard: React.FC = () => {
                                                     if (g.faculty.status === 'none') issues.push({ groupNumber: g.groupNumber, subject: 'Faculty', issue: 'No faculty specified — will be created without a mentor', severity: 'warning' });
                                                     for (const s of g.students) {
                                                         if (s.inGroup) issues.push({ groupNumber: g.groupNumber, subject: s.name, issue: 'Already in an active group — will be skipped', severity: 'warning' });
-                                                        if (!s.roll) issues.push({ groupNumber: g.groupNumber, subject: s.name, issue: 'Missing roll number', severity: 'error' });
+                                                        if (!s.roll && !s.existingId) issues.push({ groupNumber: g.groupNumber, subject: s.name, issue: 'Missing roll number', severity: 'error' });
                                                         if (s.missingEmail) {
                                                             issues.push({ groupNumber: g.groupNumber, subject: s.name, issue: 'No email — cannot create account (see fix below)', severity: 'error' });
                                                             missingEmailStudents.push({ name: s.name, roll: s.roll || '', branch: s.branch || '' });
@@ -3711,7 +3848,7 @@ const AdminDashboard: React.FC = () => {
                                     </button>
                                 ) : (() => {
                                     const blockingErrors = excelImportPreview.groups.reduce((count: number, g: any) => {
-                                        return count + g.students.filter((s: any) => !s.roll || s.missingEmail).length;
+                                        return count + g.students.filter((s: any) => (!s.roll && !s.existingId) || s.missingEmail).length;
                                     }, 0);
                                     return (
                                         <div className="flex items-center gap-3">
