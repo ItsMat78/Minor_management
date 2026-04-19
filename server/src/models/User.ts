@@ -16,7 +16,7 @@ export interface IUser extends Document {
     semester?: number; // For students
     targetBatch?: string; // For students (override batch)
     isVerified: boolean;
-    isActive: boolean; // For migration flow activation
+    isParticipating: boolean; // True when part of the current semester's minor-project cohort
     mustChangePassword: boolean; // Force change on first login for admin-created / imported accounts
     otp?: string;
     otpExpires?: Date;
@@ -45,7 +45,7 @@ const UserSchema: Schema = new Schema({
     semester: { type: Number },
     targetBatch: { type: String },
     isVerified: { type: Boolean, default: false },
-    isActive: { type: Boolean, default: true },
+    isParticipating: { type: Boolean, default: false },
     mustChangePassword: { type: Boolean, default: false },
     otp: { type: String },
     otpExpires: { type: Date },
@@ -64,5 +64,7 @@ const UserSchema: Schema = new Schema({
 }, {
     timestamps: true
 });
+
+UserSchema.index({ role: 1, isParticipating: 1 });
 
 export default mongoose.model<IUser>('User', UserSchema);

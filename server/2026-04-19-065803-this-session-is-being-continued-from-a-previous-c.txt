@@ -1,0 +1,805 @@
+           Claude Code v2.1.114
+ ▐▛███▜▌   Sonnet 4.6 · Claude Pro
+▝▜█████▛▘  E:\Projects\Minor_management\server
+  ▘▘ ▝▝    Welcome to Opus 4.7 xhigh! · /effort to tune speed vs. intellige…
+
+✻ Conversation compacted (ctrl+o for history)
+
+  ⎿  Read src\routes\projectRoutes.ts (27 lines)
+  ⎿  Referenced file src\controllers\projectController.ts
+  ⎿  Read src\routes\adminRoutes.ts (25 lines)
+  ⎿  Read src\controllers\adminController.ts (223 lines)
+  ⎿  Read src\scripts\seedAdmin.ts (51 lines)
+  ⎿  Plan file referenced (C:\Users\shrey\.claude\plans\big-scalability-issue-currently-sharded-melody.md)
+
+  Searched for 2 patterns, read 2 files (ctrl+o to expand)
+
+● Let me check the events tab rendering and where to insert Archive.
+
+  Searched for 3 patterns, read 1 file (ctrl+o to expand)
+
+● Now making targeted edits. Starting with the activeTab union type.
+
+● Update(E:\Projects\Minor_management\client\src\pages\AdminDashboard.tsx)
+  ⎿  Added 1 line, removed 1 line
+      2  import { useSearchParams } from 'react-router-dom';
+      3  import api from '../utils/api';
+      4  import { useAuth } from '../context/AuthContext';
+      5 -import { Search, Users, Clock, CheckCircle, FileText, X, LogOut,
+        - ChevronDown, ChevronUp, Settings, Menu, Calendar, Download, Ale
+        -rtCircle, AlertTriangle, Save, Pencil, LayoutGrid, MoreVertical,
+        - Plus, Edit3, Power, Info, Trash2, Upload, Mail, Copy, Check, Us
+        -erCheck, UserX, ShieldCheck, ShieldOff } from 'lucide-react';   
+      5 +import { Search, Users, Clock, CheckCircle, FileText, X, LogOut,
+        + ChevronDown, ChevronUp, Settings, Menu, Calendar, Download, Ale
+        +rtCircle, AlertTriangle, Save, Pencil, LayoutGrid, MoreVertical,
+        + Plus, Edit3, Power, Info, Trash2, Upload, Mail, Copy, Check, Us
+        +erCheck, UserX, ShieldCheck, ShieldOff, Archive as ArchiveIcon }
+        + from 'lucide-react';                                           
+      6  import { motion } from 'framer-motion';
+      7  import MenteeGroupDetails from '../components/MenteeGroupDetails
+         ';
+      8  import AutoCreatePanelsModal from '../components/AutoCreatePanel
+         sModal';
+
+● Update(E:\Projects\Minor_management\client\src\pages\AdminDashboard.tsx)
+  ⎿  Added 2 lines, removed 2 lines
+      31  const AdminDashboard: React.FC = () => {
+      32      const { user, logout } = useAuth();
+      33      const [searchParams, setSearchParams] = useSearchParams();
+      34 -    const initialAdminTab = searchParams.get('tab') as 'overvie
+         -w' | 'students' | 'groups' | 'faculty' | 'events' | 'exports' |
+         - 'panels' | null;                                              
+      35 -    const [activeTab, setActiveTab] = useState<'overview' | 'st
+         -udents' | 'groups' | 'faculty' | 'events' | 'exports' | 'panels
+         -'>(initialAdminTab || 'overview');                             
+      34 +    const initialAdminTab = searchParams.get('tab') as 'overvie
+         +w' | 'students' | 'groups' | 'faculty' | 'events' | 'exports' |
+         + 'panels' | 'archive' | null;                                  
+      35 +    const [activeTab, setActiveTab] = useState<'overview' | 'st
+         +udents' | 'groups' | 'faculty' | 'events' | 'exports' | 'panels
+         +' | 'archive'>(initialAdminTab || 'overview');                 
+      36      const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+      37  
+      38      useEffect(() => {
+
+● Now add the archive-related state (participatingBatches for event form,
+  archive data state).
+
+● Update(E:\Projects\Minor_management\client\src\pages\AdminDashboard.tsx)
+  ⎿  Added 7 lines
+       99          batchYear: '',
+      100          rubricParams: '' // For JSON stringified rubric
+      101      });
+      102 +    const [participatingBatches, setParticipatingBatches] = us
+          +eState<string[]>([]);                                         
+      103  
+      104 +    // Archive tab state                                      
+      105 +    const [archiveYear, setArchiveYear] = useState<string>('Al
+          +l');                                                          
+      106 +    const [archiveData, setArchiveData] = useState<{ available
+          +Years: string[]; groups: any[]; projects: any[]; participants:
+          + any[]; panels: any[] } | null>(null);                        
+      107 +    const [archiveLoading, setArchiveLoading] = useState(false
+          +);                                                            
+      108 +    const [archiveSection, setArchiveSection] = useState<'proj
+          +ects' | 'participants' | 'panels'>('projects');               
+      109 +                                                              
+      110      const [confirmEndEvent, setConfirmEndEvent] = useState<any
+           >(null);
+      111      const [confirmDeleteEvent, setConfirmDeleteEvent] = useSta
+           te<any>(null);
+      112      const [adminPassword, setAdminPassword] = useState('');
+
+● Now add the Archive tab data fetch.
+
+● Update(E:\Projects\Minor_management\client\src\pages\AdminDashboard.tsx)
+  ⎿  Added 9 lines
+      207                  } else if (activeTab === 'events') {
+      208                      const res = await api.get('/events');
+      209                      setEvents(Array.isArray(res.data) ? res.da
+           ta : []);
+      210 +                } else if (activeTab === 'archive') {         
+      211 +                    setArchiveLoading(true);                  
+      212 +                    try {                                     
+      213 +                        const qs = archiveYear && archiveYear 
+          +!== 'All' ? `?year=${encodeURIComponent(archiveYear)}` : '';  
+      214 +                        const res = await api.get(`/admin/arch
+          +ive${qs}`);                                                   
+      215 +                        setArchiveData(res.data || null);     
+      216 +                    } finally {                               
+      217 +                        setArchiveLoading(false);             
+      218 +                    }                                         
+      219                  }
+      220              } catch (error) {
+      221                  console.error(`Failed to fetch ${activeTab}`, 
+           error);
+
+● Update(E:\Projects\Minor_management\client\src\pages\AdminDashboard.tsx)
+  ⎿  Added 1 line, removed 1 line
+      228          if (activeTab === 'groups') {
+      229              setViewGroup(null); // Reset detail view on tab ch
+           ange
+      230          }
+      231 -    }, [activeTab, filterBatch]);                             
+      231 +    }, [activeTab, filterBatch, archiveYear]);                
+      232  
+      233      // Reset sort when tab changes
+      234      useEffect(() => {
+
+● Add the Archive sidebar item and header title.
+
+● Update(E:\Projects\Minor_management\client\src\pages\AdminDashboard.tsx)
+  ⎿  Added 6 lines
+      780                          active={activeTab === 'exports'}
+      781                          onClick={() => setActiveTab('exports')
+           }
+      782                      />
+      783 +                    <SidebarItem                              
+      784 +                        icon={<ArchiveIcon className="w-5 h-5"
+          + />}                                                          
+      785 +                        label="Archive"                       
+      786 +                        active={activeTab === 'archive'}      
+      787 +                        onClick={() => setActiveTab('archive')
+          +}                                                             
+      788 +                    />                                        
+      789                  </nav>
+      790                  <div className="p-4 border-t border-neutral-10
+           0">
+      791                      <div className="flex items-center gap-3 mb
+           -4">
+
+● Update(E:\Projects\Minor_management\client\src\pages\AdminDashboard.tsx)
+  ⎿  Added 1 line
+      823                              {activeTab === 'panels' && 'Evalua
+           tion Panels'}
+      824                              {activeTab === 'events' && 'Setup 
+           Events'}
+      825                              {activeTab === 'exports' && 'Data 
+           — Imports & Exports'}
+      826 +                            {activeTab === 'archive' && 'Archi
+          +ve — Past Semesters'}                                         
+      827                          </h1>
+      828                      </div>
+      829                      {activeTab !== 'events' && <GlobalEventBan
+           ner />}
+
+● Now update the modal open/close handlers to manage participatingBatches.
+
+● Update(E:\Projects\Minor_management\client\src\pages\AdminDashboard.tsx)
+  ⎿  Added 1 line
+      1725                                                  onClick={() =
+            > {
+      1726                                                      setEditin
+            gEvent(null);
+      1727                                                      setEventF
+            orm({ type: '', endDate: '', extensionDate: '', batchYear: ''
+            , rubricParams: '' });
+      1728 +                                                    setPartic
+           +ipatingBatches([]);                                          
+      1729                                                      setRubric
+            Sections([]); setRubricPanelAggregation('average');
+      1730                                                      setRubric
+            Mode('builder');
+      1731                                                      setShowCr
+            eateEvent(true);
+
+● Update(E:\Projects\Minor_management\client\src\pages\AdminDashboard.tsx)  ⎿  Added 1 line
+      1796                                                               
+                                   batchYear: ev.batchYear || '',
+      1797                                                               
+                                   rubricParams: ev.rubricParams ? JSON.s
+            tringify(ev.rubricParams, null, 2) : ''
+      1798                                                               
+                               });
+      1799 +                                                             
+           +                   setParticipatingBatches(Array.isArray(ev.p
+           +articipatingBatches) ? ev.participatingBatches.map(String) : 
+           +[]);                                                         
+      1800                                                               
+                               setRubricMode('builder');
+      1801                                                               
+                               initRubricForType(ev.type, ev.rubricParams
+            );
+      1802                                                               
+                               setShowCreateEvent(true);
+
+● Update(E:\Projects\Minor_management\client\src\pages\AdminDashboard.tsx)
+  ⎿  Added 1 line
+      2650                                      setEditingEvent(null);
+      2651                                      setRubricSections([]); se
+            tRubricPanelAggregation('average');
+      2652                                      setEventForm({ type: 'gro
+            up_formation_project_proposal', endDate: '', extensionDate: '
+            ', batchYear: '', rubricParams: '' });
+      2653 +                                    setParticipatingBatches([
+           +]);                                                          
+      2654                                  }} className="text-gray-400 h
+            over:text-gray-600"><X className="w-5 h-5" /></button>
+      2655                              </div>
+      2656                              <div className="p-6 space-y-5 ove
+            rflow-y-auto">
+
+● Update(E:\Projects\Minor_management\client\src\pages\AdminDashboard.tsx)
+  ⎿  Added 1 line, removed 1 line
+      2823                                  </div>
+      2824                              </div>
+      2825                              <div className="px-6 py-4 bg-gray
+            -50 border-t border-gray-100 flex justify-end gap-3">
+      2826 -                                <button onClick={() => { setS
+           -howCreateEvent(false); setEditingEvent(null); setAdminPasswor
+           -d(''); setRubricSections([]); setRubricPanelAggregation('aver
+           -age'); }} className="px-4 py-2 text-sm font-medium text-gray-
+           -700 hover:bg-gray-100 rounded-lg transition">Cancel</button> 
+      2826 +                                <button onClick={() => { setS
+           +howCreateEvent(false); setEditingEvent(null); setAdminPasswor
+           +d(''); setRubricSections([]); setRubricPanelAggregation('aver
+           +age'); setParticipatingBatches([]); }} className="px-4 py-2 t
+           +ext-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg
+           + transition">Cancel</button>                                 
+      2827                                  <button onClick={async () => 
+            {
+      2828                                      try {
+      2829                                          if (!eventForm.endDat
+            e || !adminPassword) {
+
+● Now add the batch multi-select UI and include participatingBatches in the POST
+   payload.
+
+● Update(E:\Projects\Minor_management\client\src\pages\AdminDashboard.tsx)
+  ⎿  Added 35 lines, removed 2 lines
+      2679                                                  <div>
+      2680                                                      <h4 class
+            Name="text-sm font-black text-red-800 uppercase tracking-wide
+            r">Critical Warning</h4>
+      2681                                                      <p classN
+            ame="text-xs text-red-700 mt-1 font-bold leading-relaxed">
+      2682 -                                                        Start
+           -ing a new <span className="underline decoration-red-400 decor
+           -ation-2">Group Formation</span> phase will eventually <span c
+           -lassName="bg-red-200 px-1 rounded">RESET ALL EXISTING GROUPS 
+           -& PANELS</span>.                                             
+      2683 -                                                        Curre
+           -nt groups will be archived and destroyed. This action is irre
+           -versible.                                                    
+      2682 +                                                        This 
+           +will <span className="bg-red-200 px-1 rounded">archive all gr
+           +oups, projects, and panels</span>,                           
+      2683 +                                                        reset
+           + faculty capacity counters, and mark only the selected batche
+           +s as participating this semester.                            
+      2684 +                                                        All o
+           +ther students (freshers, graduated, non-participating repeate
+           +rs) will stop receiving notifications.                       
+      2685 +                                                        This 
+           +action is irreversible.                                      
+      2686                                                      </p>
+      2687                                                  </div>
+      2688                                              </div>
+      2689                                          </div>
+      2690                                      )}
+      2691  
+      2692 +                                    {eventForm.type === 'grou
+           +p_formation_project_proposal' && (                           
+      2693 +                                        <div className="mt-3"
+           +>                                                            
+      2694 +                                            <label className=
+           +"block text-sm font-medium text-gray-700 mb-1.5">            
+      2695 +                                                Participating
+           + Batches <span className="text-red-500">*</span>             
+      2696 +                                            </label>         
+      2697 +                                            <p className="tex
+           +t-[11px] text-neutral-500 mb-2">Select every batch doing the 
+           +minor project this semester. Use 4-digit admission years (e.g
+           +. 2023).</p>                                                 
+      2698 +                                            <div className="f
+           +lex flex-wrap gap-2 mb-2">                                   
+      2699 +                                                {(() => {    
+      2700 +                                                    const cur
+           +rentYear = new Date().getFullYear();                         
+      2701 +                                                    const yea
+           +rs = Array.from({ length: 6 }, (_, i) => (currentYear - 4 + i
+           +).toString());                                               
+      2702 +                                                    return ye
+           +ars.map(y => {                                               
+      2703 +                                                        const
+           + selected = participatingBatches.includes(y);                
+      2704 +                                                        retur
+           +n (                                                          
+      2705 +                                                            <
+           +button                                                       
+      2706 +                                                             
+           +   key={y}                                                   
+      2707 +                                                             
+           +   type="button"                                             
+      2708 +                                                             
+           +   onClick={() => setParticipatingBatches(prev => selected ? 
+           +prev.filter(b => b !== y) : [...prev, y])}                   
+      2709 +                                                             
+           +   className={`px-3 py-1.5 rounded-lg text-xs font-bold borde
+           +r transition-colors ${selected ? 'bg-indigo-600 text-white bo
+           +rder-indigo-600' : 'bg-white text-neutral-600 border-neutral-
+           +300 hover:border-indigo-300'}`}                              
+      2710 +                                                            >
+      2711 +                                                             
+           +   {y}                                                       
+      2712 +                                                            <
+           +/button>                                                     
+      2713 +                                                        );   
+      2714 +                                                    });      
+      2715 +                                                })()}        
+      2716 +                                            </div>           
+      2717 +                                            {participatingBat
+           +ches.length === 0 && (                                       
+      2718 +                                                <p className=
+           +"text-[11px] text-red-500 font-semibold">At least one batch m
+           +ust be selected.</p>                                         
+      2719 +                                            )}               
+      2720 +                                        </div>               
+      2721 +                                    )}                       
+      2722 +                                                             
+      2723                                      {eventForm.type === 'mid_
+            term_evaluation' && events.some(ev => ev.type === 'group_form
+            ation_project_proposal' && new Date(ev.extensionDate || ev.en
+            dDate) > new Date()) && (
+      2724                                          <div className="mt-2 
+            text-[10px] text-red-500 font-bold uppercase tracking-wider f
+            lex items-center gap-1.5 animate-pulse">
+      2725                                              <AlertCircle clas
+            sName="w-3.5 h-3.5" /> Requirement: Group Formation phase mus
+            t end first
+
+● Update(E:\Projects\Minor_management\client\src\pages\AdminDashboard.tsx)
+  ⎿  Added 5 lines
+      2864                                              return;
+      2865                                          }
+      2866  
+      2867 +                                        if (eventForm.type ==
+           += 'group_formation_project_proposal' && participatingBatches.
+           +length === 0) {                                              
+      2868 +                                            alert('Select at 
+           +least one participating batch before creating the Group Forma
+           +tion event.');                                               
+      2869 +                                            return;          
+      2870 +                                        }                    
+      2871 +                                                             
+      2872                                          // Business Logic: Bl
+            ock Mid-Term until Group Formation ends
+      2873                                          if (eventForm.type ==
+            = 'mid_term_evaluation') {
+      2874                                              const hasOngoingG
+            roupFormation = events.some(ev =>
+
+● Update(E:\Projects\Minor_management\client\src\pages\AdminDashboard.tsx)
+  ⎿  Added 4 lines, removed 1 line
+      2908                                              }
+      2909                                          }
+      2910  
+      2911 -                                        const payload = {    
+      2911 +                                        const payload: any = 
+           +{                                                            
+      2912                                              ...eventForm,
+      2913                                              password: adminPa
+            ssword,
+      2914                                              extensionDate: ev
+            entForm.extensionDate || null,
+      2915                                              batchYear: eventF
+            orm.batchYear || undefined,
+      2916                                              rubricParams: par
+            sedRubricParams
+      2917                                          };
+      2918 +                                        if (eventForm.type ==
+           += 'group_formation_project_proposal') {                      
+      2919 +                                            payload.participa
+           +tingBatches = participatingBatches;                          
+      2920 +                                        }                    
+      2921                                          if (editingEvent) {
+      2922                                              await api.put(`/e
+            vents/${editingEvent._id}`, payload);
+      2923                                          } else {
+
+● Update(E:\Projects\Minor_management\client\src\pages\AdminDashboard.tsx)
+  ⎿  Added 1 line
+      2926                                          setShowCreateEvent(fa
+            lse);
+      2927                                          setEditingEvent(null)
+            ;
+      2928                                          setAdminPassword('');
+      2929 +                                        setParticipatingBatch
+           +es([]);                                                      
+      2930                                          const res = await api
+            .get('/events');
+      2931                                          setEvents(Array.isArr
+            ay(res.data) ? res.data : []);
+      2932                                      } catch (e: any) {
+
+  Searched for 7 patterns, read 1 file (ctrl+o to expand)
+
+● Now insert the Archive section after the exports block.
+
+● Update(E:\Projects\Minor_management\client\src\pages\AdminDashboard.tsx)
+  ⎿  Added 175 lines
+      2142                                          </div>
+      2143                                      </div>
+      2144                                  )}
+      2145 +                                                             
+      2146 +                                {activeTab === 'archive' && (
+      2147 +                                    <div className="space-y-6
+           +">                                                           
+      2148 +                                        <div className="flex 
+           +flex-col md:flex-row md:items-center md:justify-between gap-4
+           + bg-white rounded-2xl border border-neutral-200 p-5 shadow-sm
+           +">                                                           
+      2149 +                                            <div className="f
+           +lex items-center gap-4">                                     
+      2150 +                                                <div classNam
+           +e="h-12 w-12 bg-slate-100 rounded-xl flex items-center justif
+           +y-center text-slate-700">                                    
+      2151 +                                                    <ArchiveI
+           +con className="w-6 h-6" />                                   
+      2152 +                                                </div>       
+      2153 +                                                <div>        
+      2154 +                                                    <h3 class
+           +Name="text-lg font-bold text-neutral-900">Past Semesters</h3>
+      2155 +                                                    <p classN
+           +ame="text-xs text-neutral-500">Read-only archive of projects,
+           + participants, evaluations, and panels from prior semesters.<
+           +/p>                                                          
+      2156 +                                                </div>       
+      2157 +                                            </div>           
+      2158 +                                            <div className="f
+           +lex items-center gap-3">                                     
+      2159 +                                                <label classN
+           +ame="text-xs font-semibold text-neutral-500 uppercase trackin
+           +g-wide">Batch</label>                                        
+      2160 +                                                <select      
+      2161 +                                                    value={ar
+           +chiveYear}                                                   
+      2162 +                                                    onChange=
+           +{(e) => setArchiveYear(e.target.value)}                      
+      2163 +                                                    className
+           +="px-3 py-2 bg-white rounded-lg border border-neutral-300 tex
+           +t-sm font-medium focus:outline-none focus:ring-2 focus:ring-i
+           +ndigo-500/20"                                                
+      2164 +                                                >            
+      2165 +                                                    <option v
+           +alue="All">All years</option>                                
+      2166 +                                                    {(archive
+           +Data?.availableYears || []).map((y) => (                     
+      2167 +                                                        <opti
+           +on key={y} value={y}>{y}</option>                            
+      2168 +                                                    ))}      
+      2169 +                                                </select>    
+      2170 +                                            </div>           
+      2171 +                                        </div>               
+      2172 +                                                             
+      2173 +                                        <div className="flex 
+           +gap-2 border-b border-neutral-200">                          
+      2174 +                                            {(['projects', 'p
+           +articipants', 'panels'] as const).map(section => (           
+      2175 +                                                <button      
+      2176 +                                                    key={sect
+           +ion}                                                         
+      2177 +                                                    onClick={
+           +() => setArchiveSection(section)}                            
+      2178 +                                                    className
+           +={`px-4 py-2 text-sm font-semibold capitalize transition-colo
+           +rs border-b-2 -mb-px ${archiveSection === section ? 'border-i
+           +ndigo-600 text-indigo-600' : 'border-transparent text-neutral
+           +-500 hover:text-neutral-800'}`}                              
+      2179 +                                                >            
+      2180 +                                                    {section}
+      2181 +                                                    <span cla
+           +ssName="ml-2 text-xs text-neutral-400">                      
+      2182 +                                                        {sect
+           +ion === 'projects' && (archiveData?.projects?.length ?? 0)}  
+      2183 +                                                        {sect
+           +ion === 'participants' && (archiveData?.participants?.length 
+           +?? 0)}                                                       
+      2184 +                                                        {sect
+           +ion === 'panels' && (archiveData?.panels?.length ?? 0)}      
+      2185 +                                                    </span>  
+      2186 +                                                </button>    
+      2187 +                                            ))}              
+      2188 +                                        </div>               
+      2189 +                                                             
+      2190 +                                        {archiveLoading ? (  
+      2191 +                                            <div className="f
+           +lex items-center justify-center h-48">                       
+      2192 +                                                <div classNam
+           +e="animate-spin rounded-full h-10 w-10 border-b-2 border-indi
+           +go-600"></div>                                               
+      2193 +                                            </div>           
+      2194 +                                        ) : !archiveData ? ( 
+      2195 +                                            <div className="t
+           +ext-center py-12 text-neutral-500">No archive data yet.</div>
+      2196 +                                        ) : (                
+      2197 +                                            <>               
+      2198 +                                                {archiveSecti
+           +on === 'projects' && (                                       
+      2199 +                                                    <div clas
+           +sName="bg-white rounded-2xl border border-neutral-200 overflo
+           +w-hidden shadow-sm">                                         
+      2200 +                                                        {(arc
+           +hiveData.projects || []).length === 0 ? (                    
+      2201 +                                                            <
+           +div className="p-10 text-center text-neutral-500 text-sm">No 
+           +archived projects for this batch.</div>                      
+      2202 +                                                        ) : (
+      2203 +                                                            <
+           +table className="w-full text-sm">                            
+      2204 +                                                             
+           +   <thead className="bg-neutral-50 text-neutral-500 uppercase
+           + text-xs">                                                   
+      2205 +                                                             
+           +       <tr>                                                  
+      2206 +                                                             
+           +           <th className="text-left px-4 py-3">Title</th>    
+      2207 +                                                             
+           +           <th className="text-left px-4 py-3">Group</th>    
+      2208 +                                                             
+           +           <th className="text-left px-4 py-3">Batch</th>    
+      2209 +                                                             
+           +           <th className="text-left px-4 py-3">Mentor</th>   
+      2210 +                                                             
+           +           <th className="text-left px-4 py-3">Mid</th>      
+      2211 +                                                             
+           +           <th className="text-left px-4 py-3">End</th>      
+      2212 +                                                             
+           +           <th className="text-left px-4 py-3">Final Report</
+           +th>                                                          
+      2213 +                                                             
+           +       </tr>                                                 
+      2214 +                                                             
+           +   </thead>                                                  
+      2215 +                                                             
+           +   <tbody>                                                   
+      2216 +                                                             
+           +       {archiveData.projects.map((p: any) => {               
+      2217 +                                                             
+           +           const g = p.group || {};                          
+      2218 +                                                             
+           +           const batch = g.targetBatch || (g.members?.[0]?.ro
+           +llNumber ? '20' + g.members[0].rollNumber.substring(0, 2) : '
+           +—');                                                         
+      2219 +                                                             
+           +           const mid = p.midTermEvaluation?.totalMarks;      
+      2220 +                                                             
+           +           const end = p.endTermEvaluation?.totalMarks;      
+      2221 +                                                             
+           +           const fin = p.finalReportEvaluation?.totalMarks;  
+      2222 +                                                             
+           +           return (                                          
+      2223 +                                                             
+           +               <tr key={p._id} className="border-t border-neu
+           +tral-100 hover:bg-neutral-50">                               
+      2224 +                                                             
+           +                   <td className="px-4 py-3 font-semibold tex
+           +t-neutral-900">{p.title || '—'}</td>                         
+      2225 +                                                             
+           +                   <td className="px-4 py-3 text-neutral-700"
+           +>{g.name || '—'}</td>                                        
+      2226 +                                                             
+           +                   <td className="px-4 py-3 text-neutral-700"
+           +>{batch}</td>                                                
+      2227 +                                                             
+           +                   <td className="px-4 py-3 text-neutral-700"
+           +>{p.archivedMentorName || '—'}</td>                          
+      2228 +                                                             
+           +                   <td className="px-4 py-3 text-neutral-700"
+           +>{mid ?? '—'}</td>                                           
+      2229 +                                                             
+           +                   <td className="px-4 py-3 text-neutral-700"
+           +>{end ?? '—'}</td>                                           
+      2230 +                                                             
+           +                   <td className="px-4 py-3 text-neutral-700"
+           +>{fin ?? '—'}</td>                                           
+      2231 +                                                             
+           +               </tr>                                         
+      2232 +                                                             
+           +           );                                                
+      2233 +                                                             
+           +       })}                                                   
+      2234 +                                                             
+           +   </tbody>                                                  
+      2235 +                                                            <
+           +/table>                                                      
+      2236 +                                                        )}   
+      2237 +                                                    </div>   
+      2238 +                                                )}           
+      2239 +                                                             
+      2240 +                                                {archiveSecti
+           +on === 'participants' && (                                   
+      2241 +                                                    <div clas
+           +sName="bg-white rounded-2xl border border-neutral-200 overflo
+           +w-hidden shadow-sm">                                         
+      2242 +                                                        {(arc
+           +hiveData.participants || []).length === 0 ? (                
+      2243 +                                                            <
+           +div className="p-10 text-center text-neutral-500 text-sm">No 
+           +archived participants for this batch.</div>                  
+      2244 +                                                        ) : (
+      2245 +                                                            <
+           +table className="w-full text-sm">                            
+      2246 +                                                             
+           +   <thead className="bg-neutral-50 text-neutral-500 uppercase
+           + text-xs">                                                   
+      2247 +                                                             
+           +       <tr>                                                  
+      2248 +                                                             
+           +           <th className="text-left px-4 py-3">Name</th>     
+      2249 +                                                             
+           +           <th className="text-left px-4 py-3">Roll</th>     
+      2250 +                                                             
+           +           <th className="text-left px-4 py-3">Branch</th>   
+      2251 +                                                             
+           +           <th className="text-left px-4 py-3">Batch</th>    
+      2252 +                                                             
+           +           <th className="text-left px-4 py-3">Group</th>    
+      2253 +                                                             
+           +           <th className="text-left px-4 py-3">Project</th>  
+      2254 +                                                             
+           +           <th className="text-left px-4 py-3">Mentor</th>   
+      2255 +                                                             
+           +           <th className="text-left px-4 py-3">Mid</th>      
+      2256 +                                                             
+           +           <th className="text-left px-4 py-3">End</th>      
+      2257 +                                                             
+           +       </tr>                                                 
+      2258 +                                                             
+           +   </thead>                                                  
+      2259 +                                                             
+           +   <tbody>                                                   
+      2260 +                                                             
+           +       {archiveData.participants.map((m: any) => (           
+      2261 +                                                             
+           +           <tr key={m._id + (m.groupName || '')} className="b
+           +order-t border-neutral-100 hover:bg-neutral-50">             
+      2262 +                                                             
+           +               <td className="px-4 py-3 font-semibold text-ne
+           +utral-900">{m.name}</td>                                     
+      2263 +                                                             
+           +               <td className="px-4 py-3 text-neutral-700">{m.
+           +rollNumber || '—'}</td>                                      
+      2264 +                                                             
+           +               <td className="px-4 py-3 text-neutral-700">{m.
+           +branch || '—'}</td>                                          
+      2265 +                                                             
+           +               <td className="px-4 py-3 text-neutral-700">{m.
+           +batchYear || '—'}</td>                                       
+      2266 +                                                             
+           +               <td className="px-4 py-3 text-neutral-700">{m.
+           +groupName || '—'}</td>                                       
+      2267 +                                                             
+           +               <td className="px-4 py-3 text-neutral-700">{m.
+           +projectTitle || '—'}</td>                                    
+      2268 +                                                             
+           +               <td className="px-4 py-3 text-neutral-700">{m.
+           +archivedMentorName || '—'}</td>                              
+      2269 +                                                             
+           +               <td className="px-4 py-3 text-neutral-700">{m.
+           +midTermEvaluation?.totalMarks ?? '—'}</td>                   
+      2270 +                                                             
+           +               <td className="px-4 py-3 text-neutral-700">{m.
+           +endTermEvaluation?.totalMarks ?? '—'}</td>                   
+      2271 +                                                             
+           +           </tr>                                             
+      2272 +                                                             
+           +       ))}                                                   
+      2273 +                                                             
+           +   </tbody>                                                  
+      2274 +                                                            <
+           +/table>                                                      
+      2275 +                                                        )}   
+      2276 +                                                    </div>   
+      2277 +                                                )}           
+      2278 +                                                             
+      2279 +                                                {archiveSecti
+           +on === 'panels' && (                                         
+      2280 +                                                    <div clas
+           +sName="space-y-4">                                           
+      2281 +                                                        {(arc
+           +hiveData.panels || []).length === 0 ? (                      
+      2282 +                                                            <
+           +div className="bg-white rounded-2xl border border-neutral-200
+           + p-10 text-center text-neutral-500 text-sm shadow-sm">No arch
+           +ived panels for this batch.</div>                            
+      2283 +                                                        ) : (
+      2284 +                                                            O
+           +bject.entries(                                               
+      2285 +                                                             
+           +   (archiveData.panels as any[]).reduce<Record<string, any[]>
+           +>((acc, p) => {                                              
+      2286 +                                                             
+           +       const key = String(p.batchYear || '—');               
+      2287 +                                                             
+           +       (acc[key] = acc[key] || []).push(p);                  
+      2288 +                                                             
+           +       return acc;                                           
+      2289 +                                                             
+           +   }, {})                                                    
+      2290 +                                                            )
+           +.sort(([a], [b]) => b.localeCompare(a)).map(([year, panelsFor
+           +Year]) => (                                                  
+      2291 +                                                             
+           +   <div key={year} className="bg-white rounded-2xl border bor
+           +der-neutral-200 shadow-sm overflow-hidden">                  
+      2292 +                                                             
+           +       <div className="px-5 py-3 bg-neutral-50 border-b borde
+           +r-neutral-200">                                              
+      2293 +                                                             
+           +           <span className="text-sm font-bold text-neutral-80
+           +0">Batch {year}</span>                                       
+      2294 +                                                             
+           +           <span className="ml-2 text-xs text-neutral-500">{(
+           +panelsForYear as any[]).length} panels</span>                
+      2295 +                                                             
+           +       </div>                                                
+      2296 +                                                             
+           +       <div className="divide-y divide-neutral-100">         
+      2297 +                                                             
+           +           {(panelsForYear as any[]).map((panel) => (        
+      2298 +                                                             
+           +               <div key={panel._id} className="p-4 flex flex-
+           +col md:flex-row md:items-center md:justify-between gap-3">   
+      2299 +                                                             
+           +                   <div>                                     
+      2300 +                                                             
+           +                       <div className="text-sm font-semibold 
+           +text-neutral-900">{panel.room ? `Room ${panel.room}` : 'Unass
+           +igned room'}</div>                                           
+      2301 +                                                             
+           +                       <div className="text-xs text-neutral-5
+           +00 mt-0.5">                                                  
+      2302 +                                                             
+           +                           {(panel.faculty || []).map((f: any
+           +) => f.name).filter(Boolean).join(', ') || 'No faculty listed
+           +'}                                                           
+      2303 +                                                             
+           +                       </div>                                
+      2304 +                                                             
+           +                   </div>                                    
+      2305 +                                                             
+           +                   <div className="text-xs text-neutral-500">
+      2306 +                                                             
+           +                       {(panel.assignedGroups || []).length} 
+           +group{(panel.assignedGroups || []).length === 1 ? '' : 's'}  
+      2307 +                                                             
+           +                   </div>                                    
+      2308 +                                                             
+           +               </div>                                        
+      2309 +                                                             
+           +           ))}                                               
+      2310 +                                                             
+           +       </div>                                                
+      2311 +                                                             
+           +   </div>                                                    
+      2312 +                                                            )
+           +)                                                            
+      2313 +                                                        )}   
+      2314 +                                                    </div>   
+      2315 +                                                )}           
+      2316 +                                            </>              
+      2317 +                                        )}                   
+      2318 +                                    </div>                   
+      2319 +                                )}                           
+      2320                              </>
+      2321                          )}
+      2322                      </div>
+
+      13 tasks (10 done, 1 in progress, 2 open)
+  ◼ AdminDashboard: batch multi-select + Archive tab
+  ◻ Faculty and Student dashboards: Past Projects tab
+  ◻ Verify build and lint
+  ✔ Update schema files (User, Panel, Event)
+  ✔ Create migration script
+  ✔ Refactor eventController.createEvent
+  ✔ Update authController OTP flow
+  ✔ Gate snapshot import + fix panel dedupe
+  ✔ Update panelController list filters
+  ✔ Add admin archive endpoint
+   … +3 completed
+  ⎿  You've hit your limit · resets 10:30am (Asia/Calcutta)
+     /upgrade to increase your usage limit.
+
+✻ Brewed for 11m 43s

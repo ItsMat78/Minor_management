@@ -418,7 +418,7 @@ const FacultyDashboard: React.FC = () => {
     const { user, logout, activeEvents } = useAuth();
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
-    const initialTab = searchParams.get('tab') as 'proposals' | 'mentees' | 'profile' | 'directory' | 'mid-term' | 'end-term' | null;
+    const initialTab = searchParams.get('tab') as 'proposals' | 'mentees' | 'profile' | 'directory' | 'mid-term' | 'end-term' | 'archive' | null;
     const [projects, setProjects] = useState<Project[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedProject, setSelectedProject] = useState<Project | null>(null);
@@ -426,7 +426,9 @@ const FacultyDashboard: React.FC = () => {
     const [feedback, setFeedback] = useState('');
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-    const [activeTab, setActiveTab] = useState<'proposals' | 'mentees' | 'profile' | 'directory' | 'mid-term' | 'end-term'>(initialTab || 'mentees'); // Removed 'final-report'
+    const [activeTab, setActiveTab] = useState<'proposals' | 'mentees' | 'profile' | 'directory' | 'mid-term' | 'end-term' | 'archive'>(initialTab || 'mentees'); // Removed 'final-report'
+    const [archivedProjects, setArchivedProjects] = useState<any[]>([]);
+    const [loadingArchive, setLoadingArchive] = useState(false);
 
     useEffect(() => {
         const current = searchParams.get('tab');
@@ -522,6 +524,18 @@ const FacultyDashboard: React.FC = () => {
             fetchPanelGroups();
         } else if (activeTab === 'directory') {
             fetchStudents();
+        } else if (activeTab === 'archive') {
+            (async () => {
+                setLoadingArchive(true);
+                try {
+                    const res = await api.get('/projects/archived/faculty');
+                    setArchivedProjects(Array.isArray(res.data) ? res.data : []);
+                } catch (err) {
+                    setArchivedProjects([]);
+                } finally {
+                    setLoadingArchive(false);
+                }
+            })();
         }
     }, [activeTab]);
 
@@ -917,6 +931,12 @@ const FacultyDashboard: React.FC = () => {
                         active={activeTab === 'profile'}
                         onClick={() => { setActiveTab('profile'); setViewGroup(null); }}
                     />
+                    <SidebarItem
+                        icon={<Archive className="w-5 h-5" />}
+                        label="Past Projects"
+                        active={activeTab === 'archive'}
+                        onClick={() => { setActiveTab('archive'); setViewGroup(null); }}
+                    />
 
                     {!activeEvents?.some(e => e.type === 'group_formation_project_proposal' && new Date(e.extensionDate || e.endDate) > new Date()) && (activeEvents?.some(e => e.type === 'mid_term_evaluation') || activeEvents?.some(e => e.type === 'end_term_evaluation')) && (
                         <div className="pt-4 border-t border-neutral-100 mt-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
@@ -981,7 +1001,8 @@ const FacultyDashboard: React.FC = () => {
                                         activeTab === 'directory' ? 'Student Directory' :
                                             activeTab === 'mid-term' ? 'Mid-Term Evaluation' :
                                                 activeTab === 'end-term' ? 'End-Term Evaluation' :
-                                                    'My Profile'
+                                                    activeTab === 'archive' ? 'Past Projects' :
+                                                        'My Profile'
                             )}
                         </h1>
                     </div>
@@ -989,7 +1010,72 @@ const FacultyDashboard: React.FC = () => {
                 </header>
 
                 <main className="flex-1 overflow-y-auto p-6">
-                    {activeTab === 'profile' ? (
+                    {activeTab === 'archive' ? (
+                        <div className="max-w-6xl mx-auto">
+                            <div className="bg-white rounded-2xl border border-neutral-200 p-5 shadow-sm flex items-center gap-4 mb-6">
+                                <div className="h-12 w-12 bg-slate-100 rounded-xl flex items-center justify-center text-slate-700">
+                                    <Archive className="w-6 h-6" />
+                                </div>
+                                <div>
+                                    <h2 className="text-lg font-bold text-neutral-900">Past Projects You Mentored</h2>
+                                    <p className="text-xs text-neutral-500">Read-only archive of projects from prior semesters where you were the guide.</p>
+                                </div>
+                            </div>
+
+                            {loadingArchive ? (
+                                <div className="flex items-center justify-center h-48">
+                                    <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600" />
+                                </div>
+                            ) : archivedProjects.length === 0 ? (
+                                <div className="text-center py-16 bg-white rounded-2xl border border-dashed border-neutral-200 text-neutral-500 text-sm">
+                                    No archived projects found for your account.
+                                </div>
+                            ) : (
+                                <div className="bg-white rounded-2xl border border-neutral-200 overflow-hidden shadow-sm">
+                                    <table className="w-full text-sm">
+                                        <thead className="bg-neutral-50 text-neutral-500 uppercase text-xs">
+                                            <tr>
+                                                <th className="text-left px-4 py-3">Title</th>
+                                                <th className="text-left px-4 py-3">Group</th>
+                                                <th className="text-left px-4 py-3">Members</th>
+                                                <th className="text-left px-4 py-3">Mid</th>
+                                                <th className="text-left px-4 py-3">End</th>
+                                                <th className="text-left px-4 py-3">Final</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {archivedProjects.map((p: any) => {
+                                                const g = p.group || {};
+                                                const liveMembers: any[] = g.members || [];
+                                                const members: any[] = liveMembers.length > 0
+                                                    ? liveMembers
+                                                    : (p.archivedMembers || []);
+                                                const groupName = g.name || p.archivedGroupName || '—';
+                                                return (
+                                                    <tr key={p._id} className="border-t border-neutral-100 hover:bg-neutral-50 align-top">
+                                                        <td className="px-4 py-3 font-semibold text-neutral-900">{p.title || '—'}</td>
+                                                        <td className="px-4 py-3 text-neutral-700">{groupName}</td>
+                                                        <td className="px-4 py-3 text-neutral-700">
+                                                            {members.length === 0 ? '—' : (
+                                                                <div className="space-y-0.5 text-xs">
+                                                                    {members.map((m: any, i: number) => (
+                                                                        <div key={m._id || m.rollNumber || m.email || i}>{m.name} <span className="text-neutral-400">({m.rollNumber || '—'})</span></div>
+                                                                    ))}
+                                                                </div>
+                                                            )}
+                                                        </td>
+                                                        <td className="px-4 py-3 text-neutral-700">{p.midTermEvaluation?.totalMarks ?? '—'}</td>
+                                                        <td className="px-4 py-3 text-neutral-700">{p.endTermEvaluation?.totalMarks ?? '—'}</td>
+                                                        <td className="px-4 py-3 text-neutral-700">{p.finalReportEvaluation?.totalMarks ?? '—'}</td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </div>
+                    ) : activeTab === 'profile' ? (
                         /* Profile View */
                         <div className="max-w-2xl mx-auto">
                             <div className="bg-white p-10 rounded-3xl border border-neutral-200 shadow-sm text-center">

@@ -25,6 +25,9 @@ export interface IProject extends Document {
     createdAt: Date;
     isArchived?: boolean;
     archivedMentorName?: string;
+    archivedGroupName?: string;
+    archivedBatch?: string;
+    archivedMembers?: { name: string; email?: string; rollNumber?: string; branch?: string }[];
     updates: {
         content: string;
         date: Date;
@@ -99,7 +102,7 @@ const ProjectSchema: Schema = new Schema({
     description: { type: String, required: true },
     tags: [{ type: String }],
     faculty: { type: Schema.Types.ObjectId, ref: 'User' }, // Optional now
-    group: { type: Schema.Types.ObjectId, ref: 'Group', required: true },
+    group: { type: Schema.Types.ObjectId, ref: 'Group' }, // Optional — archived imports may lack a live group
     semester: { type: Number },
     status: { type: String, enum: ['Draft', 'Pending', 'Approved', 'Rejected'], default: 'Draft' },
     attachments: [{ type: String }],
@@ -140,7 +143,16 @@ const ProjectSchema: Schema = new Schema({
     endTermEvaluation: { type: Schema.Types.Mixed },
     finalReportEvaluation: { type: Schema.Types.Mixed },
     isArchived: { type: Boolean, default: false },
-    archivedMentorName: { type: String }
+    archivedMentorName: { type: String },
+    archivedGroupName: { type: String },
+    archivedBatch: { type: String },
+    archivedMembers: [{
+        name: { type: String, required: true },
+        email: { type: String },
+        rollNumber: { type: String },
+        branch: { type: String },
+        _id: false
+    }]
 }, {
     timestamps: true
 });

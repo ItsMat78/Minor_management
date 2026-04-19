@@ -273,9 +273,10 @@ export const updatePanel = async (req: any, res: Response) => {
 
 export const getPanels = async (req: any, res: Response) => {
     try {
-        const { batchYear } = req.query;
+        const { batchYear, includeArchived } = req.query;
         let query: any = {};
         if (batchYear && batchYear !== 'All') query.batchYear = Number(batchYear);
+        if (includeArchived !== 'true') query.isArchived = { $ne: true };
         const panels = await Panel.find(query).populate('faculty', 'name email department maxGroups currentGroups').lean();
 
         // Populate groups for each panel based on faculty
@@ -329,7 +330,7 @@ export const getMyPanelEvaluationGroups = async (req: any, res: Response) => {
         const facultyId = req.user.id;
         const { batchYear } = req.query;
 
-        let panelQuery: any = { faculty: facultyId };
+        let panelQuery: any = { faculty: facultyId, isArchived: { $ne: true } };
         if (batchYear && batchYear !== 'All') panelQuery.batchYear = Number(batchYear);
 
         const panels = await Panel.find(panelQuery).populate('faculty', 'name email');
@@ -387,12 +388,13 @@ export const getMyPanelEvaluationGroups = async (req: any, res: Response) => {
 
 export const exportPanels = async (req: any, res: Response) => {
     try {
-        const { batchYear } = req.query;
+        const { batchYear, includeArchived } = req.query;
 
         let query: any = {};
         if (batchYear && batchYear !== 'All') {
             query.batchYear = Number(batchYear);
         }
+        if (includeArchived !== 'true') query.isArchived = { $ne: true };
 
         const panels = await Panel.find(query).populate('faculty', 'name email').lean();
 

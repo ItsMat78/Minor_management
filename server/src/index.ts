@@ -29,7 +29,7 @@ const io = initSocket(httpServer);
 const port = process.env.PORT || 5000;
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
 // Static file serving. UPLOAD_DIR can point to NAS/volume mount later.
 const uploadsPath = process.env.UPLOAD_DIR ? path.resolve(process.env.UPLOAD_DIR) : 'uploads';
 app.use('/uploads', express.static(uploadsPath));

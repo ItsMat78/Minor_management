@@ -283,7 +283,7 @@ export const getArchivedProjects = async (req: Request, res: Response) => {
         const archivedGroups = await Group.find({ members: userId, isArchived: true })
             .populate({
                 path: 'project',
-                select: 'title description tags archivedMentorName status isArchived createdAt faculty',
+                select: 'title description tags archivedMentorName status isArchived createdAt faculty midTermEvaluation endTermEvaluation finalReportEvaluation feedback',
                 populate: { path: 'faculty', select: 'name' }
             })
             .sort({ updatedAt: -1 })
@@ -292,6 +292,32 @@ export const getArchivedProjects = async (req: Request, res: Response) => {
         res.json(archivedGroups);
     } catch (error) {
         res.status(500).json({ message: 'Server error', error });
+    }
+};
+
+// Faculty view: archived projects they mentored. Matched by archivedMentorName (snapshot-safe).
+export const getFacultyArchivedProjects = async (req: Request, res: Response) => {
+    try {
+        const userId = (req as any).user.id;
+        const me = await User.findById(userId).select('name').lean() as any;
+        if (!me) return res.status(404).json({ message: 'User not found' });
+
+        const archivedProjects = await Project.find({
+            isArchived: true,
+            archivedMentorName: me.name
+        })
+            .populate({
+                path: 'group',
+                select: 'name targetBatch members isArchived',
+                populate: { path: 'members', select: 'name email rollNumber branch' }
+            })
+            .sort({ updatedAt: -1 })
+            .lean();
+
+        res.json(archivedProjects);
+    } catch (error: any) {
+        console.error('getFacultyArchivedProjects error:', error);
+        res.status(500).json({ message: 'Server error', error: error.message });
     }
 };
 

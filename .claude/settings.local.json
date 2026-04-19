@@ -6,7 +6,13 @@
       "Skill(keybindings-help)",
       "Bash(npx tsc:*)",
       "Bash(echo \"exit: $?\")",
-      "Bash(awk NR>=3490 && NR<=3545 *)"
+      "Bash(awk NR>=3490 && NR<=3545 *)",
+      "Bash(awk '/handleSnapshot|snapshot.*File|snapshotImportFile|exportSnapshot/,/^    \\\\}/' /e/Projects/Minor_management/client/src/pages/AdminDashboard.tsx)",
+      "Bash(xargs ls *)",
+      "Bash(echo \"EXIT=$?\")",
+      "Bash(npx tsc *)",
+      "Read(//tmp/**)",
+      "Bash(node *)"
     ]
   }
 }

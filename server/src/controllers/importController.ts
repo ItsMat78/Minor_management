@@ -6,7 +6,41 @@ import mongoose from 'mongoose';
 import User, { UserRole } from '../models/User';
 import Group from '../models/Group';
 import Project from '../models/Project';
-import Panel from '../models/Panel';
+import Event, { EventType } from '../models/Event';
+
+// ─── Participation helpers ───────────────────────────────────────────────────
+
+/**
+ * Returns the active Group Formation event if one exists with a configured
+ * participatingBatches list. Snapshot import no longer requires this — when
+ * absent, everything imported is treated as archived (not part of the current
+ * semester).
+ */
+async function getActiveGroupFormation(): Promise<{ participatingBatches: string[] } | null> {
+    const now = new Date();
+    const event = await Event.findOne({
+        type: EventType.GROUP_FORMATION_AND_PROJECT_PROPOSAL,
+        isActive: true,
+        startDate: { $lte: now },
+        $or: [
+            { extensionDate: { $exists: true, $ne: null, $gte: now } },
+            { extensionDate: { $exists: false }, endDate: { $gte: now } },
+            { extensionDate: null, endDate: { $gte: now } }
+        ]
+    }).lean();
+    if (!event || !event.participatingBatches || event.participatingBatches.length === 0) return null;
+    return { participatingBatches: event.participatingBatches };
+}
+
+function studentParticipates(targetBatch: string | undefined, rollNumber: string | undefined, batches: string[]): boolean {
+    if (!batches || batches.length === 0) return false;
+    if (targetBatch && batches.includes(String(targetBatch))) return true;
+    if (rollNumber) {
+        const prefixes = batches.map(b => b.slice(-2));
+        return prefixes.some(p => rollNumber.startsWith(p));
+    }
+    return false;
+}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -218,6 +252,9 @@ export const commitExcelImport = async (req: Request, res: Response) => {
         const expectedBatch = expectedBatchFromSemester(semester || 0);
         const expectedPrefix = expectedBatch ? String(expectedBatch).slice(-2) : null;
 
+        const activeGF = await getActiveGroupFormation();
+        const participatingBatches = activeGF?.participatingBatches || [];
+
         const defaultPassword = await bcrypt.hash('changeme', 10);
         const created = {
             students: 0, faculty: 0, groups: 0, projects: 0, skipped: 0,
@@ -247,7 +284,7 @@ export const commitExcelImport = async (req: Request, res: Response) => {
                                 role:       UserRole.FACULTY,
                                 department: 'CSE',
                                 isVerified: true,
-                                isActive:   true
+                                isParticipating: true
                             });
                             created.faculty++;
                             created.facultyList.push({ name: g.faculty.name, email: g.faculty.email });
@@ -294,7 +331,8 @@ export const commitExcelImport = async (req: Request, res: Response) => {
                                 semester:    g.semester || undefined,
                                 targetBatch: studentBatch,
                                 isVerified:  false,
-                                isActive:    false
+                                mustChangePassword: true,
+                                isParticipating: studentParticipates(studentBatch, s.roll, participatingBatches)
                             });
                             memberIds.push(newStudent._id as mongoose.Types.ObjectId);
                             created.students++;
@@ -370,86 +408,47 @@ export const commitExcelImport = async (req: Request, res: Response) => {
 
 export const exportSnapshot = async (_req: Request, res: Response) => {
     try {
-        const [users, groups, projects, panels] = await Promise.all([
-            User.find({}).select('-password -otp -otpExpires').lean(),
-            Group.find({}).lean(),
-            Project.find({}).lean(),
-            Panel.find({}).lean()
-        ]);
+        // Snapshot = archived projects only, each self-contained with evaluations and
+        // denormalized mentor/group/member info. Users, groups, and panels are NOT
+        // included — snapshots are intended for long-term archival of past semesters.
+        const projects = await Project.find({ isArchived: true })
+            .populate('faculty', 'name')
+            .populate({ path: 'group', populate: { path: 'members', select: 'name email rollNumber branch' } })
+            .lean();
 
-        // Build email map for cross-ref
-        const emailById = new Map(users.map(u => [String(u._id), u.email]));
-
-        const snapshotUsers = users.map(u => ({
-            email:       u.email,
-            name:        u.name,
-            role:        u.role,
-            branch:      u.branch,
-            rollNumber:  u.rollNumber,
-            semester:    u.semester,
-            targetBatch: u.targetBatch,
-            department:  u.department,
-            expertise:   u.expertise,
-            maxStudents: u.maxStudents,
-            maxGroups:   u.maxGroups,
-            batchConfigs: u.batchConfigs,
-            isActive:    u.isActive,
-            isVerified:  u.isVerified
-        }));
-
-        const snapshotGroups = groups.map(g => {
-            // Derive batchYear from members if targetBatch missing
-            let batchYear = g.targetBatch || '';
+        const snapshotProjects = projects.map((p: any) => {
+            const grp = p.group as any;
+            const fallbackMembers = (grp?.members || []).map((m: any) => ({
+                name: m.name,
+                email: m.email,
+                rollNumber: m.rollNumber,
+                branch: m.branch
+            }));
             return {
-                name:         g.name,
-                targetBatch:  batchYear || undefined,
-                status:       g.status,
-                isArchived:   g.isArchived || false,
-                memberEmails: g.members.map(m => emailById.get(String(m)) || String(m))
+                title:                 p.title,
+                description:           p.description,
+                tags:                  p.tags,
+                semester:              p.semester,
+                status:                p.status,
+                feedback:              p.feedback,
+                archivedMentorName:    p.archivedMentorName || (p.faculty ? (p.faculty as any).name : undefined),
+                archivedGroupName:     p.archivedGroupName || grp?.name,
+                archivedBatch:         p.archivedBatch || grp?.targetBatch,
+                archivedMembers:       (p.archivedMembers && p.archivedMembers.length) ? p.archivedMembers : fallbackMembers,
+                midTermEvaluation:     p.midTermEvaluation     || null,
+                endTermEvaluation:     p.endTermEvaluation     || null,
+                finalReportEvaluation: p.finalReportEvaluation || null
             };
         });
-
-        // Map groupId → group name+batch for project cross-ref
-        const groupById = new Map(groups.map(g => [String(g._id), g]));
-
-        const snapshotProjects = projects.map(p => {
-            const grp = groupById.get(String(p.group));
-            return {
-                title:              p.title,
-                description:        p.description,
-                tags:               p.tags,
-                semester:           p.semester,
-                status:             p.status,
-                isArchived:         p.isArchived || false,
-                archivedMentorName: p.archivedMentorName,
-                facultyEmail:       p.faculty ? (emailById.get(String(p.faculty)) || null) : null,
-                groupRef: grp ? {
-                    name:  grp.name,
-                    batch: grp.targetBatch || null
-                } : null,
-                feedback:               p.feedback,
-                midTermEvaluation:      p.midTermEvaluation      || null,
-                endTermEvaluation:      p.endTermEvaluation      || null,
-                finalReportEvaluation:  p.finalReportEvaluation  || null
-            };
-        });
-
-        const snapshotPanels = panels.map(p => ({
-            batchYear:    p.batchYear,
-            facultyEmails: p.faculty.map(f => emailById.get(String(f)) || String(f))
-        }));
 
         const snapshot = {
-            __version:     '1.0',
+            __version:     '3.0',
             __exportedAt:  new Date().toISOString(),
-            __description: 'IIITNR Minor Management Portal - Database Snapshot',
-            users:    snapshotUsers,
-            groups:   snapshotGroups,
-            projects: snapshotProjects,
-            panels:   snapshotPanels
+            __description: 'IIITNR Minor Management Portal - Projects Archive Snapshot',
+            projects: snapshotProjects
         };
 
-        res.setHeader('Content-Disposition', `attachment; filename="snapshot_${new Date().toISOString().slice(0, 10)}.json"`);
+        res.setHeader('Content-Disposition', `attachment; filename="projects_snapshot_${new Date().toISOString().slice(0, 10)}.json"`);
         res.setHeader('Content-Type', 'application/json');
         res.json(snapshot);
     } catch (err) {
@@ -458,62 +457,114 @@ export const exportSnapshot = async (_req: Request, res: Response) => {
     }
 };
 
+// ─── Snapshot normalizer (v1.x/v2.x → v3.0 shape) ────────────────────────────
+
+/**
+ * Older snapshots store users/groups/panels as separate arrays and projects only
+ * hold a `groupRef` + `facultyEmail`. This helper denormalizes those into the
+ * v3.0 projects-only shape so downstream code can treat every snapshot uniformly.
+ * v3.0 snapshots pass through unchanged.
+ */
+function normalizeSnapshotProjects(snapshot: any): any[] {
+    const rawProjects = Array.isArray(snapshot?.projects) ? snapshot.projects : [];
+    if (!rawProjects.length) return [];
+
+    const users: any[] = Array.isArray(snapshot.users) ? snapshot.users : [];
+    const groups: any[] = Array.isArray(snapshot.groups) ? snapshot.groups : [];
+    const userByEmail = new Map<string, any>();
+    for (const u of users) userByEmail.set((u.email || '').toLowerCase(), u);
+
+    // Derive each group's batch from its first member's roll prefix (v1.0 groups
+    // carry no targetBatch). Build a name-indexed multi-map so we can disambiguate
+    // when multiple groups share a name across different batches.
+    const enrichGroup = (g: any) => {
+        const emails: string[] = g.memberEmails || [];
+        const members = emails.map(e => userByEmail.get((e || '').toLowerCase())).filter(Boolean);
+        const firstRoll = members.find((u: any) => u?.rollNumber)?.rollNumber;
+        const derivedBatch = g.targetBatch
+            || (firstRoll && /^\d{2}/.test(firstRoll) ? '20' + firstRoll.substring(0, 2) : undefined);
+        return { ...g, __members: members, __batch: derivedBatch };
+    };
+    const enrichedGroups = groups.map(enrichGroup);
+    const groupsByName = new Map<string, any[]>();
+    for (const g of enrichedGroups) {
+        const arr = groupsByName.get(g.name) || [];
+        arr.push(g);
+        groupsByName.set(g.name, arr);
+    }
+
+    return rawProjects.map((p: any) => {
+        // Already v3.0: has archivedMembers or lacks groupRef
+        if (Array.isArray(p.archivedMembers) && p.archivedMembers.length > 0) return p;
+        if (!p.groupRef && !p.facultyEmail) return p;
+
+        const ref = p.groupRef || {};
+        const mentorName = p.archivedMentorName
+            || (p.facultyEmail && userByEmail.get(String(p.facultyEmail).toLowerCase())?.name)
+            || undefined;
+
+        // Resolve group: exact match on (name, batch) if batch provided, else the
+        // unique group with that name, else first candidate.
+        let grp: any = null;
+        if (ref.name) {
+            const candidates = groupsByName.get(ref.name) || [];
+            if (ref.batch) {
+                grp = candidates.find(c => String(c.__batch) === String(ref.batch)) || candidates[0];
+            } else {
+                grp = candidates.length === 1 ? candidates[0] : candidates[0];
+            }
+        }
+
+        const archivedMembers = (grp?.__members || []).map((u: any) => ({
+            name: u.name, email: u.email, rollNumber: u.rollNumber, branch: u.branch
+        }));
+        const batch = p.archivedBatch || ref.batch || grp?.__batch;
+
+        return {
+            ...p,
+            archivedMentorName: mentorName,
+            archivedGroupName:  p.archivedGroupName || ref.name,
+            archivedBatch:      batch,
+            archivedMembers
+        };
+    });
+}
+
 // ─── Snapshot import preview ──────────────────────────────────────────────────
 
 export const previewSnapshotImport = async (req: Request, res: Response) => {
     try {
         const snapshot = req.body;
-        if (!snapshot?.users || !snapshot?.groups) {
-            return res.status(400).json({ message: 'Invalid snapshot format. Expected { users, groups, projects, panels }.' });
+        if (!snapshot?.projects || !Array.isArray(snapshot.projects)) {
+            return res.status(400).json({ message: 'Invalid snapshot format. Expected { projects: [...] }.' });
         }
-
-        const existingUsers = await User.find({}).select('email').lean();
-        const existingEmails = new Set(existingUsers.map(u => u.email.toLowerCase()));
-
-        const existingGroups = await Group.find({}).select('name targetBatch').lean();
-        // Group key: name + batch
-        const existingGroupKeys = new Set(existingGroups.map(g => `${g.name}||${g.targetBatch || ''}`));
+        snapshot.projects = normalizeSnapshotProjects(snapshot);
 
         const existingProjects = await Project.find({}).select('title').lean();
-        const existingProjectTitles = new Set(existingProjects.map(p => p.title.toLowerCase()));
+        const existingTitles = new Set(existingProjects.map(p => p.title.toLowerCase()));
 
-        const existingPanels = await Panel.find({}).select('batchYear').lean();
-        const existingPanelBatches = new Set(existingPanels.map(p => p.batchYear));
-
-        const userRows = (snapshot.users || []).map((u: any) => ({
-            email:  u.email,
-            name:   u.name,
-            role:   u.role,
-            status: existingEmails.has((u.email || '').toLowerCase()) ? 'skip' : 'create'
-        }));
-
-        const groupRows = (snapshot.groups || []).map((g: any) => ({
-            name:        g.name,
-            targetBatch: g.targetBatch,
-            status:      existingGroupKeys.has(`${g.name}||${g.targetBatch || ''}`) ? 'skip' : 'create'
-        }));
-
-        const projectRows = (snapshot.projects || []).map((p: any) => ({
-            title:  p.title,
-            status: existingProjectTitles.has((p.title || '').toLowerCase()) ? 'skip' : 'create'
-        }));
-
-        const panelRows = (snapshot.panels || []).map((p: any) => ({
-            batchYear: p.batchYear,
-            status:    existingPanelBatches.has(p.batchYear) ? 'skip' : 'create'
+        const projectRows = snapshot.projects.map((p: any) => ({
+            title:              p.title,
+            archivedMentorName: p.archivedMentorName || null,
+            archivedGroupName:  p.archivedGroupName || null,
+            archivedBatch:      p.archivedBatch || null,
+            memberCount:        (p.archivedMembers || []).length,
+            hasMidTerm:         !!p.midTermEvaluation,
+            hasEndTerm:         !!p.endTermEvaluation,
+            hasFinal:           !!p.finalReportEvaluation,
+            status:             existingTitles.has((p.title || '').toLowerCase()) ? 'skip' : 'create'
         }));
 
         res.json({
+            version: snapshot.__version || 'unknown',
             summary: {
-                users:    { total: userRows.length,    create: userRows.filter((r: any) => r.status === 'create').length,    skip: userRows.filter((r: any) => r.status === 'skip').length },
-                groups:   { total: groupRows.length,   create: groupRows.filter((r: any) => r.status === 'create').length,   skip: groupRows.filter((r: any) => r.status === 'skip').length },
-                projects: { total: projectRows.length, create: projectRows.filter((r: any) => r.status === 'create').length, skip: projectRows.filter((r: any) => r.status === 'skip').length },
-                panels:   { total: panelRows.length,   create: panelRows.filter((r: any) => r.status === 'create').length,   skip: panelRows.filter((r: any) => r.status === 'skip').length }
+                projects: {
+                    total:  projectRows.length,
+                    create: projectRows.filter((r: any) => r.status === 'create').length,
+                    skip:   projectRows.filter((r: any) => r.status === 'skip').length
+                }
             },
-            users:    userRows,
-            groups:   groupRows,
-            projects: projectRows,
-            panels:   panelRows
+            projects: projectRows
         });
     } catch (err) {
         console.error('previewSnapshotImport error:', err);
@@ -526,148 +577,53 @@ export const previewSnapshotImport = async (req: Request, res: Response) => {
 export const commitSnapshotImport = async (req: Request, res: Response) => {
     try {
         const snapshot = req.body;
-        if (!snapshot?.users || !snapshot?.groups) {
-            return res.status(400).json({ message: 'Invalid snapshot format.' });
+        if (!snapshot?.projects || !Array.isArray(snapshot.projects)) {
+            return res.status(400).json({ message: 'Invalid snapshot format. Expected { projects: [...] }.' });
         }
+        snapshot.projects = normalizeSnapshotProjects(snapshot);
 
-        const defaultPassword = await bcrypt.hash('changeme', 10);
-        const result = { users: 0, groups: 0, projects: 0, panels: 0, skipped: 0 };
+        const result = { projects: 0, skipped: 0 };
         const errors: { type: string; key: string; reason: string }[] = [];
 
-        // ── 1. Users ─────────────────────────────────────────────────────────
-        const emailToId = new Map<string, mongoose.Types.ObjectId>();
-
-        const existingUsers = await User.find({}).select('_id email').lean();
-        existingUsers.forEach(u => emailToId.set(u.email.toLowerCase(), u._id as mongoose.Types.ObjectId));
-
-        for (const u of (snapshot.users || [])) {
-            const key = (u.email || '').toLowerCase();
-            if (!key) continue;
-
-            if (emailToId.has(key)) { result.skipped++; continue; }
-
-            try {
-                const created = await User.create({
-                    email:        u.email,
-                    name:         u.name,
-                    role:         u.role || UserRole.STUDENT,
-                    branch:       u.branch,
-                    rollNumber:   u.rollNumber,
-                    semester:     u.semester,
-                    targetBatch:  u.targetBatch,
-                    department:   u.department,
-                    expertise:    u.expertise,
-                    maxStudents:  u.maxStudents,
-                    maxGroups:    u.maxGroups,
-                    batchConfigs: u.batchConfigs,
-                    isActive:     u.isActive  ?? (u.role === UserRole.FACULTY),
-                    isVerified:   u.isVerified ?? false,
-                    password:     defaultPassword
-                });
-                emailToId.set(key, created._id as mongoose.Types.ObjectId);
-                result.users++;
-            } catch (err: any) {
-                const reason = err.code === 11000 ? 'Duplicate email or roll number' : (err.message || 'Unknown error');
-                errors.push({ type: 'user', key: u.email, reason });
-            }
-        }
-
-        // ── 2. Groups ─────────────────────────────────────────────────────────
-        const groupKeyToId = new Map<string, mongoose.Types.ObjectId>();
-
-        const existingGroups = await Group.find({}).select('_id name targetBatch').lean();
-        existingGroups.forEach(g => groupKeyToId.set(`${g.name}||${g.targetBatch || ''}`, g._id as mongoose.Types.ObjectId));
-
-        for (const g of (snapshot.groups || [])) {
-            const key = `${g.name}||${g.targetBatch || ''}`;
-            if (groupKeyToId.has(key)) { result.skipped++; continue; }
-
-            try {
-                const memberIds = (g.memberEmails || [])
-                    .map((e: string) => emailToId.get(e.toLowerCase()))
-                    .filter(Boolean) as mongoose.Types.ObjectId[];
-
-                const created = await Group.create({
-                    name:        g.name,
-                    targetBatch: g.targetBatch,
-                    status:      g.status || 'Forming',
-                    isArchived:  g.isArchived || false,
-                    members:     memberIds
-                });
-                groupKeyToId.set(key, created._id as mongoose.Types.ObjectId);
-                result.groups++;
-            } catch (err: any) {
-                errors.push({ type: 'group', key: `${g.name} (batch ${g.targetBatch || 'unknown'})`, reason: err.message || 'Unknown error' });
-            }
-        }
-
-        // ── 3. Projects ───────────────────────────────────────────────────────
         const existingTitles = new Set(
             (await Project.find({}).select('title').lean()).map(p => p.title.toLowerCase())
         );
 
-        for (const p of (snapshot.projects || [])) {
+        for (const p of snapshot.projects) {
             if (existingTitles.has((p.title || '').toLowerCase())) { result.skipped++; continue; }
 
             try {
-                const facultyId = p.facultyEmail ? emailToId.get(p.facultyEmail.toLowerCase()) : null;
-                const groupKey  = p.groupRef ? `${p.groupRef.name}||${p.groupRef.batch || ''}` : '';
-                const groupId   = groupKey ? groupKeyToId.get(groupKey) : null;
+                const members = Array.isArray(p.archivedMembers)
+                    ? p.archivedMembers
+                        .filter((m: any) => m && m.name)
+                        .map((m: any) => ({
+                            name:       m.name,
+                            email:      m.email,
+                            rollNumber: m.rollNumber,
+                            branch:     m.branch
+                        }))
+                    : [];
 
-                if (!groupId) {
-                    errors.push({ type: 'project', key: p.title, reason: `Group not found (ref: ${p.groupRef?.name}, batch: ${p.groupRef?.batch})` });
-                    result.skipped++;
-                    continue;
-                }
-
-                const projectDoc: any = {
+                await Project.create({
                     title:                 p.title,
                     description:           p.description || '',
                     tags:                  p.tags        || [],
                     semester:              p.semester,
                     status:                p.status      || 'Approved',
-                    isArchived:            p.isArchived  || false,
+                    isArchived:            true,
                     archivedMentorName:    p.archivedMentorName,
-                    group:                 groupId,
+                    archivedGroupName:     p.archivedGroupName,
+                    archivedBatch:         p.archivedBatch,
+                    archivedMembers:       members,
                     feedback:              p.feedback,
                     midTermEvaluation:     p.midTermEvaluation     || undefined,
                     endTermEvaluation:     p.endTermEvaluation     || undefined,
                     finalReportEvaluation: p.finalReportEvaluation || undefined
-                };
-                if (facultyId) projectDoc.faculty = facultyId;
-
-                const newProject = await Project.create(projectDoc);
-                if (p.status === 'Approved' && !p.isArchived) {
-                    await Group.findByIdAndUpdate(groupId, { project: (newProject as any)._id });
-                }
+                });
+                existingTitles.add((p.title || '').toLowerCase());
                 result.projects++;
             } catch (err: any) {
                 errors.push({ type: 'project', key: p.title, reason: err.message || 'Unknown error' });
-            }
-        }
-
-        // ── 4. Panels ─────────────────────────────────────────────────────────
-        const existingPanelBatches = new Set(
-            (await Panel.find({}).select('batchYear').lean()).map(p => p.batchYear)
-        );
-
-        for (const p of (snapshot.panels || [])) {
-            if (existingPanelBatches.has(p.batchYear)) { result.skipped++; continue; }
-
-            try {
-                const facultyIds = (p.facultyEmails || [])
-                    .map((e: string) => emailToId.get(e.toLowerCase()))
-                    .filter(Boolean) as mongoose.Types.ObjectId[];
-
-                if (facultyIds.length === 0) {
-                    errors.push({ type: 'panel', key: `batch ${p.batchYear}`, reason: 'No matching faculty emails found' });
-                    result.skipped++;
-                    continue;
-                }
-                await Panel.create({ batchYear: p.batchYear, faculty: facultyIds });
-                result.panels++;
-            } catch (err: any) {
-                errors.push({ type: 'panel', key: `batch ${p.batchYear}`, reason: err.message || 'Unknown error' });
             }
         }
 

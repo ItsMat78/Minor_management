@@ -34,7 +34,7 @@ const seedAdmin = async () => {
         password: hashed,
         role: 'Admin',
         isVerified: true,
-        isActive: true,
+        isParticipating: true,
         mustChangePassword: true,
     });
 

@@ -20,12 +20,12 @@ export const login = async (req: Request, res: Response) => {
             return res.status(400).json({ message: 'Invalid credentials' });
         }
 
-        if (user.isActive === false) {
+        if (user.isVerified === false) {
             const otp = Math.floor(100000 + Math.random() * 900000).toString();
             user.otp = otp;
             user.otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 mins
             await user.save();
-            
+
             const subject = 'Your IIITNR Minor Portal Activation OTP';
             const text = `Your OTP to activate your account is: ${otp}\n\nThis code expires in 10 minutes.`;
             const html = `
@@ -40,10 +40,10 @@ export const login = async (req: Request, res: Response) => {
                 console.error(`[AuthController] Failed to send OTP email to ${user.email}:`, err)
             );
 
-            return res.status(200).json({ 
-                requiresActivation: true, 
-                email: user.email, 
-                message: 'Account inactive. OTP sent to your email.' 
+            return res.status(200).json({
+                requiresActivation: true,
+                email: user.email,
+                message: 'Account not yet verified. OTP sent to your email.'
             });
         }
 
@@ -78,13 +78,12 @@ export const verifyOtp = async (req: Request, res: Response) => {
 
         if (!user) return res.status(400).json({ message: 'User not found' });
 
-        if (user.isActive) return res.status(400).json({ message: 'User is already active' });
+        if (user.isVerified) return res.status(400).json({ message: 'User is already verified' });
 
         if (!user.otp || user.otp !== otp || !user.otpExpires || user.otpExpires < new Date()) {
             return res.status(400).json({ message: 'Invalid or expired OTP' });
         }
 
-        user.isActive = true;
         user.isVerified = true;
         user.otp = undefined;
         user.otpExpires = undefined;
@@ -106,7 +105,7 @@ export const resendOtp = async (req: Request, res: Response) => {
         const { email } = req.body;
         const user = await User.findOne({ email });
         if (!user) return res.status(400).json({ message: 'User not found' });
-        if (user.isActive) return res.status(400).json({ message: 'Account already active' });
+        if (user.isVerified) return res.status(400).json({ message: 'Account already verified' });
 
         // Cooldown check: OTP is valid 10 minutes, so refuse resend if >9 minutes remain
         if (user.otpExpires) {

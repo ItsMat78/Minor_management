@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import User, { UserRole } from '../models/User';
 import Group from '../models/Group';
 import Project from '../models/Project';
+import Panel from '../models/Panel';
 import bcrypt from 'bcryptjs';
 
 export const getStats = async (req: Request, res: Response) => {
@@ -81,7 +82,7 @@ export const createUser = async (req: Request, res: Response) => {
             department:  role === 'Faculty' ? (department || 'CSE') : undefined,
             expertise:   role === 'Faculty' ? expertise : undefined,
             isVerified:  role === 'Faculty',   // faculty active immediately
-            isActive:    role === 'Faculty',
+            isParticipating: role === 'Faculty', // faculty always participate; students flipped on by GF event
             mustChangePassword: true,
         });
 
@@ -93,6 +94,131 @@ export const createUser = async (req: Request, res: Response) => {
     } catch (error: any) {
         const reason = error.code === 11000 ? 'Duplicate email or roll number.' : (error.message || 'Server error');
         res.status(500).json({ message: reason });
+    }
+};
+
+const groupBatchYear = (g: any): string | null => {
+    if (g.targetBatch) return String(g.targetBatch);
+    const firstRoll = g.members?.[0]?.rollNumber;
+    if (firstRoll && /^\d{2}/.test(firstRoll)) return '20' + firstRoll.substring(0, 2);
+    return null;
+};
+
+export const getArchive = async (req: Request, res: Response) => {
+    try {
+        const { year } = req.query as { year?: string };
+
+        const allYearsMode = !year || year === 'All';
+        const yearStr = allYearsMode ? null : String(year);
+
+        // Archived groups with members populated (needed for participants + batch derivation)
+        const groupQuery: any = { isArchived: true };
+        if (yearStr) groupQuery.$or = [
+            { targetBatch: yearStr },
+            { targetBatch: { $in: [null, undefined, ''] } } // fall back to roll-derived match below
+        ];
+        const rawGroups = await Group.find(groupQuery)
+            .populate('members', 'name email rollNumber branch department')
+            .lean();
+
+        // Filter to only groups whose derived batch matches (handles targetBatch-missing case)
+        const groups = yearStr
+            ? rawGroups.filter(g => groupBatchYear(g) === yearStr)
+            : rawGroups;
+
+        const groupIds = groups.map(g => g._id);
+
+        // Archived projects: those linked to matched groups, plus snapshot-imported
+        // projects that have no live group reference (denormalized via archivedBatch /
+        // archivedMembers / archivedGroupName). Year filter applies to both sources.
+        const linkedProjects = await Project.find({ isArchived: true, group: { $in: groupIds } })
+            .populate('group', 'name targetBatch members')
+            .lean();
+
+        const orphanQuery: any = { isArchived: true, $or: [{ group: null }, { group: { $exists: false } }] };
+        if (yearStr) orphanQuery.archivedBatch = yearStr;
+        const orphanProjects = await Project.find(orphanQuery).lean();
+
+        const projects = [...linkedProjects, ...orphanProjects];
+
+        // Participants flattened, each carrying a link to their group + project + evaluations
+        const projectByGroupId = new Map(linkedProjects.map(p => [String((p.group as any)?._id || p.group), p]));
+        const participants: any[] = [];
+        for (const g of groups) {
+            const p = projectByGroupId.get(String(g._id));
+            for (const m of (g.members || []) as any[]) {
+                participants.push({
+                    _id:        m._id,
+                    name:       m.name,
+                    email:      m.email,
+                    rollNumber: m.rollNumber,
+                    branch:     m.branch || m.department,
+                    groupName:  g.name,
+                    batchYear:  groupBatchYear(g),
+                    projectTitle: p?.title,
+                    archivedMentorName: p?.archivedMentorName,
+                    midTermEvaluation:     p?.midTermEvaluation || null,
+                    endTermEvaluation:     p?.endTermEvaluation || null,
+                    finalReportEvaluation: p?.finalReportEvaluation || null
+                });
+            }
+        }
+
+        // Orphan (imported) projects contribute their archivedMembers as participants
+        for (const p of orphanProjects as any[]) {
+            for (const m of (p.archivedMembers || [])) {
+                participants.push({
+                    _id:        `${p._id}-${m.rollNumber || m.email || m.name}`,
+                    name:       m.name,
+                    email:      m.email,
+                    rollNumber: m.rollNumber,
+                    branch:     m.branch,
+                    groupName:  p.archivedGroupName,
+                    batchYear:  p.archivedBatch,
+                    projectTitle: p.title,
+                    archivedMentorName: p.archivedMentorName,
+                    midTermEvaluation:     p.midTermEvaluation || null,
+                    endTermEvaluation:     p.endTermEvaluation || null,
+                    finalReportEvaluation: p.finalReportEvaluation || null
+                });
+            }
+        }
+
+        // Archived panels for the year
+        const panelQuery: any = { isArchived: true };
+        if (yearStr) panelQuery.batchYear = Number(yearStr);
+        const panels = await Panel.find(panelQuery).populate('faculty', 'name email department').lean();
+
+        // List of distinct archived years for the filter dropdown
+        const allArchivedGroups = await Group.find({ isArchived: true })
+            .populate('members', 'rollNumber')
+            .select('targetBatch members')
+            .lean();
+        const yearSet = new Set<string>();
+        for (const g of allArchivedGroups) {
+            const y = groupBatchYear(g);
+            if (y) yearSet.add(y);
+        }
+        const panelYears = await Panel.distinct('batchYear', { isArchived: true });
+        panelYears.forEach((y: any) => yearSet.add(String(y)));
+        const orphanYears = await Project.distinct('archivedBatch', {
+            isArchived: true,
+            $or: [{ group: null }, { group: { $exists: false } }]
+        });
+        orphanYears.forEach((y: any) => { if (y) yearSet.add(String(y)); });
+        const availableYears = Array.from(yearSet).sort();
+
+        res.json({
+            year: yearStr,
+            availableYears,
+            groups,
+            projects,
+            participants,
+            panels
+        });
+    } catch (error: any) {
+        console.error('getArchive error:', error);
+        res.status(500).json({ message: 'Server error fetching archive', error: error.message });
     }
 };
 

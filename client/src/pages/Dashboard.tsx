@@ -1505,6 +1505,19 @@ const Dashboard: React.FC = () => {
                                                                     ))}
                                                                 </div>
                                                             )}
+                                                            {(project.midTermEvaluation || project.endTermEvaluation || project.finalReportEvaluation) && (
+                                                                <div className="mt-3 pt-3 border-t border-neutral-100 flex flex-wrap gap-3 text-xs text-neutral-600">
+                                                                    {project.midTermEvaluation?.totalMarks != null && (
+                                                                        <span><span className="font-semibold">Mid:</span> {project.midTermEvaluation.totalMarks}</span>
+                                                                    )}
+                                                                    {project.endTermEvaluation?.totalMarks != null && (
+                                                                        <span><span className="font-semibold">End:</span> {project.endTermEvaluation.totalMarks}</span>
+                                                                    )}
+                                                                    {project.finalReportEvaluation?.totalMarks != null && (
+                                                                        <span><span className="font-semibold">Final:</span> {project.finalReportEvaluation.totalMarks}</span>
+                                                                    )}
+                                                                </div>
+                                                            )}
                                                         </>
                                                     ) : (
                                                         <p className="text-sm text-neutral-400 italic">No project associated with this group.</p>

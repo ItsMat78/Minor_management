@@ -7,6 +7,9 @@ node_modules
 # Testing
 coverage
 
+CLAUDE.md
+.claudeignore
+
 # Production
 build
 dist

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
-import { Search, Users, Clock, CheckCircle, FileText, X, LogOut, ChevronDown, ChevronUp, Settings, Menu, Calendar, Download, AlertCircle, AlertTriangle, Save, Pencil, LayoutGrid, MoreVertical, Plus, Edit3, Power, Info, Trash2, Upload, Mail, Copy, Check, UserCheck, UserX, ShieldCheck, ShieldOff } from 'lucide-react';
+import { Search, Users, Clock, CheckCircle, FileText, X, LogOut, ChevronDown, ChevronUp, Settings, Menu, Calendar, Download, AlertCircle, AlertTriangle, Save, Pencil, LayoutGrid, MoreVertical, Plus, Edit3, Power, Info, Trash2, Upload, Mail, Copy, Check, UserCheck, UserX, ShieldCheck, ShieldOff, Archive as ArchiveIcon } from 'lucide-react';
 import { motion } from 'framer-motion';
 import MenteeGroupDetails from '../components/MenteeGroupDetails';
 import AutoCreatePanelsModal from '../components/AutoCreatePanelsModal';
@@ -31,8 +31,8 @@ export const getOriginalGroupBatchYear = (group: any) => {
 const AdminDashboard: React.FC = () => {
     const { user, logout } = useAuth();
     const [searchParams, setSearchParams] = useSearchParams();
-    const initialAdminTab = searchParams.get('tab') as 'overview' | 'students' | 'groups' | 'faculty' | 'events' | 'exports' | 'panels' | null;
-    const [activeTab, setActiveTab] = useState<'overview' | 'students' | 'groups' | 'faculty' | 'events' | 'exports' | 'panels'>(initialAdminTab || 'overview');
+    const initialAdminTab = searchParams.get('tab') as 'overview' | 'students' | 'groups' | 'faculty' | 'events' | 'exports' | 'panels' | 'archive' | null;
+    const [activeTab, setActiveTab] = useState<'overview' | 'students' | 'groups' | 'faculty' | 'events' | 'exports' | 'panels' | 'archive'>(initialAdminTab || 'overview');
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
     useEffect(() => {
@@ -99,6 +99,13 @@ const AdminDashboard: React.FC = () => {
         batchYear: '',
         rubricParams: '' // For JSON stringified rubric
     });
+    const [participatingBatches, setParticipatingBatches] = useState<string[]>([]);
+
+    // Archive tab state
+    const [archiveYear, setArchiveYear] = useState<string>('All');
+    const [archiveData, setArchiveData] = useState<{ availableYears: string[]; groups: any[]; projects: any[]; participants: any[]; panels: any[] } | null>(null);
+    const [archiveLoading, setArchiveLoading] = useState(false);
+    const [archiveSection, setArchiveSection] = useState<'projects' | 'participants' | 'panels'>('projects');
 
     const [confirmEndEvent, setConfirmEndEvent] = useState<any>(null);
     const [confirmDeleteEvent, setConfirmDeleteEvent] = useState<any>(null);
@@ -136,9 +143,12 @@ const AdminDashboard: React.FC = () => {
     const [excelImportExpanded, setExcelImportExpanded] = useState<Set<number>>(new Set());
 
     // Snapshot import state
+    const [showSnapshotImportModal, setShowSnapshotImportModal] = useState(false);
     const [snapshotImportFile, setSnapshotImportFile] = useState<File | null>(null);
     const [snapshotImportLoading, setSnapshotImportLoading] = useState(false);
     const [snapshotImportPreview, setSnapshotImportPreview] = useState<any | null>(null);
+    const [snapshotImportPreviewTab, setSnapshotImportPreviewTab] = useState<'projects' | 'warnings'>('projects');
+    const [snapshotImportResultTab, setSnapshotImportResultTab] = useState<'warnings'>('warnings');
     const [snapshotData, setSnapshotData] = useState<any | null>(null); // raw JSON held for commit
 
     // Preview error state (replaces alert())
@@ -197,6 +207,15 @@ const AdminDashboard: React.FC = () => {
                 } else if (activeTab === 'events') {
                     const res = await api.get('/events');
                     setEvents(Array.isArray(res.data) ? res.data : []);
+                } else if (activeTab === 'archive') {
+                    setArchiveLoading(true);
+                    try {
+                        const qs = archiveYear && archiveYear !== 'All' ? `?year=${encodeURIComponent(archiveYear)}` : '';
+                        const res = await api.get(`/admin/archive${qs}`);
+                        setArchiveData(res.data || null);
+                    } finally {
+                        setArchiveLoading(false);
+                    }
                 }
             } catch (error) {
                 console.error(`Failed to fetch ${activeTab}`, error);
@@ -209,7 +228,7 @@ const AdminDashboard: React.FC = () => {
         if (activeTab === 'groups') {
             setViewGroup(null); // Reset detail view on tab change
         }
-    }, [activeTab, filterBatch]);
+    }, [activeTab, filterBatch, archiveYear]);
 
     // Reset sort when tab changes
     useEffect(() => {
@@ -761,6 +780,12 @@ const AdminDashboard: React.FC = () => {
                         active={activeTab === 'exports'}
                         onClick={() => setActiveTab('exports')}
                     />
+                    <SidebarItem
+                        icon={<ArchiveIcon className="w-5 h-5" />}
+                        label="Archive"
+                        active={activeTab === 'archive'}
+                        onClick={() => setActiveTab('archive')}
+                    />
                 </nav>
                 <div className="p-4 border-t border-neutral-100">
                     <div className="flex items-center gap-3 mb-4">
@@ -798,6 +823,7 @@ const AdminDashboard: React.FC = () => {
                             {activeTab === 'panels' && 'Evaluation Panels'}
                             {activeTab === 'events' && 'Setup Events'}
                             {activeTab === 'exports' && 'Data — Imports & Exports'}
+                            {activeTab === 'archive' && 'Archive — Past Semesters'}
                         </h1>
                     </div>
                     {activeTab !== 'events' && <GlobalEventBanner />}
@@ -1699,6 +1725,7 @@ const AdminDashboard: React.FC = () => {
                                                 onClick={() => {
                                                     setEditingEvent(null);
                                                     setEventForm({ type: '', endDate: '', extensionDate: '', batchYear: '', rubricParams: '' });
+                                                    setParticipatingBatches([]);
                                                     setRubricSections([]); setRubricPanelAggregation('average');
                                                     setRubricMode('builder');
                                                     setShowCreateEvent(true);
@@ -1769,6 +1796,7 @@ const AdminDashboard: React.FC = () => {
                                                                                     batchYear: ev.batchYear || '',
                                                                                     rubricParams: ev.rubricParams ? JSON.stringify(ev.rubricParams, null, 2) : ''
                                                                                 });
+                                                                                setParticipatingBatches(Array.isArray(ev.participatingBatches) ? ev.participatingBatches.map(String) : []);
                                                                                 setRubricMode('builder');
                                                                                 initRubricForType(ev.type, ev.rubricParams);
                                                                                 setShowCreateEvent(true);
@@ -2096,8 +2124,8 @@ const AdminDashboard: React.FC = () => {
 
                                         {/* ── Snapshot Import ───────────────────────────────────── */}
                                         <div className="bg-white rounded-2xl border border-neutral-200 shadow-sm overflow-hidden">
-                                            <div className="p-6">
-                                                <div className="flex items-center gap-4 mb-4">
+                                            <div className="p-6 flex items-center justify-between">
+                                                <div className="flex items-center gap-4">
                                                     <div className="h-12 w-12 bg-violet-50 rounded-xl flex items-center justify-center text-violet-600">
                                                         <Upload className="w-6 h-6" />
                                                     </div>
@@ -2106,139 +2134,189 @@ const AdminDashboard: React.FC = () => {
                                                         <p className="text-sm text-neutral-500">Restore a full database state from a previously exported snapshot JSON file.</p>
                                                     </div>
                                                 </div>
-
-                                                <div className="flex items-center gap-3">
-                                                    <label className="flex-1 flex items-center gap-2 px-4 py-2 bg-neutral-50 border border-neutral-200 rounded-lg cursor-pointer hover:bg-violet-50 hover:border-violet-200 transition-colors text-sm font-medium text-neutral-700">
-                                                        <Upload className="w-4 h-4" />
-                                                        {snapshotImportFile ? snapshotImportFile.name : 'Choose snapshot .json file'}
-                                                        <input type="file" accept=".json" className="hidden" onChange={e => {
-                                                            const f = e.target.files?.[0] || null;
-                                                            setSnapshotImportFile(f);
-                                                            setSnapshotImportPreview(null);
-                                                            setSnapshotData(null);
-                                                            setSnapshotImportPreviewError(null);
-                                                        }} />
-                                                    </label>
-                                                    <button
-                                                        disabled={!snapshotImportFile || snapshotImportLoading}
-                                                        onClick={async () => {
-                                                            if (!snapshotImportFile) return;
-                                                            setSnapshotImportLoading(true);
-                                                            setSnapshotImportPreviewError(null);
-                                                            try {
-                                                                const text = await snapshotImportFile.text();
-                                                                let json: any;
-                                                                try { json = JSON.parse(text); }
-                                                                catch { throw new Error('File is not valid JSON.'); }
-                                                                setSnapshotData(json);
-                                                                const res = await api.post('/import/snapshot/preview', json);
-                                                                setSnapshotImportPreview(res.data);
-                                                            } catch (err: any) {
-                                                                setSnapshotImportPreviewError(err.response?.data?.message || err.message || 'Invalid snapshot file.');
-                                                            } finally {
-                                                                setSnapshotImportLoading(false);
-                                                            }
-                                                        }}
-                                                        className="px-5 py-2 bg-violet-600 text-white rounded-lg font-medium hover:bg-violet-700 disabled:opacity-50 transition-colors flex items-center gap-2"
-                                                    >
-                                                        {snapshotImportLoading ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Analyzing...</> : 'Preview'}
-                                                    </button>
-                                                </div>
-
-                                                {snapshotImportPreviewError && (
-                                                    <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl px-4 py-3 mt-4">
-                                                        <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
-                                                        <p className="text-sm text-red-700">{snapshotImportPreviewError}</p>
-                                                    </div>
-                                                )}
-
-                                                {snapshotImportPreview && (
-                                                    <div className="mt-4 space-y-4">
-                                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                                                            {(['users', 'groups', 'projects', 'panels'] as const).map(key => (
-                                                                <div key={key} className="bg-neutral-50 rounded-xl p-4 border border-neutral-200">
-                                                                    <p className="text-xs font-bold text-neutral-500 uppercase tracking-wider capitalize">{key}</p>
-                                                                    <p className="text-xl font-black text-neutral-800 mt-1">{snapshotImportPreview.summary[key].total}</p>
-                                                                    <p className="text-xs text-neutral-400 mt-0.5">
-                                                                        <span className="text-green-600 font-medium">+{snapshotImportPreview.summary[key].create}</span>
-                                                                        {' '}create · <span className="text-neutral-400">{snapshotImportPreview.summary[key].skip} skip</span>
-                                                                    </p>
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                        <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl p-4">
-                                                            <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-                                                            <p className="text-sm text-amber-800">All imported users will be assigned a temporary password <strong>changeme</strong>. Students must activate via OTP; faculty can log in immediately.</p>
-                                                        </div>
-                                                        <div className="flex gap-3 justify-end">
-                                                            <button onClick={() => { setSnapshotImportPreview(null); setSnapshotData(null); setSnapshotImportFile(null); }}
-                                                                className="px-4 py-2 border border-neutral-200 rounded-lg text-sm font-medium hover:bg-neutral-50 transition-colors">
-                                                                Cancel
-                                                            </button>
-                                                            <button
-                                                                disabled={snapshotImportLoading}
-                                                                onClick={async () => {
-                                                                    setSnapshotImportLoading(true);
-                                                                    try {
-                                                                        const res = await api.post('/import/snapshot/commit', snapshotData);
-                                                                        setSnapshotImportResult({ result: res.data.result, errors: res.data.errors || [] });
-                                                                        setSnapshotImportPreview(null);
-                                                                        setSnapshotData(null);
-                                                                    } catch (err: any) {
-                                                                        setSnapshotImportResult({ result: {}, errors: [{ type: 'request', key: '—', reason: err.response?.data?.message || 'Server error' }] });
-                                                                    } finally {
-                                                                        setSnapshotImportLoading(false);
-                                                                    }
-                                                                }}
-                                                                className="px-5 py-2 bg-violet-600 text-white rounded-lg font-medium hover:bg-violet-700 disabled:opacity-50 transition-colors flex items-center gap-2"
-                                                            >
-                                                                {snapshotImportLoading ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Importing...</> : <><Save className="w-4 h-4" /> Restore Snapshot</>}
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                )}
-
-                                                {/* Snapshot import result */}
-                                                {snapshotImportResult && (
-                                                    <div className="mt-4 space-y-3">
-                                                        <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
-                                                            {[
-                                                                { label: 'Users', value: snapshotImportResult.result.users ?? 0, color: 'green' },
-                                                                { label: 'Groups', value: snapshotImportResult.result.groups ?? 0, color: 'indigo' },
-                                                                { label: 'Projects', value: snapshotImportResult.result.projects ?? 0, color: 'blue' },
-                                                                { label: 'Panels', value: snapshotImportResult.result.panels ?? 0, color: 'violet' },
-                                                                { label: 'Skipped', value: snapshotImportResult.result.skipped ?? 0, color: 'amber' },
-                                                            ].map(({ label, value, color }) => (
-                                                                <div key={label} className={`bg-${color}-50 rounded-xl p-3 border border-${color}-100 text-center`}>
-                                                                    <p className={`text-xs font-bold text-${color}-600 uppercase tracking-wider`}>{label}</p>
-                                                                    <p className={`text-xl font-black text-${color}-700 mt-1`}>{value}</p>
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                        {snapshotImportResult.errors.length > 0 && (
-                                                            <div className="border border-red-200 rounded-xl overflow-hidden">
-                                                                <div className="bg-red-50 px-4 py-2 text-xs font-bold text-red-700 uppercase tracking-wider">Errors ({snapshotImportResult.errors.length})</div>
-                                                                <div className="divide-y divide-red-100 max-h-48 overflow-y-auto">
-                                                                    {snapshotImportResult.errors.map((e, i) => (
-                                                                        <div key={i} className="px-4 py-2 text-xs flex gap-3">
-                                                                            <span className="font-medium text-violet-700 w-16 flex-shrink-0 capitalize">{e.type}</span>
-                                                                            <span className="text-neutral-500 w-32 truncate flex-shrink-0">{e.key}</span>
-                                                                            <span className="text-red-600">{e.reason}</span>
-                                                                        </div>
-                                                                    ))}
-                                                                </div>
-                                                            </div>
-                                                        )}
-                                                        <div className="flex justify-end">
-                                                            <button onClick={() => { setSnapshotImportResult(null); setSnapshotImportFile(null); }}
-                                                                className="px-4 py-2 bg-neutral-900 text-white rounded-lg text-sm font-medium hover:bg-neutral-800 transition-colors">
-                                                                Done
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                )}
+                                                <button onClick={() => setShowSnapshotImportModal(true)}
+                                                    className="px-5 py-2 bg-violet-600 text-white rounded-xl font-bold hover:bg-violet-700 transition-colors flex items-center gap-2 text-sm flex-shrink-0">
+                                                    <Upload className="w-4 h-4" /> Import
+                                                </button>
                                             </div>
                                         </div>
+                                    </div>
+                                )}
+
+                                {activeTab === 'archive' && (
+                                    <div className="space-y-6">
+                                        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-white rounded-2xl border border-neutral-200 p-5 shadow-sm">
+                                            <div className="flex items-center gap-4">
+                                                <div className="h-12 w-12 bg-slate-100 rounded-xl flex items-center justify-center text-slate-700">
+                                                    <ArchiveIcon className="w-6 h-6" />
+                                                </div>
+                                                <div>
+                                                    <h3 className="text-lg font-bold text-neutral-900">Past Semesters</h3>
+                                                    <p className="text-xs text-neutral-500">Read-only archive of projects, participants, evaluations, and panels from prior semesters.</p>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-3">
+                                                <label className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Batch</label>
+                                                <select
+                                                    value={archiveYear}
+                                                    onChange={(e) => setArchiveYear(e.target.value)}
+                                                    className="px-3 py-2 bg-white rounded-lg border border-neutral-300 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                                >
+                                                    <option value="All">All years</option>
+                                                    {(archiveData?.availableYears || []).map((y) => (
+                                                        <option key={y} value={y}>{y}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex gap-2 border-b border-neutral-200">
+                                            {(['projects', 'participants', 'panels'] as const).map(section => (
+                                                <button
+                                                    key={section}
+                                                    onClick={() => setArchiveSection(section)}
+                                                    className={`px-4 py-2 text-sm font-semibold capitalize transition-colors border-b-2 -mb-px ${archiveSection === section ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-neutral-500 hover:text-neutral-800'}`}
+                                                >
+                                                    {section}
+                                                    <span className="ml-2 text-xs text-neutral-400">
+                                                        {section === 'projects' && (archiveData?.projects?.length ?? 0)}
+                                                        {section === 'participants' && (archiveData?.participants?.length ?? 0)}
+                                                        {section === 'panels' && (archiveData?.panels?.length ?? 0)}
+                                                    </span>
+                                                </button>
+                                            ))}
+                                        </div>
+
+                                        {archiveLoading ? (
+                                            <div className="flex items-center justify-center h-48">
+                                                <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600"></div>
+                                            </div>
+                                        ) : !archiveData ? (
+                                            <div className="text-center py-12 text-neutral-500">No archive data yet.</div>
+                                        ) : (
+                                            <>
+                                                {archiveSection === 'projects' && (
+                                                    <div className="bg-white rounded-2xl border border-neutral-200 overflow-hidden shadow-sm">
+                                                        {(archiveData.projects || []).length === 0 ? (
+                                                            <div className="p-10 text-center text-neutral-500 text-sm">No archived projects for this batch.</div>
+                                                        ) : (
+                                                            <table className="w-full text-sm">
+                                                                <thead className="bg-neutral-50 text-neutral-500 uppercase text-xs">
+                                                                    <tr>
+                                                                        <th className="text-left px-4 py-3">Title</th>
+                                                                        <th className="text-left px-4 py-3">Group</th>
+                                                                        <th className="text-left px-4 py-3">Batch</th>
+                                                                        <th className="text-left px-4 py-3">Mentor</th>
+                                                                        <th className="text-left px-4 py-3">Mid</th>
+                                                                        <th className="text-left px-4 py-3">End</th>
+                                                                        <th className="text-left px-4 py-3">Final Report</th>
+                                                                    </tr>
+                                                                </thead>
+                                                                <tbody>
+                                                                    {archiveData.projects.map((p: any) => {
+                                                                        const g = p.group || {};
+                                                                        const groupName = g.name || p.archivedGroupName || '—';
+                                                                        const batch = g.targetBatch || p.archivedBatch
+                                                                            || (g.members?.[0]?.rollNumber ? '20' + g.members[0].rollNumber.substring(0, 2) : '—');
+                                                                        const mid = p.midTermEvaluation?.totalMarks;
+                                                                        const end = p.endTermEvaluation?.totalMarks;
+                                                                        const fin = p.finalReportEvaluation?.totalMarks;
+                                                                        return (
+                                                                            <tr key={p._id} className="border-t border-neutral-100 hover:bg-neutral-50">
+                                                                                <td className="px-4 py-3 font-semibold text-neutral-900">{p.title || '—'}</td>
+                                                                                <td className="px-4 py-3 text-neutral-700">{groupName}</td>
+                                                                                <td className="px-4 py-3 text-neutral-700">{batch}</td>
+                                                                                <td className="px-4 py-3 text-neutral-700">{p.archivedMentorName || '—'}</td>
+                                                                                <td className="px-4 py-3 text-neutral-700">{mid ?? '—'}</td>
+                                                                                <td className="px-4 py-3 text-neutral-700">{end ?? '—'}</td>
+                                                                                <td className="px-4 py-3 text-neutral-700">{fin ?? '—'}</td>
+                                                                            </tr>
+                                                                        );
+                                                                    })}
+                                                                </tbody>
+                                                            </table>
+                                                        )}
+                                                    </div>
+                                                )}
+
+                                                {archiveSection === 'participants' && (
+                                                    <div className="bg-white rounded-2xl border border-neutral-200 overflow-hidden shadow-sm">
+                                                        {(archiveData.participants || []).length === 0 ? (
+                                                            <div className="p-10 text-center text-neutral-500 text-sm">No archived participants for this batch.</div>
+                                                        ) : (
+                                                            <table className="w-full text-sm">
+                                                                <thead className="bg-neutral-50 text-neutral-500 uppercase text-xs">
+                                                                    <tr>
+                                                                        <th className="text-left px-4 py-3">Name</th>
+                                                                        <th className="text-left px-4 py-3">Roll</th>
+                                                                        <th className="text-left px-4 py-3">Branch</th>
+                                                                        <th className="text-left px-4 py-3">Batch</th>
+                                                                        <th className="text-left px-4 py-3">Group</th>
+                                                                        <th className="text-left px-4 py-3">Project</th>
+                                                                        <th className="text-left px-4 py-3">Mentor</th>
+                                                                        <th className="text-left px-4 py-3">Mid</th>
+                                                                        <th className="text-left px-4 py-3">End</th>
+                                                                    </tr>
+                                                                </thead>
+                                                                <tbody>
+                                                                    {archiveData.participants.map((m: any) => (
+                                                                        <tr key={m._id + (m.groupName || '')} className="border-t border-neutral-100 hover:bg-neutral-50">
+                                                                            <td className="px-4 py-3 font-semibold text-neutral-900">{m.name}</td>
+                                                                            <td className="px-4 py-3 text-neutral-700">{m.rollNumber || '—'}</td>
+                                                                            <td className="px-4 py-3 text-neutral-700">{m.branch || '—'}</td>
+                                                                            <td className="px-4 py-3 text-neutral-700">{m.batchYear || '—'}</td>
+                                                                            <td className="px-4 py-3 text-neutral-700">{m.groupName || '—'}</td>
+                                                                            <td className="px-4 py-3 text-neutral-700">{m.projectTitle || '—'}</td>
+                                                                            <td className="px-4 py-3 text-neutral-700">{m.archivedMentorName || '—'}</td>
+                                                                            <td className="px-4 py-3 text-neutral-700">{m.midTermEvaluation?.totalMarks ?? '—'}</td>
+                                                                            <td className="px-4 py-3 text-neutral-700">{m.endTermEvaluation?.totalMarks ?? '—'}</td>
+                                                                        </tr>
+                                                                    ))}
+                                                                </tbody>
+                                                            </table>
+                                                        )}
+                                                    </div>
+                                                )}
+
+                                                {archiveSection === 'panels' && (
+                                                    <div className="space-y-4">
+                                                        {(archiveData.panels || []).length === 0 ? (
+                                                            <div className="bg-white rounded-2xl border border-neutral-200 p-10 text-center text-neutral-500 text-sm shadow-sm">No archived panels for this batch.</div>
+                                                        ) : (
+                                                            Object.entries(
+                                                                (archiveData.panels as any[]).reduce<Record<string, any[]>>((acc, p) => {
+                                                                    const key = String(p.batchYear || '—');
+                                                                    (acc[key] = acc[key] || []).push(p);
+                                                                    return acc;
+                                                                }, {})
+                                                            ).sort(([a], [b]) => b.localeCompare(a)).map(([year, panelsForYear]) => (
+                                                                <div key={year} className="bg-white rounded-2xl border border-neutral-200 shadow-sm overflow-hidden">
+                                                                    <div className="px-5 py-3 bg-neutral-50 border-b border-neutral-200">
+                                                                        <span className="text-sm font-bold text-neutral-800">Batch {year}</span>
+                                                                        <span className="ml-2 text-xs text-neutral-500">{(panelsForYear as any[]).length} panels</span>
+                                                                    </div>
+                                                                    <div className="divide-y divide-neutral-100">
+                                                                        {(panelsForYear as any[]).map((panel) => (
+                                                                            <div key={panel._id} className="p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                                                                                <div>
+                                                                                    <div className="text-sm font-semibold text-neutral-900">{panel.room ? `Room ${panel.room}` : 'Unassigned room'}</div>
+                                                                                    <div className="text-xs text-neutral-500 mt-0.5">
+                                                                                        {(panel.faculty || []).map((f: any) => f.name).filter(Boolean).join(', ') || 'No faculty listed'}
+                                                                                    </div>
+                                                                                </div>
+                                                                                <div className="text-xs text-neutral-500">
+                                                                                    {(panel.assignedGroups || []).length} group{(panel.assignedGroups || []).length === 1 ? '' : 's'}
+                                                                                </div>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                </div>
+                                                            ))
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </>
+                                        )}
                                     </div>
                                 )}
                             </>
@@ -2749,6 +2827,7 @@ const AdminDashboard: React.FC = () => {
                                     setEditingEvent(null);
                                     setRubricSections([]); setRubricPanelAggregation('average');
                                     setEventForm({ type: 'group_formation_project_proposal', endDate: '', extensionDate: '', batchYear: '', rubricParams: '' });
+                                    setParticipatingBatches([]);
                                 }} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
                             </div>
                             <div className="p-6 space-y-5 overflow-y-auto">
@@ -2777,11 +2856,44 @@ const AdminDashboard: React.FC = () => {
                                                 <div>
                                                     <h4 className="text-sm font-black text-red-800 uppercase tracking-wider">Critical Warning</h4>
                                                     <p className="text-xs text-red-700 mt-1 font-bold leading-relaxed">
-                                                        Starting a new <span className="underline decoration-red-400 decoration-2">Group Formation</span> phase will eventually <span className="bg-red-200 px-1 rounded">RESET ALL EXISTING GROUPS & PANELS</span>.
-                                                        Current groups will be archived and destroyed. This action is irreversible.
+                                                        This will <span className="bg-red-200 px-1 rounded">archive all groups, projects, and panels</span>,
+                                                        reset faculty capacity counters, and mark only the selected batches as participating this semester.
+                                                        All other students (freshers, graduated, non-participating repeaters) will stop receiving notifications.
+                                                        This action is irreversible.
                                                     </p>
                                                 </div>
                                             </div>
+                                        </div>
+                                    )}
+
+                                    {eventForm.type === 'group_formation_project_proposal' && (
+                                        <div className="mt-3">
+                                            <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                                                Participating Batches <span className="text-red-500">*</span>
+                                            </label>
+                                            <p className="text-[11px] text-neutral-500 mb-2">Select every batch doing the minor project this semester. Use 4-digit admission years (e.g. 2023).</p>
+                                            <div className="flex flex-wrap gap-2 mb-2">
+                                                {(() => {
+                                                    const currentYear = new Date().getFullYear();
+                                                    const years = Array.from({ length: 6 }, (_, i) => (currentYear - 4 + i).toString());
+                                                    return years.map(y => {
+                                                        const selected = participatingBatches.includes(y);
+                                                        return (
+                                                            <button
+                                                                key={y}
+                                                                type="button"
+                                                                onClick={() => setParticipatingBatches(prev => selected ? prev.filter(b => b !== y) : [...prev, y])}
+                                                                className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors ${selected ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-neutral-600 border-neutral-300 hover:border-indigo-300'}`}
+                                                            >
+                                                                {y}
+                                                            </button>
+                                                        );
+                                                    });
+                                                })()}
+                                            </div>
+                                            {participatingBatches.length === 0 && (
+                                                <p className="text-[11px] text-red-500 font-semibold">At least one batch must be selected.</p>
+                                            )}
                                         </div>
                                     )}
 
@@ -2921,11 +3033,16 @@ const AdminDashboard: React.FC = () => {
                                 </div>
                             </div>
                             <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-3">
-                                <button onClick={() => { setShowCreateEvent(false); setEditingEvent(null); setAdminPassword(''); setRubricSections([]); setRubricPanelAggregation('average'); }} className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition">Cancel</button>
+                                <button onClick={() => { setShowCreateEvent(false); setEditingEvent(null); setAdminPassword(''); setRubricSections([]); setRubricPanelAggregation('average'); setParticipatingBatches([]); }} className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition">Cancel</button>
                                 <button onClick={async () => {
                                     try {
                                         if (!eventForm.endDate || !adminPassword) {
                                             alert('Please fill in deadline and admin password.');
+                                            return;
+                                        }
+
+                                        if (eventForm.type === 'group_formation_project_proposal' && participatingBatches.length === 0) {
+                                            alert('Select at least one participating batch before creating the Group Formation event.');
                                             return;
                                         }
 
@@ -2968,13 +3085,16 @@ const AdminDashboard: React.FC = () => {
                                             }
                                         }
 
-                                        const payload = {
+                                        const payload: any = {
                                             ...eventForm,
                                             password: adminPassword,
                                             extensionDate: eventForm.extensionDate || null,
                                             batchYear: eventForm.batchYear || undefined,
                                             rubricParams: parsedRubricParams
                                         };
+                                        if (eventForm.type === 'group_formation_project_proposal') {
+                                            payload.participatingBatches = participatingBatches;
+                                        }
                                         if (editingEvent) {
                                             await api.put(`/events/${editingEvent._id}`, payload);
                                         } else {
@@ -2983,6 +3103,7 @@ const AdminDashboard: React.FC = () => {
                                         setShowCreateEvent(false);
                                         setEditingEvent(null);
                                         setAdminPassword('');
+                                        setParticipatingBatches([]);
                                         const res = await api.get('/events');
                                         setEvents(Array.isArray(res.data) ? res.data : []);
                                     } catch (e: any) {
@@ -3819,6 +3940,279 @@ const AdminDashboard: React.FC = () => {
                             {/* Footer */}
                             <div className="px-6 py-4 border-t border-neutral-100 flex justify-end bg-neutral-50/30">
                                 <button onClick={() => { setExcelImportResult(null); setExcelImportResultTab('students'); setExcelImportFile(null); setExcelImportSemester(''); }}
+                                    className="px-5 py-2.5 bg-neutral-900 text-white rounded-xl text-sm font-bold hover:bg-neutral-800 transition-colors">Done</button>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+
+                {/* ── Snapshot Import Modal ─────────────────────────────── */}
+                {showSnapshotImportModal && (
+                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
+                        <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} className="bg-white rounded-3xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
+                            {/* Header */}
+                            <div className="px-6 py-4 border-b border-neutral-100 flex items-center justify-between bg-neutral-50/50">
+                                <h3 className="text-xl font-bold text-neutral-800 flex items-center gap-2">
+                                    <Upload className="w-5 h-5 text-violet-600" />
+                                    Snapshot Import
+                                </h3>
+                                <button onClick={() => { setShowSnapshotImportModal(false); setSnapshotImportFile(null); setSnapshotImportPreview(null); setSnapshotData(null); setSnapshotImportPreviewError(null); setSnapshotImportPreviewTab('projects'); }}
+                                    className="p-2 text-neutral-400 hover:bg-neutral-100 rounded-full transition-colors">
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+
+                            {/* Body */}
+                            <div className="flex-1 overflow-y-auto">
+                                {!snapshotImportPreview ? (
+                                    /* Stage 1: file picker */
+                                    <div className="p-6 space-y-4">
+                                        <p className="text-sm text-neutral-500">Choose a snapshot JSON file exported from this portal to preview what will be restored.</p>
+                                        <label className="flex items-center gap-3 px-4 py-3 bg-neutral-50 border-2 border-dashed border-neutral-200 rounded-xl cursor-pointer hover:bg-violet-50 hover:border-violet-300 transition-colors text-sm font-medium text-neutral-600">
+                                            <Upload className="w-5 h-5 text-violet-500 flex-shrink-0" />
+                                            <span className="truncate">{snapshotImportFile ? snapshotImportFile.name : 'Choose snapshot .json file'}</span>
+                                            <input type="file" accept=".json" className="hidden" onChange={e => {
+                                                const f = e.target.files?.[0] || null;
+                                                setSnapshotImportFile(f);
+                                                setSnapshotImportPreview(null);
+                                                setSnapshotData(null);
+                                                setSnapshotImportPreviewError(null);
+                                            }} />
+                                        </label>
+                                        {snapshotImportPreviewError && (
+                                            <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+                                                <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+                                                <p className="text-sm text-red-700">{snapshotImportPreviewError}</p>
+                                            </div>
+                                        )}
+                                        <div className="flex items-start gap-3 bg-indigo-50 border border-indigo-200 rounded-xl p-4">
+                                            <AlertTriangle className="w-4 h-4 text-indigo-600 flex-shrink-0 mt-0.5" />
+                                            <p className="text-xs text-indigo-800">Snapshots contain only <strong>archived projects and their evaluations</strong> (mentor name, group name, batch, members, marks). Users, groups, and panels are not imported.</p>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    /* Stage 2: preview with tabs */
+                                    <>
+                                        {/* Stat cards */}
+                                        <div className="px-6 pt-5 pb-3 grid grid-cols-3 gap-2">
+                                            <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-center">
+                                                <p className="text-2xl font-black text-blue-700">{snapshotImportPreview.summary.projects.create}</p>
+                                                <p className="text-xs font-bold text-blue-500 mt-0.5">New Projects</p>
+                                            </div>
+                                            <div className="bg-neutral-50 border border-neutral-200 rounded-xl p-3 text-center">
+                                                <p className="text-2xl font-black text-neutral-500">{snapshotImportPreview.summary.projects.skip}</p>
+                                                <p className="text-xs font-bold text-neutral-400 mt-0.5">Skipped (exists)</p>
+                                            </div>
+                                            <div className="bg-violet-50 border border-violet-100 rounded-xl p-3 text-center">
+                                                <p className="text-2xl font-black text-violet-700">{snapshotImportPreview.summary.projects.total}</p>
+                                                <p className="text-xs font-bold text-violet-500 mt-0.5">Total</p>
+                                            </div>
+                                        </div>
+
+                                        {/* Tab bar */}
+                                        <div className="px-6 border-b border-neutral-100 flex gap-0">
+                                            {([
+                                                { key: 'projects', label: 'Projects', count: snapshotImportPreview.summary.projects.create, active: 'border-blue-500 text-blue-700 bg-blue-50', badge: 'bg-blue-100 text-blue-700' },
+                                                { key: 'warnings', label: 'Warnings', count: snapshotImportPreview.summary.projects.skip,   active: 'border-amber-500 text-amber-700 bg-amber-50', badge: 'bg-amber-100 text-amber-700' },
+                                            ] as const).map(tab => (
+                                                <button key={tab.key} onClick={() => setSnapshotImportPreviewTab(tab.key as any)}
+                                                    className={`px-4 py-2 text-xs font-bold flex items-center gap-1.5 border-b-2 -mb-px transition-colors ${snapshotImportPreviewTab === tab.key ? tab.active : 'border-transparent text-neutral-500 hover:text-neutral-700'}`}>
+                                                    {tab.label}
+                                                    <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${snapshotImportPreviewTab === tab.key ? tab.badge : 'bg-neutral-100 text-neutral-500'}`}>{tab.count}</span>
+                                                </button>
+                                            ))}
+                                        </div>
+
+                                        {/* Tab content */}
+                                        <div className="min-h-[180px]">
+                                            {snapshotImportPreviewTab === 'projects' && (
+                                                snapshotImportPreview.projects.filter((p: any) => p.status === 'create').length > 0 ? (
+                                                    <div className="max-h-72 overflow-y-auto">
+                                                        <table className="w-full text-left text-sm">
+                                                            <thead className="bg-neutral-50 sticky top-0">
+                                                                <tr>
+                                                                    <th className="px-4 py-2 font-bold text-neutral-500 text-xs uppercase">Project</th>
+                                                                    <th className="px-4 py-2 font-bold text-neutral-500 text-xs uppercase">Mentor</th>
+                                                                    <th className="px-4 py-2 font-bold text-neutral-500 text-xs uppercase">Group / Batch</th>
+                                                                    <th className="px-4 py-2 font-bold text-neutral-500 text-xs uppercase text-center">Members</th>
+                                                                    <th className="px-4 py-2 font-bold text-neutral-500 text-xs uppercase text-center">Evals</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody className="divide-y divide-neutral-100">
+                                                                {snapshotImportPreview.projects.filter((p: any) => p.status === 'create').map((p: any, i: number) => (
+                                                                    <tr key={i} className="hover:bg-neutral-50">
+                                                                        <td className="px-4 py-2 font-medium text-neutral-900">{p.title}</td>
+                                                                        <td className="px-4 py-2 text-neutral-600 text-xs">{p.archivedMentorName || '—'}</td>
+                                                                        <td className="px-4 py-2 text-neutral-500 text-xs">
+                                                                            {p.archivedGroupName || '—'}
+                                                                            {p.archivedBatch && <span className="ml-1 text-neutral-400">({p.archivedBatch})</span>}
+                                                                        </td>
+                                                                        <td className="px-4 py-2 text-center text-xs text-neutral-600">{p.memberCount}</td>
+                                                                        <td className="px-4 py-2 text-center text-xs">
+                                                                            <div className="flex items-center justify-center gap-1">
+                                                                                {p.hasMidTerm && <span className="px-1 py-0.5 rounded bg-blue-100 text-blue-700 text-[9px] font-bold">M</span>}
+                                                                                {p.hasEndTerm && <span className="px-1 py-0.5 rounded bg-indigo-100 text-indigo-700 text-[9px] font-bold">E</span>}
+                                                                                {p.hasFinal && <span className="px-1 py-0.5 rounded bg-violet-100 text-violet-700 text-[9px] font-bold">F</span>}
+                                                                                {!p.hasMidTerm && !p.hasEndTerm && !p.hasFinal && <span className="text-neutral-300">—</span>}
+                                                                            </div>
+                                                                        </td>
+                                                                    </tr>
+                                                                ))}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                ) : <p className="px-4 py-10 text-center text-sm text-neutral-400">No new projects — all titles already exist in this DB.</p>
+                                            )}
+                                            {snapshotImportPreviewTab === 'warnings' && (() => {
+                                                const skipped = snapshotImportPreview.projects.filter((p: any) => p.status === 'skip');
+                                                return skipped.length === 0
+                                                    ? <p className="px-4 py-10 text-center text-sm text-neutral-400">No skipped items — every project is new.</p>
+                                                    : (
+                                                        <div className="max-h-60 overflow-y-auto divide-y divide-neutral-100">
+                                                            {skipped.map((s: any, i: number) => (
+                                                                <div key={i} className="px-4 py-2.5 flex items-center gap-3 text-sm">
+                                                                    <span className="w-4 h-4 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
+                                                                        <AlertTriangle className="w-3 h-3 text-amber-600" />
+                                                                    </span>
+                                                                    <span className="text-xs font-bold text-neutral-400 w-16 flex-shrink-0">Project</span>
+                                                                    <span className="text-neutral-600 truncate">{s.title}</span>
+                                                                    <span className="ml-auto text-xs text-amber-600 font-medium flex-shrink-0">title already exists</span>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    );
+                                            })()}
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+
+                            {/* Footer */}
+                            <div className="px-6 py-4 border-t border-neutral-100 flex justify-between items-center bg-neutral-50/30">
+                                <button onClick={() => {
+                                    if (snapshotImportPreview) { setSnapshotImportPreview(null); setSnapshotData(null); setSnapshotImportPreviewTab('projects'); }
+                                    else { setShowSnapshotImportModal(false); setSnapshotImportFile(null); setSnapshotImportPreviewError(null); }
+                                }} className="px-5 py-2.5 text-neutral-600 font-bold hover:bg-neutral-100 rounded-xl transition-colors text-sm">
+                                    {snapshotImportPreview ? '← Back' : 'Cancel'}
+                                </button>
+                                {!snapshotImportPreview ? (
+                                    <button
+                                        disabled={!snapshotImportFile || snapshotImportLoading}
+                                        onClick={async () => {
+                                            if (!snapshotImportFile) return;
+                                            setSnapshotImportLoading(true);
+                                            setSnapshotImportPreviewError(null);
+                                            try {
+                                                const text = await snapshotImportFile.text();
+                                                let json: any;
+                                                try { json = JSON.parse(text); }
+                                                catch { throw new Error('File is not valid JSON.'); }
+                                                setSnapshotData(json);
+                                                const res = await api.post('/import/snapshot/preview', json);
+                                                setSnapshotImportPreview(res.data);
+                                                setSnapshotImportPreviewTab('projects');
+                                            } catch (err: any) {
+                                                setSnapshotImportPreviewError(err.response?.data?.message || err.message || 'Invalid snapshot file.');
+                                            } finally {
+                                                setSnapshotImportLoading(false);
+                                            }
+                                        }}
+                                        className="px-5 py-2.5 bg-violet-600 text-white rounded-xl font-bold hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2 text-sm"
+                                    >
+                                        {snapshotImportLoading ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Analyzing…</> : 'Preview Import'}
+                                    </button>
+                                ) : (
+                                    <button
+                                        disabled={snapshotImportLoading}
+                                        onClick={async () => {
+                                            setSnapshotImportLoading(true);
+                                            try {
+                                                const res = await api.post('/import/snapshot/commit', snapshotData);
+                                                setSnapshotImportResult({ result: res.data.result, errors: res.data.errors || [] });
+                                                setSnapshotImportPreview(null);
+                                                setSnapshotData(null);
+                                                setShowSnapshotImportModal(false);
+                                                setSnapshotImportFile(null);
+                                                setSnapshotImportPreviewTab('projects');
+                                                setSnapshotImportResultTab('warnings');
+                                            } catch (err: any) {
+                                                setSnapshotImportResult({ result: {}, errors: [{ type: 'request', key: '—', reason: err.response?.data?.message || 'Server error' }] });
+                                                setShowSnapshotImportModal(false);
+                                            } finally {
+                                                setSnapshotImportLoading(false);
+                                            }
+                                        }}
+                                        className="px-5 py-2.5 bg-violet-600 text-white rounded-xl font-bold hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2 text-sm"
+                                    >
+                                        {snapshotImportLoading ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Importing…</> : <><Save className="w-4 h-4" />Restore Snapshot</>}
+                                    </button>
+                                )}
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+
+                {/* ── Snapshot Import Result Modal ──────────────────────── */}
+                {snapshotImportResult && (
+                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[70] p-4">
+                        <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
+                            {/* Header */}
+                            <div className="px-6 py-4 border-b border-neutral-100 flex items-center justify-between bg-neutral-50/50">
+                                <h3 className="text-xl font-bold text-neutral-800 flex items-center gap-2">
+                                    <CheckCircle className="w-5 h-5 text-green-500" /> Snapshot Imported
+                                </h3>
+                                <button onClick={() => { setSnapshotImportResult(null); setSnapshotImportFile(null); }} className="p-2 text-neutral-400 hover:bg-neutral-100 rounded-full transition-colors"><X className="w-5 h-5" /></button>
+                            </div>
+
+                            {/* Stat cards */}
+                            <div className="px-6 pt-5 pb-3 grid grid-cols-2 gap-2">
+                                <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-center">
+                                    <p className="text-2xl font-black text-blue-700">{snapshotImportResult.result.projects ?? 0}</p>
+                                    <p className="text-xs font-bold text-blue-500 mt-0.5">Projects Imported</p>
+                                </div>
+                                <div className="bg-neutral-50 border border-neutral-200 rounded-xl p-3 text-center">
+                                    <p className="text-2xl font-black text-neutral-500">{snapshotImportResult.result.skipped ?? 0}</p>
+                                    <p className="text-xs font-bold text-neutral-400 mt-0.5">Skipped</p>
+                                </div>
+                            </div>
+
+                            {/* Tab bar */}
+                            <div className="px-6 border-b border-neutral-100 flex gap-0">
+                                {([
+                                    { key: 'warnings', label: 'Warnings', count: snapshotImportResult.errors.length, active: 'border-amber-500 text-amber-700 bg-amber-50', badge: 'bg-amber-100 text-amber-700' },
+                                ] as const).map(tab => (
+                                    <button key={tab.key} onClick={() => setSnapshotImportResultTab(tab.key as any)}
+                                        className={`px-4 py-2 text-xs font-bold flex items-center gap-1.5 border-b-2 -mb-px transition-colors ${snapshotImportResultTab === tab.key ? tab.active : 'border-transparent text-neutral-500 hover:text-neutral-700'}`}>
+                                        {tab.label}
+                                        <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${snapshotImportResultTab === tab.key ? tab.badge : 'bg-neutral-100 text-neutral-500'}`}>{tab.count}</span>
+                                    </button>
+                                ))}
+                            </div>
+
+                            {/* Tab content */}
+                            <div className="flex-1 overflow-y-auto min-h-[120px]">
+                                {snapshotImportResult.errors.length === 0
+                                    ? <p className="px-4 py-10 text-center text-sm text-neutral-400">No errors — import completed cleanly.</p>
+                                    : (
+                                        <div className="divide-y divide-neutral-100">
+                                            {snapshotImportResult.errors.map((e, i) => (
+                                                <div key={i} className="px-4 py-2.5 flex items-center gap-3 text-sm">
+                                                    <span className="w-4 h-4 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+                                                        <AlertTriangle className="w-3 h-3 text-red-600" />
+                                                    </span>
+                                                    <span className="text-xs font-bold text-neutral-400 w-16 capitalize flex-shrink-0">{e.type}</span>
+                                                    <span className="text-neutral-500 w-40 truncate flex-shrink-0">{e.key}</span>
+                                                    <span className="text-red-600 text-xs">{e.reason}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )
+                                }
+                            </div>
+
+                            {/* Footer */}
+                            <div className="px-6 py-4 border-t border-neutral-100 flex justify-end bg-neutral-50/30">
+                                <button onClick={() => { setSnapshotImportResult(null); setSnapshotImportFile(null); }}
                                     className="px-5 py-2.5 bg-neutral-900 text-white rounded-xl text-sm font-bold hover:bg-neutral-800 transition-colors">Done</button>
                             </div>
                         </motion.div>

@@ -1,5 +1,5 @@
 import express from 'express';
-import { createProject, getProjects, getArchivedProjects, getFacultyProjects, updateProjectStatus, addUpdate, markUpdatesRead, deleteProject, updateProject, submitEvaluation, uploadSubmissions, addFeedback, setStudentFeedback, saveStudentEvaluations } from '../controllers/projectController';
+import { createProject, getProjects, getArchivedProjects, getFacultyArchivedProjects, getFacultyProjects, updateProjectStatus, addUpdate, markUpdatesRead, deleteProject, updateProject, submitEvaluation, uploadSubmissions, addFeedback, setStudentFeedback, saveStudentEvaluations } from '../controllers/projectController';
 import { auth } from '../middleware/authMiddleware';
 import { upload } from '../middleware/uploadMiddleware';
 
@@ -9,6 +9,7 @@ router.use(auth);
 
 router.post('/', createProject);
 router.get('/archived', getArchivedProjects);
+router.get('/archived/faculty', getFacultyArchivedProjects);
 router.get('/faculty', getFacultyProjects);
 router.put('/:id/status', updateProjectStatus);
 router.post('/:id/updates', upload.array('files', 5), addUpdate);

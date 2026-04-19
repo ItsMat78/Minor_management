@@ -417,7 +417,7 @@ export const commitImport = async (req: Request, res: Response) => {
                 await User.create({
                     ...row,
                     password: defaultPassword,
-                    isActive: false,
+                    isParticipating: row.role === 'Faculty',
                     isVerified: false,
                     mustChangePassword: true
                 });
