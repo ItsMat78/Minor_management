@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import { GlobalEventBanner } from '../components/GlobalEventBanner';
-import { Search, ChevronDown, ChevronUp, Users, Clock, CheckCircle, XCircle, FileText, LayoutGrid, LayoutList, X, LogOut, ChevronRight, Layout, Settings, Menu, GraduationCap, Medal, Archive } from 'lucide-react';
+import { Search, ChevronDown, ChevronUp, Users, Clock, CheckCircle, XCircle, FileText, LayoutGrid, LayoutList, X, LogOut, ChevronRight, Layout, Settings, Menu, GraduationCap, Medal, Archive, Download, Upload, AlertCircle } from 'lucide-react';
 import { motion } from 'framer-motion';
 import * as Dialog from '@radix-ui/react-dialog';
 import MenteeGroupDetails from '../components/MenteeGroupDetails';
@@ -303,62 +303,47 @@ const renderEvalCard = (item: any, activeTab: string, handleOpenEvaluation: any,
     const groupData = item.group || item;
     const isDropper = groupData.targetBatch && groupData.targetBatch !== getOriginalGroupBatchYear(groupData);
 
-    const isEvaluated = !!evalData && !!evalData.marks;
+    const studentEvals = (projectData?.studentEvaluations || []).filter((e: any) => e.evalType === activeTab);
+    const isEvaluated = studentEvals.some((e: any) => (e.marks ?? 0) > 0);
+    const avgMarks = isEvaluated
+        ? Math.round(studentEvals.reduce((sum: number, e: any) => sum + (e.marks || 0), 0) / studentEvals.length)
+        : null;
     const RUBRIC_CONFIG_LOCAL = getRubricConfig(activeEvents, activeTab);
 
     if (viewMode === 'list') {
+        const members = item.members || item.group?.members || [];
         return (
-            <div key={item._id} className={`rounded-2xl border p-4 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden group flex flex-col md:flex-row items-start md:items-center justify-between gap-4 px-6 ${isDropper ? 'bg-red-50 border-red-200 hover:border-red-300 border-l-4 border-l-red-500' : 'bg-white border-neutral-200'}`}>
-                {isEvaluated && (
-                    <div className="absolute top-0 right-0 p-2 px-3 bg-green-50 rounded-bl-2xl border-l border-b border-green-100 text-green-700 flex items-center gap-1.5 font-bold text-[10px] z-10 hidden md:flex uppercase tracking-wider">
-                        <CheckCircle className="w-3 h-3" />
-                        Evaluated
-                    </div>
-                )}
-                {isPanel && (
-                    <div className="absolute top-0 left-0 p-2 px-3 bg-amber-50 rounded-br-2xl border-r border-b border-amber-100 text-amber-700 font-bold text-[10px] z-10 hidden md:flex uppercase tracking-wider">
-                        Panel Eval
-                    </div>
-                )}
-                <div className="flex-1 min-w-0 md:pr-4 pt-2 md:pt-0">
-                    <div className="flex items-center gap-2 mb-1">
-                        {isPanel && <span className="md:hidden px-2 py-0.5 bg-amber-50 text-amber-700 rounded text-[10px] font-bold uppercase tracking-wider">Panel Eval</span>}
-                        {isEvaluated && <span className="md:hidden px-2 py-0.5 bg-green-50 text-green-700 rounded text-[10px] font-bold flex items-center gap-1 uppercase tracking-wider"><CheckCircle className="w-3 h-3" /> Evaluated</span>}
-                    </div>
-                    <h3 className="text-xl font-bold text-gray-900 truncate" title={projectData?.title}>{projectData?.title || 'Untitled Project'}</h3>
-                    <p className={`text-sm font-medium truncate flex items-center gap-1.5 align-middle mt-1 uppercase tracking-wider ${isDropper ? 'text-red-700 font-bold' : 'text-neutral-500'}`}>
-                        {item.name || item.group?.name} {isDropper ? `(Dropper/Batch override: ${groupData.targetBatch})` : ''}
-                    </p>
-                    {projectData?.attachments && projectData.attachments.length > 0 && (
-                        <div className="mt-3 flex flex-wrap gap-2">
-                            {projectData.attachments.slice(0, 2).map((url: string, idx: number) => (
-                                <a key={idx} href={url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 px-3 py-1 bg-neutral-50 text-indigo-600 rounded-lg text-xs font-bold border border-neutral-200 hover:bg-neutral-100 transition-colors" onClick={(e) => e.stopPropagation()}>
-                                    File {idx + 1}
-                                </a>
-                            ))}
-                        </div>
-                    )}
+            <div key={item._id} className={`flex items-center gap-3 px-3 py-2 border-b border-neutral-100 last:border-0 hover:bg-neutral-50/80 transition-colors ${isDropper ? 'bg-red-50 border-l-2 border-l-red-400' : ''}`}>
+                {/* Group number badge */}
+                <div className="shrink-0 w-10 text-center">
+                    <span className={`text-[10px] font-black uppercase tracking-wider ${isDropper ? 'text-red-500' : 'text-neutral-400'}`}>G{item.name || item.group?.name}</span>
                 </div>
 
-                <div className={`flex items-center gap-6 shrink-0 w-full md:w-auto p-4 rounded-xl border transition-colors ${isDropper ? 'bg-red-100/30 border-red-200 group-hover:border-red-300' : 'bg-neutral-50 border-neutral-100 group-hover:border-indigo-100'}`}>
-                    <div className="flex flex-col text-right">
-                        <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1 text-right">Score</span>
-                        <div className="flex items-end justify-end gap-1">
-                            <span className={`text-2xl leading-none font-bold ${isEvaluated ? 'text-indigo-600' : 'text-neutral-300'}`}>
-                                {isEvaluated ? evalData.marks : '--'}
+                {/* Project + members */}
+                <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-neutral-900 truncate leading-tight" title={projectData?.title}>
+                        {projectData?.title || 'Untitled Project'}
+                    </p>
+                    <div className="flex flex-wrap gap-1 mt-0.5">
+                        {members.map((m: any, idx: number) => (
+                            <span key={idx} className="text-[10px] text-neutral-500 bg-neutral-100 px-1.5 py-0 rounded">
+                                {m.name}
                             </span>
-                            <span className="text-sm font-medium text-neutral-400 leading-none pb-0.5">/ {RUBRIC_CONFIG_LOCAL?.maxMarks || 100}</span>
-                        </div>
+                        ))}
                     </div>
-                    <div className="w-px h-10 bg-neutral-200 hidden md:block"></div>
+                </div>
+
+                {/* Status + action */}
+                <div className="flex items-center gap-2 shrink-0">
+                    {isEvaluated && <CheckCircle className="w-4 h-4 text-green-500 shrink-0" />}
                     <button
-                        onClick={() => handleOpenEvaluation(item, activeTab as 'mid-term' | 'end-term' | 'final-report', isPanel)}
-                        className={`px-6 py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-all whitespace-nowrap ${isEvaluated
-                            ? 'bg-white border text-neutral-600 hover:text-indigo-600 hover:bg-neutral-50 hover:border-indigo-200 shadow-sm'
-                            : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-md shadow-indigo-200 hover:shadow-lg hover:shadow-indigo-300 hover:-translate-y-0.5'
-                            }`}
+                        onClick={() => handleOpenEvaluation(item, activeTab as 'mid-term' | 'end-term', isPanel)}
+                        className={`px-3 py-1 rounded-md text-xs font-bold transition-colors whitespace-nowrap ${isEvaluated
+                            ? 'bg-white border border-neutral-200 text-neutral-600 hover:border-indigo-300 hover:text-indigo-600'
+                            : 'bg-indigo-600 text-white hover:bg-indigo-700'
+                        }`}
                     >
-                        {isEvaluated ? 'Edit Evaluation' : 'Evaluate Now'}
+                        {isEvaluated ? 'Edit' : 'Evaluate'}
                     </button>
                 </div>
             </div>
@@ -397,7 +382,7 @@ const renderEvalCard = (item: any, activeTab: string, handleOpenEvaluation: any,
                 <div className="flex justify-between items-center">
                     <span className={`text-xs font-bold uppercase tracking-wider ${isDropper ? 'text-red-400' : 'text-neutral-400'}`}>Score</span>
                     <span className={`text-xl font-bold ${isEvaluated ? 'text-indigo-600' : 'text-neutral-300'}`}>
-                        {isEvaluated ? evalData.marks : '--'} <span className={`text-sm font-medium ${isDropper ? 'text-red-400' : 'text-neutral-400'}`}>/ {RUBRIC_CONFIG_LOCAL?.maxMarks || 100}</span>
+                        {isEvaluated ? avgMarks : '--'} <span className={`text-sm font-medium ${isDropper ? 'text-red-400' : 'text-neutral-400'}`}>/ {RUBRIC_CONFIG_LOCAL?.maxMarks || 100}</span>
                     </span>
                 </div>
                 <button
@@ -437,6 +422,9 @@ const FacultyDashboard: React.FC = () => {
             next.set('tab', activeTab);
             setSearchParams(next, { replace: true });
         }
+        if (activeTab === 'mid-term' || activeTab === 'end-term') {
+            setViewMode('list');
+        }
     }, [activeTab]);
     const [mentees, setMentees] = useState<any[]>([]);
     const [students, setStudents] = useState<any[]>([]);
@@ -453,7 +441,9 @@ const FacultyDashboard: React.FC = () => {
     const [evaluationType, setEvaluationType] = useState<'mid-term' | 'end-term' | null>(null); // Removed 'final-report'
     const [evaluationFeedback, setEvaluationFeedback] = useState<string>('');
     const [savingFeedback, setSavingFeedback] = useState(false);
-    const [studentEvalData, setStudentEvalData] = useState<Record<string, { stars: number; attendance: 'present' | 'absent' }>>({});
+    type EvalStudentEntry = { stars: number; attendance: 'present' | 'absent'; guide: Record<string, number | ''>; panel1: Record<string, number | ''>; panel2: Record<string, number | ''> };
+    const [studentEvalData, setStudentEvalData] = useState<Record<string, EvalStudentEntry>>({});
+    const [studentMidData, setStudentMidData] = useState<Record<string, EvalStudentEntry> | null>(null);
 
     // Filters & Search
     const [searchTerm, setSearchTerm] = useState('');
@@ -464,6 +454,9 @@ const FacultyDashboard: React.FC = () => {
     const [filterBranch, setFilterBranch] = useState<string>('All');
     const [sortOption, setSortOption] = useState<string>('Default'); // Added sort state
     const [collapsedEvalFaculties, setCollapsedEvalFaculties] = useState<Record<string, boolean>>({});
+    const [importingPanelId, setImportingPanelId] = useState<string | null>(null);
+    const [importErrors, setImportErrors] = useState<{ row: number; message: string }[]>([]);
+    const [importSuccess, setImportSuccess] = useState<string | null>(null);
 
     const projectGuideId = React.useMemo(() => {
         if (!evaluatingProject) return null;
@@ -622,52 +615,50 @@ const FacultyDashboard: React.FC = () => {
         }
     };
 
-    const handleOpenEvaluation = (item: any, type: 'mid-term' | 'end-term') => { // Removed 'final-report'
+    const handleOpenEvaluation = (item: any, type: 'mid-term' | 'end-term') => {
         setEvaluatingProject(item);
         setEvaluationType(type);
 
-        // Determine existing evaluation data
-        // item can be a Group (with item.project) or a Project (direct)
         const projectData = item.project || item;
-        let existingEval: any;
-        if (type === 'mid-term') existingEval = projectData.midTermEvaluation;
-        else if (type === 'end-term') existingEval = projectData.endTermEvaluation;
-
-        // Initialize details from rubric config
-        const config = getRubricConfig(activeEvents, type);
-        const initialDetails: any = { guide: {}, panel: {}, facultyScores: {} };
-
-        // Initialize facultyScores for all panel members
-        panelMembers.forEach((fac: any) => {
-            initialDetails.facultyScores[fac._id] = existingEval?.facultyScores?.[fac._id] ?? '';
-        });
-
-        // Restore field-level scores if not in manual mode (or if manual mode was not used previously)
-        if (config) {
-            config.sections.forEach((section: any) => {
-                const sectionKey = section.key; // 'guide' or 'panel'
-                section.fields.forEach((field: any) => {
-                    const val = existingEval?.[sectionKey]?.[field.key] || ''; // Use '' for empty input
-                    initialDetails[sectionKey][field.key] = val;
-                });
-            });
-        }
-
-        setEvaluationDetails(initialDetails);
-        setEvaluationMarks(existingEval?.marks || 0);
-        setEvaluationRemarks(existingEval?.remarks || '');
+        const evalMeta = type === 'mid-term' ? projectData.midTermEvaluation : projectData.endTermEvaluation;
+        setEvaluationRemarks(evalMeta?.remarks || '');
         setEvaluationFeedback(projectData?.feedback || '');
-        setManualMarksMode(existingEval ? existingEval.evaluationMode !== 'rubric' : true);
 
-        // Initialize per-student evaluation data
         const members = item.members || item.group?.members || [];
-        const existingStudentEvals = (projectData?.studentEvaluations || []).filter((e: any) => e.evalType === type);
-        const initStudentData: Record<string, { stars: number; attendance: 'present' | 'absent' }> = {};
-        members.forEach((m: any) => {
-            const ev = existingStudentEvals.find((e: any) => String(e.student?._id || e.student) === String(m._id));
-            initStudentData[m._id] = { stars: ev?.stars || 0, attendance: ev?.attendance || 'present' };
-        });
-        setStudentEvalData(initStudentData);
+
+        const buildData = (evals: any[], evalT: 'mid-term' | 'end-term'): Record<string, EvalStudentEntry> => {
+            const config = getRubricConfig(activeEvents, evalT);
+            const result: Record<string, EvalStudentEntry> = {};
+            members.forEach((m: any) => {
+                const ev = evals.find((e: any) => String(e.student?._id || e.student) === String(m._id));
+                const guideFields = config?.sections.find((s: any) => s.key === 'guide')?.fields || [];
+                const panelFields = config?.sections.find((s: any) => s.key === 'panel')?.fields || [];
+                const initGuide: Record<string, number | ''> = {};
+                const initPanel1: Record<string, number | ''> = {};
+                const initPanel2: Record<string, number | ''> = {};
+                guideFields.forEach((f: any) => { initGuide[f.key] = ev?.guide?.[f.key] ?? ''; });
+                panelFields.forEach((f: any) => {
+                    initPanel1[f.key] = ev?.panel1?.[f.key] ?? ev?.panel?.[f.key] ?? ''; // legacy fallback
+                    initPanel2[f.key] = ev?.panel2?.[f.key] ?? '';
+                });
+                result[m._id] = { stars: ev?.stars ?? 0, attendance: ev?.attendance ?? 'present', guide: initGuide, panel1: initPanel1, panel2: initPanel2 };
+            });
+            return result;
+        };
+
+        const allEvals = projectData?.studentEvaluations || [];
+        const midEvals = allEvals.filter((e: any) => e.evalType === 'mid-term');
+        const endEvals = allEvals.filter((e: any) => e.evalType === 'end-term');
+
+        if (type === 'end-term') {
+            setStudentEvalData(buildData(endEvals, 'end-term'));
+            setStudentMidData(buildData(midEvals, 'mid-term'));
+        } else {
+            setStudentEvalData(buildData(midEvals, 'mid-term'));
+            setStudentMidData(null);
+        }
+        setEvaluationDetails({});
+        setEvaluationMarks(0);
     };
 
     const handleSaveEvaluationFeedback = async () => {
@@ -687,6 +678,59 @@ const FacultyDashboard: React.FC = () => {
         }
     };
 
+    const handleDownloadTemplate = async (panelId: string) => {
+        try {
+            const res = await api.get(`/panels/${panelId}/evaluation-template?evalType=${activeTab}`, { responseType: 'blob' });
+            const url = URL.createObjectURL(new Blob([res.data]));
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `eval_template_${activeTab}.xlsx`;
+            a.click();
+            URL.revokeObjectURL(url);
+        } catch {
+            alert('Failed to download template.');
+        }
+    };
+
+    const handleImportTemplate = async (panelId: string, file: File) => {
+        setImportingPanelId(panelId);
+        setImportErrors([]);
+        setImportSuccess(null);
+        const formData = new FormData();
+        formData.append('file', file);
+        try {
+            const res = await api.post(`/panels/${panelId}/evaluation-import?evalType=${activeTab}`, formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
+            setImportSuccess(`Successfully updated ${res.data.updatedGroups} group(s).`);
+            await fetchMentees();
+            await fetchPanelGroups();
+        } catch (err: any) {
+            const data = err.response?.data;
+            if (data?.errors) {
+                setImportErrors(data.errors);
+            } else {
+                setImportErrors([{ row: 0, message: data?.message || 'Import failed.' }]);
+            }
+        } finally {
+            setImportingPanelId(null);
+        }
+    };
+
+    const handleExportFinalSheet = async (panelId: string) => {
+        try {
+            const res = await api.get(`/panels/${panelId}/export-final?evalType=${activeTab === 'mid-term' ? 'mid-term' : activeTab === 'end-term' ? 'end-term' : 'full'}`, { responseType: 'blob' });
+            const url = URL.createObjectURL(new Blob([res.data]));
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `final_sheet_${activeTab}.xlsx`;
+            a.click();
+            URL.revokeObjectURL(url);
+        } catch {
+            alert('Failed to export final sheet.');
+        }
+    };
+
     const handleDetailChange = (section: string, field: string, value: number | string) => {
         setEvaluationDetails((prev: any) => ({
             ...prev,
@@ -697,103 +741,48 @@ const FacultyDashboard: React.FC = () => {
         }));
     };
 
-    // Auto-calculate marks when details change
-    useEffect(() => {
-        const config = evaluationType ? getRubricConfig(activeEvents, evaluationType) : null;
-        if (!evaluationType || !config) return;
-
-        if (manualMarksMode) {
-            const cfg = evaluationType ? getRubricConfig(activeEvents, evaluationType) : null;
-            const panelAggregation = cfg?.panelAggregation || 'average';
-            let guideScore = 0;
-            let evaluatorScores: number[] = [];
-
-            panelMembers.forEach((fac: any) => {
-                const score = Number(evaluationDetails.facultyScores?.[fac._id] || 0);
-                if (fac._id === projectGuideId) {
-                    guideScore = score;
-                } else {
-                    evaluatorScores.push(score);
-                }
-            });
-
-            let panelContribution = 0;
-            if (evaluatorScores.length > 0) {
-                panelContribution = panelAggregation === 'sum'
-                    ? evaluatorScores.reduce((a, b) => a + b, 0)
-                    : evaluatorScores.reduce((a, b) => a + b, 0) / evaluatorScores.length;
-            }
-            setEvaluationMarks(Math.round(guideScore + panelContribution));
-        } else {
-            let total = 0;
-            config.sections.forEach((sect: any) => {
-                sect.fields.forEach((f: any) => {
-                    const val = evaluationDetails[sect.key]?.[f.key];
-                    total += Number(val || 0);
-                });
-            });
-            setEvaluationMarks(total);
-        }
-    }, [evaluationDetails, evaluationType, manualMarksMode, panelMembers, projectGuideId, activeEvents]);
-
     const handleSubmitEvaluation = async () => {
         if (!evaluatingProject || !evaluationType) return;
         try {
             const projectData = evaluatingProject.project || evaluatingProject;
             const projectId = projectData._id;
 
-            // Sanitize guide and panel to ensure no empty strings are sent
-            const sanitize = (obj: any) => {
-                const clean: any = {};
-                Object.keys(obj || {}).forEach(k => {
-                    clean[k] = obj[k] === '' ? 0 : Number(obj[k]);
-                });
+            const sanitize = (obj: Record<string, number | ''>) => {
+                const clean: Record<string, number> = {};
+                Object.keys(obj || {}).forEach(k => { clean[k] = obj[k] === '' ? 0 : Number(obj[k]); });
                 return clean;
             };
 
-            // Construct payload
-            const payload: any = {
-                type: evaluationType,
-                marks: evaluationMarks,
-                remarks: evaluationRemarks,
-                evaluationMode: manualMarksMode ? 'direct' : 'rubric',
-            };
-
-            if (manualMarksMode) {
-                payload.facultyScores = sanitize(evaluationDetails.facultyScores);
-                payload.guide = {}; // Ensure guide/panel fields are empty if using facultyScores
-                payload.panel = {};
-            } else {
-                payload.guide = sanitize(evaluationDetails.guide);
-                payload.panel = sanitize(evaluationDetails.panel);
-                payload.facultyScores = {}; // Ensure facultyScores is empty if not using manual mode
-            }
-
-            await api.put(`/projects/${projectId}/evaluation`, payload);
-
-            // Save per-student evaluations
-            if (Object.keys(studentEvalData).length > 0) {
-                const evaluations = Object.entries(studentEvalData).map(([studentId, data]) => ({
+            const mapEntries = (map: Record<string, EvalStudentEntry>) =>
+                Object.entries(map).map(([studentId, data]) => ({
                     studentId,
                     stars: data.stars,
                     attendance: data.attendance,
+                    guide: sanitize(data.guide),
+                    panel1: sanitize(data.panel1),
+                    panel2: sanitize(data.panel2),
                 }));
-                await api.put(`/projects/${projectId}/student-evaluations`, { evaluations, evalType: evaluationType });
-            }
 
-            // Refresh Data
+            const students = mapEntries(studentEvalData);
+            const midStudents = studentMidData ? mapEntries(studentMidData) : undefined;
+
+            await api.put(`/projects/${projectId}/evaluation`, {
+                type: evaluationType,
+                remarks: evaluationRemarks,
+                students,
+                ...(midStudents ? { midStudents } : {}),
+            });
+
             await fetchMentees();
             await fetchPanelGroups();
             setEvaluatingProject(null);
             setEvaluationType(null);
-            setEvaluationDetails({});
-            setEvaluationMarks(0);
             setEvaluationRemarks('');
-            setManualMarksMode(false);
             setStudentEvalData({});
-        } catch (error) {
+            setStudentMidData(null);
+        } catch (error: any) {
             console.error("Failed to submit evaluation", error);
-            alert("Failed to submit evaluation. Check console for details.");
+            alert(error?.response?.data?.message || "Failed to submit evaluation.");
         }
     };
 
@@ -1620,8 +1609,60 @@ const FacultyDashboard: React.FC = () => {
                                                                                 facultyGroups[facId].groups.push(g);
                                                                             });
 
+                                                                            const panelId = pData.panel._id;
                                                                             return (
                                                                                 <div key={idx} className="border-t border-indigo-100 pt-6 mt-6 first:mt-0 first:border-0 first:pt-0">
+                                                                                    {/* Per-panel bulk actions toolbar */}
+                                                                                    <div className="mb-5 flex flex-wrap items-center gap-3 p-4 bg-indigo-50/50 border border-indigo-100 rounded-2xl">
+                                                                                        <span className="text-xs font-bold text-indigo-700 uppercase tracking-wider mr-auto">Bulk Actions</span>
+                                                                                        <button
+                                                                                            onClick={() => handleDownloadTemplate(panelId)}
+                                                                                            className="flex items-center gap-2 px-4 py-2 bg-white border border-indigo-200 text-indigo-700 rounded-lg text-xs font-bold hover:bg-indigo-50 transition-colors shadow-sm"
+                                                                                        >
+                                                                                            <Download className="w-3.5 h-3.5" /> Download Template
+                                                                                        </button>
+                                                                                        <label className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold cursor-pointer shadow-sm transition-colors ${importingPanelId === panelId ? 'bg-neutral-100 text-neutral-400 border border-neutral-200' : 'bg-white border border-emerald-200 text-emerald-700 hover:bg-emerald-50'}`}>
+                                                                                            <Upload className="w-3.5 h-3.5" />
+                                                                                            {importingPanelId === panelId ? 'Uploading...' : 'Upload Evaluations'}
+                                                                                            <input
+                                                                                                type="file"
+                                                                                                accept=".xlsx"
+                                                                                                className="hidden"
+                                                                                                disabled={!!importingPanelId}
+                                                                                                onChange={(e) => {
+                                                                                                    const f = e.target.files?.[0];
+                                                                                                    if (f) { setImportErrors([]); setImportSuccess(null); handleImportTemplate(panelId, f); }
+                                                                                                    e.target.value = '';
+                                                                                                }}
+                                                                                            />
+                                                                                        </label>
+                                                                                        <button
+                                                                                            onClick={() => handleExportFinalSheet(panelId)}
+                                                                                            className="flex items-center gap-2 px-4 py-2 bg-white border border-amber-200 text-amber-700 rounded-lg text-xs font-bold hover:bg-amber-50 transition-colors shadow-sm"
+                                                                                        >
+                                                                                            <FileText className="w-3.5 h-3.5" /> Export Final Sheet
+                                                                                        </button>
+                                                                                    </div>
+                                                                                    {/* Import result feedback */}
+                                                                                    {importSuccess && (
+                                                                                        <div className="mb-4 flex items-center gap-2 px-4 py-3 bg-emerald-50 border border-emerald-200 rounded-xl text-sm text-emerald-700 font-medium">
+                                                                                            <CheckCircle className="w-4 h-4 shrink-0" /> {importSuccess}
+                                                                                        </div>
+                                                                                    )}
+                                                                                    {importErrors.length > 0 && (
+                                                                                        <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-xl">
+                                                                                            <div className="flex items-center gap-2 text-red-700 font-bold text-sm mb-2">
+                                                                                                <AlertCircle className="w-4 h-4" /> {importErrors.length} error(s) found — no data was saved
+                                                                                            </div>
+                                                                                            <div className="max-h-40 overflow-y-auto space-y-1">
+                                                                                                {importErrors.map((e, i) => (
+                                                                                                    <p key={i} className="text-xs text-red-600">
+                                                                                                        {e.row > 0 ? `Row ${e.row}: ` : ''}{e.message}
+                                                                                                    </p>
+                                                                                                ))}
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    )}
                                                                                     {Object.values(facultyGroups).map((facInfo: any, fIdx: number) => {
                                                                                         const sectionKey = `${batchYear}-${idx}-${fIdx}`;
                                                                                         const isCollapsed = collapsedEvalFaculties[sectionKey] || false;
@@ -1641,7 +1682,7 @@ const FacultyDashboard: React.FC = () => {
                                                                                                     <span className="text-xs font-bold bg-neutral-200 text-neutral-600 px-3 py-1 rounded-full uppercase tracking-wider">{facInfo.groups.length} Teams</span>
                                                                                                 </div>
                                                                                                 {!isCollapsed && (
-                                                                                                    <div className={`p-6 ${viewMode === 'grid' ? 'grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-6 auto-rows-fr' : 'flex flex-col gap-4'}`}>
+                                                                                                    <div className={viewMode === 'grid' ? 'p-6 grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-6 auto-rows-fr' : 'divide-y divide-neutral-100'}>
                                                                                                         {facInfo.groups.map((item: any) => renderEvalCard(item, activeTab, handleOpenEvaluation, activeEvents, true, viewMode))}
                                                                                                     </div>
                                                                                                 )}
@@ -2001,314 +2042,169 @@ const FacultyDashboard: React.FC = () => {
             {/* Evaluation Modal */}
             <Dialog.Root open={!!evaluatingProject} onOpenChange={(open) => !open && setEvaluatingProject(null)}>
                 <Dialog.Portal>
-                    <Dialog.Overlay className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 transition-opacity" />
-                    <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-6xl bg-white rounded-3xl shadow-2xl z-50 overflow-hidden flex flex-col focus:outline-none max-h-[90vh]">
-                        <div className="flex items-center justify-between p-6 border-b border-neutral-100 bg-neutral-50/50">
+                    <Dialog.Overlay className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50" />
+                    <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[96vw] max-w-[1300px] bg-white rounded-2xl shadow-2xl z-50 flex flex-col focus:outline-none max-h-[92vh]">
+                        {/* Header */}
+                        <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-100 shrink-0">
                             <div>
-                                <Dialog.Title className="text-xl font-bold text-neutral-900">
+                                <Dialog.Title className="text-lg font-bold text-neutral-900">
                                     {evaluationType === 'mid-term' ? 'Mid-Term Evaluation' : 'End-Term Evaluation'}
+                                    {evaluatingProject && (
+                                        <span className="ml-2 text-sm font-normal text-neutral-500">
+                                            — Group {evaluatingProject.name || evaluatingProject.group?.name} · {evaluatingProject.project?.title || evaluatingProject.title}
+                                        </span>
+                                    )}
                                 </Dialog.Title>
                             </div>
-                            <Dialog.Close className="p-2 rounded-full hover:bg-neutral-100 transition-colors">
+                            <Dialog.Close className="p-1.5 rounded-lg hover:bg-neutral-100 transition-colors">
                                 <X className="w-5 h-5 text-neutral-500" />
                             </Dialog.Close>
                         </div>
 
-                        <div className="flex-1 overflow-hidden grid grid-cols-1 lg:grid-cols-3">
-                            {/* Left Column: Project Details */}
-                            <div className="col-span-1 border-r border-neutral-100 bg-white p-8 overflow-y-auto hidden lg:block">
-                                <div className="mb-8 flex items-start gap-3">
-                                    <div className="mt-1 shrink-0">
-                                        <FileText className="w-6 h-6 text-indigo-500" />
-                                    </div>
-                                    <h3 className="text-2xl font-black text-indigo-900 leading-tight">
-                                        {evaluatingProject?.project?.title || evaluatingProject?.title || 'Project Details'}
-                                    </h3>
+                        {/* Table area */}
+                        <div className="flex-1 overflow-auto p-4 space-y-5">
+                            {(() => {
+                                const members = evaluatingProject?.members || evaluatingProject?.group?.members || [];
+                                if (members.length === 0) return <div className="p-8 text-center text-neutral-500">No members found.</div>;
+
+                                // One wide table: students × rows, Guide + E1 + E2 as column groups
+                                const renderEvalTable = (
+                                    blockLabel: string,
+                                    evalT: 'mid-term' | 'end-term',
+                                    dataMap: Record<string, EvalStudentEntry>,
+                                    setDataMap: (fn: (p: Record<string, EvalStudentEntry>) => Record<string, EvalStudentEntry>) => void
+                                ) => {
+                                    const config = getRubricConfig(activeEvents, evalT);
+                                    if (!config) return null;
+                                    const guideFields = config.sections.find((s: any) => s.key === 'guide')?.fields || [];
+                                    const panelFields = config.sections.find((s: any) => s.key === 'panel')?.fields || [];
+                                    const empty = { stars: 0, attendance: 'present' as const, guide: {}, panel1: {}, panel2: {} };
+
+                                    return (
+                                        <div className="rounded-xl border border-neutral-200 overflow-hidden">
+                                            <div className="px-4 py-2 bg-neutral-50 border-b border-neutral-200 text-xs font-black uppercase tracking-wider text-neutral-600">{blockLabel}</div>
+                                            <div className="overflow-x-auto">
+                                                <table className="w-full text-sm border-collapse">
+                                                    <thead className="sticky top-0 z-10 bg-white">
+                                                        <tr className="border-b border-neutral-200">
+                                                            <th rowSpan={2} className="px-3 py-2 text-left text-[11px] font-bold text-neutral-700 border-r border-neutral-200 w-32 align-middle">Student</th>
+                                                            <th rowSpan={2} className="px-2 py-2 text-center text-[11px] font-bold text-neutral-600 border-r border-neutral-200 w-24 align-middle">Attendance</th>
+                                                            <th rowSpan={2} className="px-2 py-2 text-center text-[11px] font-bold text-neutral-600 border-r border-neutral-200 w-20 align-middle">Stars</th>
+                                                            {guideFields.length > 0 && <th colSpan={guideFields.length} className="px-2 py-1 text-center text-[11px] font-black text-indigo-700 bg-indigo-50 border-r border-indigo-200">Guide</th>}
+                                                            {panelFields.length > 0 && <th colSpan={panelFields.length} className="px-2 py-1 text-center text-[11px] font-black text-amber-700 bg-amber-50 border-r border-amber-200">Panel (E1 / E2)</th>}
+                                                            <th rowSpan={2} className="px-2 py-2 text-center text-[11px] font-bold text-neutral-500 border-l border-neutral-200 w-14 align-middle">Total</th>
+                                                        </tr>
+                                                        <tr className="border-b border-neutral-200">
+                                                            {guideFields.map((f: any) => (
+                                                                <th key={f.key} className="px-1 py-1 text-center text-[10px] font-bold text-indigo-600 bg-indigo-50/60 border-r border-indigo-100 max-w-[80px]">
+                                                                    <div>{f.label}</div><div className="font-normal text-indigo-400">/{f.max}</div>
+                                                                </th>
+                                                            ))}
+                                                            {panelFields.map((f: any) => (
+                                                                <th key={f.key} className="px-1 py-1 text-center text-[10px] font-bold text-amber-600 bg-amber-50/60 border-r border-amber-100 max-w-[80px]">
+                                                                    <div>{f.label}</div><div className="font-normal text-amber-400">/{f.max}</div>
+                                                                </th>
+                                                            ))}
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {members.map((m: any, mi: number) => {
+                                                            const sd = dataMap[m._id] || empty;
+                                                            const gTotal = guideFields.reduce((s: number, f: any) => s + Number(sd.guide?.[f.key] || 0), 0);
+                                                            const p1Total = panelFields.reduce((s: number, f: any) => s + Number(sd.panel1?.[f.key] || 0), 0);
+                                                            const p2Total = panelFields.reduce((s: number, f: any) => s + Number(sd.panel2?.[f.key] || 0), 0);
+                                                            const rowTotal = gTotal + (p2Total > 0 ? (p1Total + p2Total) / 2 : p1Total);
+                                                            const upd = (patch: Partial<EvalStudentEntry>) =>
+                                                                setDataMap(prev => ({ ...prev, [m._id]: { ...prev[m._id], ...patch } }));
+                                                            return (
+                                                                <tr key={m._id} className={`border-b border-neutral-100 ${mi % 2 === 0 ? 'bg-white' : 'bg-neutral-50/40'} hover:bg-indigo-50/10`}>
+                                                                    <td className="px-3 py-2 border-r border-neutral-200">
+                                                                        <div className="font-semibold text-xs text-neutral-900">{m.name}</div>
+                                                                        <div className="text-[10px] text-neutral-400">{m.rollNumber}</div>
+                                                                    </td>
+                                                                    <td className="px-2 py-1.5 text-center border-r border-neutral-200">
+                                                                        <button type="button" onClick={() => upd({ attendance: sd.attendance === 'present' ? 'absent' : 'present' })}
+                                                                            className={`px-2 py-0.5 rounded text-[10px] font-bold ${sd.attendance === 'present' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+                                                                            {sd.attendance === 'present' ? '✓ P' : '✗ A'}
+                                                                        </button>
+                                                                    </td>
+                                                                    <td className="px-2 py-1.5 text-center border-r border-neutral-200">
+                                                                        <div className="flex justify-center gap-0">
+                                                                            {[1,2,3,4,5].map(s => (
+                                                                                <button key={s} type="button" onClick={() => upd({ stars: s })}
+                                                                                    className={`text-sm leading-none ${s <= sd.stars ? 'text-amber-400' : 'text-neutral-300 hover:text-amber-300'}`}>★</button>
+                                                                            ))}
+                                                                        </div>
+                                                                    </td>
+                                                                    {guideFields.map((f: any) => (
+                                                                        <td key={f.key} className="px-1 py-1 border-r border-indigo-100 text-center">
+                                                                            <input type="number" min={0} max={f.max} value={sd.guide?.[f.key] ?? ''}
+                                                                                onChange={e => { const v = e.target.value === '' ? '' : Math.min(Number(e.target.value), f.max); upd({ guide: { ...sd.guide, [f.key]: v } }); }}
+                                                                                className="w-12 px-1 py-0.5 text-center text-sm font-bold border border-neutral-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-400 bg-white" placeholder="—" />
+                                                                        </td>
+                                                                    ))}
+                                                                    {/* Panel fields: E1 and E2 stacked in one column each */}
+                                                                    {panelFields.map((f: any) => (
+                                                                        <td key={f.key} className="px-1 py-1 border-r border-amber-100 text-center">
+                                                                            <div className="flex flex-col gap-0.5 items-center">
+                                                                                <div className="flex items-center gap-0.5">
+                                                                                    <span className="text-[9px] font-bold text-emerald-500 w-4">E1</span>
+                                                                                    <input type="number" min={0} max={f.max} value={sd.panel1?.[f.key] ?? ''}
+                                                                                        onChange={e => { const v = e.target.value === '' ? '' : Math.min(Number(e.target.value), f.max); upd({ panel1: { ...sd.panel1, [f.key]: v } }); }}
+                                                                                        className="w-10 px-1 py-0.5 text-center text-xs font-bold border border-neutral-200 rounded focus:outline-none focus:ring-1 focus:ring-emerald-400 bg-white" placeholder="—" />
+                                                                                </div>
+                                                                                <div className="flex items-center gap-0.5">
+                                                                                    <span className="text-[9px] font-bold text-amber-500 w-4">E2</span>
+                                                                                    <input type="number" min={0} max={f.max} value={sd.panel2?.[f.key] ?? ''}
+                                                                                        onChange={e => { const v = e.target.value === '' ? '' : Math.min(Number(e.target.value), f.max); upd({ panel2: { ...sd.panel2, [f.key]: v } }); }}
+                                                                                        className="w-10 px-1 py-0.5 text-center text-xs font-bold border border-neutral-200 rounded focus:outline-none focus:ring-1 focus:ring-amber-400 bg-white" placeholder="—" />
+                                                                                </div>
+                                                                            </div>
+                                                                        </td>
+                                                                    ))}
+                                                                    <td className="px-2 py-2 text-center border-l border-neutral-200">
+                                                                        <span className={`text-sm font-black ${rowTotal > 0 ? 'text-indigo-700' : 'text-neutral-300'}`}>{rowTotal > 0 ? Math.round(rowTotal * 10) / 10 : '—'}</span>
+                                                                    </td>
+                                                                </tr>
+                                                            );
+                                                        })}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    );
+                                };
+
+                                return (
+                                    <>
+                                        {studentMidData && renderEvalTable('Mid-Term Scores (editing existing)', 'mid-term', studentMidData, fn => setStudentMidData(p => fn(p!)))}
+                                        {renderEvalTable(evaluationType === 'end-term' ? 'End-Term Scores' : 'Mid-Term Scores', evaluationType as 'mid-term' | 'end-term', studentEvalData, setStudentEvalData)}
+                                    </>
+                                );
+                            })()}
+                        </div>
+
+                        {/* Footer: remarks + submit */}
+                        <div className="shrink-0 border-t border-neutral-100 bg-neutral-50/50 px-6 py-4">
+                            <div className="flex flex-col sm:flex-row gap-3 items-end">
+                                <div className="flex-1">
+                                    <label className="block text-xs font-bold text-neutral-600 mb-1">Remarks (group-level)</label>
+                                    <textarea
+                                        value={evaluationRemarks}
+                                        onChange={(e) => setEvaluationRemarks(e.target.value)}
+                                        placeholder="Overall feedback for the group..."
+                                        rows={2}
+                                        className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 resize-none"
+                                    />
                                 </div>
-
-                                <div className="space-y-8">
-                                    {/* Abstract */}
-                                    <div>
-                                        <h4 className="flex items-center gap-2 text-sm font-bold text-neutral-900 mb-2">
-                                            <div className="w-1.5 h-1.5 rounded-full bg-indigo-500"></div>
-                                            Abstract & Description
-                                        </h4>
-                                        <p className="text-sm text-neutral-600 leading-relaxed">
-                                            {evaluatingProject?.project?.description || evaluatingProject?.description || 'No description provided.'}
-                                        </p>
-                                    </div>
-
-                                    {/* Team Members with Star Rating & Attendance */}
-                                    {((evaluatingProject?.members) || (evaluatingProject?.group?.members))?.length > 0 && (
-                                        <div>
-                                            <h4 className="flex items-center gap-2 text-sm font-bold text-neutral-900 mb-3">
-                                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
-                                                Student Evaluation
-                                            </h4>
-                                            <div className="space-y-3">
-                                                {(evaluatingProject?.members || evaluatingProject?.group?.members).map((member: any) => {
-                                                    const sd = studentEvalData[member._id] || { stars: 0, attendance: 'present' };
-                                                    return (
-                                                        <div key={member._id} className="p-3 rounded-xl bg-neutral-50 border border-neutral-100">
-                                                            <div className="flex items-center gap-3 mb-2">
-                                                                <div className="w-8 h-8 rounded-full bg-indigo-50 text-indigo-700 flex items-center justify-center font-bold text-xs ring-1 ring-indigo-100 shrink-0">
-                                                                    {member.name?.charAt(0) || '?'}
-                                                                </div>
-                                                                <div className="flex-1 min-w-0">
-                                                                    <p className="text-sm font-bold text-neutral-900 truncate">{member.name}</p>
-                                                                    <p className="text-xs text-neutral-500 font-medium">{member.rollNumber}</p>
-                                                                </div>
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => setStudentEvalData(prev => ({
-                                                                        ...prev,
-                                                                        [member._id]: { ...sd, attendance: sd.attendance === 'present' ? 'absent' : 'present' }
-                                                                    }))}
-                                                                    className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider border-2 cursor-pointer transition-all select-none shadow-sm hover:scale-105 active:scale-95 ${sd.attendance === 'present' ? 'bg-emerald-500 text-white border-emerald-600 hover:bg-emerald-600' : 'bg-red-500 text-white border-red-600 hover:bg-red-600'}`}
-                                                                >
-                                                                    {sd.attendance === 'present' ? '✓ Present' : '✗ Absent'}
-                                                                </button>
-                                                            </div>
-                                                            <div className="flex items-center gap-1 ml-11">
-                                                                {[1,2,3,4,5].map(star => (
-                                                                    <button
-                                                                        key={star}
-                                                                        type="button"
-                                                                        onClick={() => setStudentEvalData(prev => ({
-                                                                            ...prev,
-                                                                            [member._id]: { ...sd, stars: star }
-                                                                        }))}
-                                                                        className={`text-lg transition-colors ${star <= sd.stars ? 'text-amber-400' : 'text-neutral-300 hover:text-amber-300'}`}
-                                                                    >
-                                                                        ★
-                                                                    </button>
-                                                                ))}
-                                                                <span className="text-xs text-neutral-400 ml-1">{sd.stars > 0 ? `${sd.stars}/5` : 'Rate'}</span>
-                                                            </div>
-                                                        </div>
-                                                    );
-                                                })}
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {(evaluatingProject?.project?.attachments?.length > 0 || evaluatingProject?.attachments?.length > 0) && (
-                                        <div>
-                                            <h4 className="flex items-center gap-2 text-sm font-bold text-neutral-900 mb-3">
-                                                <div className="w-1.5 h-1.5 rounded-full bg-amber-500"></div>
-                                                Resources & Links
-                                            </h4>
-                                            <div className="space-y-2">
-                                                {(evaluatingProject?.project?.attachments || evaluatingProject?.attachments).map((att: string, i: number) => {
-                                                    const isLink = att.startsWith('http') && !att.includes('/uploads/');
-
-                                                    return (
-                                                        <a
-                                                            key={i}
-                                                            href={att}
-                                                            target="_blank"
-                                                            rel="noopener noreferrer"
-                                                            className="flex items-center gap-3 p-2.5 bg-neutral-50 border border-neutral-100 rounded-xl hover:border-indigo-300 hover:bg-indigo-50/50 transition-colors group"
-                                                        >
-                                                            <div className="text-indigo-600">
-                                                                <FileText className="w-4 h-4" />
-                                                            </div>
-                                                            <div className="flex-1 min-w-0">
-                                                                <p className="text-sm font-bold text-neutral-800 truncate group-hover:text-indigo-700 transition-colors">
-                                                                    {isLink ? 'External Link' : att.split('/').pop()}
-                                                                </p>
-                                                            </div>
-                                                        </a>
-                                                    );
-                                                })}
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {evaluationType === 'end-term' && (
-                                        <div>
-                                            <h4 className="flex items-center gap-2 text-sm font-bold text-neutral-900 mb-3">
-                                                <div className="w-1.5 h-1.5 rounded-full bg-orange-500"></div>
-                                                Faculty Feedback
-                                            </h4>
-                                            <textarea
-                                                value={evaluationFeedback}
-                                                onChange={(e) => setEvaluationFeedback(e.target.value)}
-                                                placeholder="Share overall feedback visible to the team on their project..."
-                                                className="w-full px-3 py-2 rounded-xl border border-neutral-200 focus:outline-none focus:ring-2 focus:ring-orange-500/20 text-sm h-[120px] resize-none bg-orange-50/30"
-                                            />
-                                            <button
-                                                onClick={handleSaveEvaluationFeedback}
-                                                disabled={savingFeedback}
-                                                className="mt-2 w-full py-2 bg-orange-600 text-white text-xs font-bold rounded-lg hover:bg-orange-700 disabled:opacity-50"
-                                            >
-                                                {savingFeedback ? 'Saving...' : 'Save Feedback'}
-                                            </button>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-
-                            {/* Right Column: Evaluation Inputs */}
-                            <div className="col-span-1 lg:col-span-2 flex flex-col overflow-hidden h-full">
-                                <div className="p-6 space-y-8 overflow-y-auto flex-1">
-                                    {/* Sticky Score Display */}
-                                    <div className="sticky top-0 z-10 flex items-center justify-between bg-indigo-600 text-white p-6 rounded-2xl shadow-lg shadow-indigo-200 border border-indigo-500 backdrop-blur-md">
-                                        <div>
-                                            <h4 className="font-bold text-indigo-100 text-sm uppercase tracking-wider mb-1">Total Score</h4>
-                                            <div className="flex items-baseline gap-2">
-                                                <span className="text-4xl font-bold">{evaluationMarks}</span>
-                                                <span className="text-indigo-200 font-medium">/ {evaluationType ? (getRubricConfig(activeEvents, evaluationType)?.maxMarks ?? 100) : 100}</span>
-                                            </div>
-                                            {manualMarksMode && evaluationType && (
-                                                <p className="text-[10px] text-indigo-300 mt-1 uppercase tracking-wider">
-                                                    Guide total + {getRubricConfig(activeEvents, evaluationType)?.panelAggregation === 'sum' ? 'sum' : 'avg'} of panel scores
-                                                </p>
-                                            )}
-                                        </div>
-                                        <div className="text-right flex flex-col items-end">
-                                            <div className="flex items-center gap-3 mb-4">
-                                                <span className="text-xs font-medium text-indigo-200 uppercase tracking-wider">Direct Marks Entry</span>
-                                                <button
-                                                    onClick={() => setManualMarksMode(!manualMarksMode)}
-                                                    className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${manualMarksMode ? 'bg-emerald-400' : 'bg-indigo-400/50'}`}
-                                                >
-                                                    <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${manualMarksMode ? 'translate-x-4.5' : 'translate-x-1'}`} />
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* Rubric Sections OR Manual Mode */}
-                                    {manualMarksMode ? (
-                                        <div className="space-y-4">
-                                            <h4 className="text-lg font-bold text-neutral-900 border-b border-neutral-100 pb-2">Direct Faculty Marks Entry</h4>
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
-                                                {panelMembers.map((fac: any) => {
-                                                    const isGuide = fac._id === projectGuideId;
-                                                    const _cfg = evaluationType ? getRubricConfig(activeEvents, evaluationType) : null;
-                                                    const _guideSection = _cfg?.sections?.find((s: any) => s.key === 'guide');
-                                                    const _panelSection = _cfg?.sections?.find((s: any) => s.key === 'panel');
-                                                    const maxMarks = isGuide ? (_guideSection?.maxMarks ?? 15) : (_panelSection?.maxMarks ?? 15);
-                                                    const facScore = evaluationDetails.facultyScores?.[fac._id] ?? '';
-
-                                                    return (
-                                                        <div key={fac._id} className={`${isGuide ? 'bg-indigo-50/50 border-indigo-200 shadow-sm' : 'bg-white border-neutral-200'} p-5 rounded-2xl border flex flex-col justify-between`}>
-                                                            <div className="mb-4">
-                                                                <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                                                                    <label className="text-base font-bold text-neutral-800 break-words leading-tight">
-                                                                        {fac.name}
-                                                                    </label>
-                                                                    {isGuide ? (
-                                                                        <span className="inline-block px-2 py-0.5 bg-indigo-100 text-indigo-700 text-[10px] font-bold uppercase rounded-md shadow-sm border border-indigo-200">Guide</span>
-                                                                    ) : (
-                                                                        <span className="inline-block px-2 py-0.5 bg-neutral-100 text-neutral-500 text-[10px] font-bold uppercase rounded-md border border-neutral-200">Evaluator</span>
-                                                                    )}
-                                                                </div>
-                                                                <p className="text-xs text-neutral-500 truncate" title={fac.email}>{fac.email}</p>
-                                                            </div>
-                                                            <div className="flex items-center gap-3 bg-neutral-50 p-2 rounded-xl self-start w-full justify-between shadow-inner border border-neutral-100">
-                                                                <span className="text-xs font-bold text-neutral-400 uppercase tracking-wider ml-1">Score:</span>
-                                                                <div className="flex items-center gap-2 text-right">
-                                                                    <input
-                                                                        type="number"
-                                                                        min="0"
-                                                                        max={maxMarks}
-                                                                        value={facScore}
-                                                                        onChange={(e) => {
-                                                                            setEvaluationDetails((prev: any) => ({
-                                                                                ...prev,
-                                                                                facultyScores: {
-                                                                                    ...prev.facultyScores,
-                                                                                    [fac._id]: Math.min(Number(e.target.value), maxMarks) || (e.target.value === '' ? '' : 0)
-                                                                                }
-                                                                            }));
-                                                                        }}
-                                                                        className="w-16 px-2 py-1.5 border border-neutral-300 rounded-lg text-lg font-bold text-center focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all bg-white shadow-sm"
-                                                                        placeholder="-"
-                                                                    />
-                                                                    <span className="text-sm font-bold text-neutral-400">/ {maxMarks}</span>
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    )
-                                                })}
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        evaluationType && getRubricConfig(activeEvents, evaluationType)?.sections?.map((section: any, idx: number) => (
-                                            <div key={idx} className="space-y-4">
-                                                <div className="flex items-center justify-between border-b border-neutral-100 pb-2">
-                                                    <h4 className="text-lg font-bold text-neutral-900 flex items-center gap-2">
-                                                        {section.title}
-                                                        <span className="text-xs font-normal text-neutral-500 bg-neutral-100 px-2 py-0.5 rounded-full">
-                                                            Max {section.maxMarks}
-                                                        </span>
-                                                    </h4>
-                                                </div>
-
-                                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                                    {section.fields.map((field: any) => (
-                                                        <div key={field.key} className="bg-neutral-50 p-4 rounded-xl border border-neutral-100 hover:border-indigo-100 transition-colors">
-                                                            <div className="flex justify-between items-start mb-2">
-                                                                <label className="text-sm font-bold text-neutral-700 block mb-1">
-                                                                    {field.label}
-                                                                </label>
-                                                                <span className="text-xs font-bold text-neutral-400 bg-white px-1.5 py-0.5 rounded border border-neutral-100">
-                                                                    /{field.max}
-                                                                </span>
-                                                            </div>
-                                                            <p className="text-xs text-neutral-500 mb-3 h-8 line-clamp-2" title={field.description}>
-                                                                {field.description}
-                                                            </p>
-                                                            <input
-                                                                type="number"
-                                                                min="0"
-                                                                max={field.max}
-                                                                value={evaluationDetails[section.key]?.[field.key] ?? ''}
-                                                                onChange={(e) => {
-                                                                    const rawVal = e.target.value;
-                                                                    if (rawVal === '') {
-                                                                        handleDetailChange(section.key, field.key, '');
-                                                                    } else {
-                                                                        const val = Math.min(Number(rawVal), field.max);
-                                                                        handleDetailChange(section.key, field.key, val);
-                                                                    }
-                                                                }}
-                                                                className="w-full px-3 py-2 rounded-lg border border-neutral-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold text-neutral-900 bg-white"
-                                                            />
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        ))
-                                    )}
-
-                                    <div className="h-px bg-neutral-100 w-full"></div>
-
-                                    <div className="space-y-2">
-                                        <label className="block text-sm font-bold text-neutral-700">Remarks & Feedback</label>
-                                        <textarea
-                                            value={evaluationRemarks}
-                                            onChange={(e) => setEvaluationRemarks(e.target.value)}
-                                            placeholder="Enter detailed feedback for the team..."
-                                            className="w-full px-4 py-3 rounded-xl border border-neutral-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-sm h-[100px] resize-none"
-                                        />
-                                    </div>
-                                </div>
-
-                                <div className="p-6 border-t border-neutral-100 bg-neutral-50 flex gap-3">
-                                    <button
-                                        onClick={() => setEvaluatingProject(null)}
-                                        className="flex-1 py-3 bg-white border border-neutral-200 text-neutral-600 font-bold rounded-xl hover:bg-neutral-50 transition-colors"
-                                    >
+                                <div className="flex gap-2 shrink-0">
+                                    <button onClick={() => setEvaluatingProject(null)}
+                                        className="px-5 py-2.5 bg-white border border-neutral-200 text-neutral-600 font-bold rounded-xl hover:bg-neutral-50 transition-colors text-sm">
                                         Cancel
                                     </button>
-                                    <button
-                                        onClick={handleSubmitEvaluation}
-                                        className="flex-1 py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 shadow-sm shadow-indigo-200 transition-colors flex items-center justify-center gap-2"
-                                    >
-                                        <CheckCircle className="w-4 h-4" /> Submit Evaluation
+                                    <button onClick={handleSubmitEvaluation}
+                                        className="px-6 py-2.5 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-colors flex items-center gap-2 text-sm shadow-sm">
+                                        <CheckCircle className="w-4 h-4" /> Submit
                                     </button>
                                 </div>
                             </div>

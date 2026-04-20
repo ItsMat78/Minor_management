@@ -4,7 +4,92 @@ import Group from '../models/Group';
 import Project from '../models/Project';
 import User from '../models/User';
 import ExcelJS from 'exceljs';
+import fs from 'fs';
 import { sendPanelAssignmentEmail } from '../utils/emailService';
+
+const RUBRIC_FIELDS: Record<string, { guide: { key: string; label: string; max: number }[]; panel: { key: string; label: string; max: number }[] }> = {
+    'mid-term': {
+        guide: [
+            { key: 'dataElicitation', label: 'Data Elicitation', max: 5 },
+            { key: 'problemDefinition', label: 'Problem Definition', max: 5 },
+            { key: 'planning', label: 'Planning', max: 5 },
+        ],
+        panel: [
+            { key: 'literatureSurvey', label: 'Literature Survey', max: 5 },
+            { key: 'presentationSkills', label: 'Presentation Skills', max: 5 },
+            { key: 'technicalUnderstanding', label: 'Technical Understanding', max: 5 },
+        ]
+    },
+    'end-term': {
+        guide: [
+            { key: 'requirementSpecification', label: 'Requirement Specification', max: 7 },
+            { key: 'systemDesign', label: 'System Design', max: 7 },
+            { key: 'implementation', label: 'Implementation', max: 7 },
+            { key: 'projectManagement', label: 'Project Management', max: 7 },
+            { key: 'planningVsExecution', label: 'Planning vs Execution', max: 7 },
+        ],
+        panel: [
+            { key: 'testingAndResults', label: 'Testing & Results', max: 10 },
+            { key: 'innovationAndRelevance', label: 'Innovation & Relevance', max: 5 },
+            { key: 'presentationAndViva', label: 'Presentation & Viva', max: 10 },
+            { key: 'conceptualDepth', label: 'Conceptual Depth', max: 10 },
+        ]
+    }
+};
+
+const calculateGrade = (total: number) => {
+    if (total >= 90) return 'A+';
+    if (total >= 80) return 'A';
+    if (total >= 70) return 'B+';
+    if (total >= 60) return 'B';
+    if (total >= 50) return 'C+';
+    if (total >= 40) return 'C';
+    if (total > 0) return 'F';
+    return '';
+};
+
+const colLetter = (n: number): string => {
+    let s = '';
+    while (n > 0) { s = String.fromCharCode(65 + (n - 1) % 26) + s; n = Math.floor((n - 1) / 26); }
+    return s;
+};
+
+// Inserts 7 college + panel header rows at the top of a worksheet. Returns 7.
+const addCollegeAndPanelHeader = (ws: ExcelJS.Worksheet, panel: any, evalLabel: string, totalCols: number, panelNumber: number): number => {
+    const lastCol = colLetter(totalCols);
+    const panelFacultyNames = (panel.faculty || []).map((f: any) => f.name || '').filter(Boolean).join(' / ') || 'Panel';
+    const batchYear: number = panel.batchYear;
+
+    // Academic year: e.g. batchYear=2022, current 2025 → 2025-26
+    const now = new Date();
+    const cy = now.getFullYear();
+    const acadYear = `${cy}-${String(cy + 1).slice(2)}`;
+
+    // Semester string derived from batch year
+    const yearDiff = cy - batchYear;
+    const semCount = Math.max(1, yearDiff * 2 + (now.getMonth() >= 6 ? 1 : 0));
+    const romanSems = ['I','II','III','IV','V','VI','VII','VIII','IX','X'];
+    const semStr = romanSems[semCount - 1] || `${semCount}th`;
+
+    ws.addRow(['Dr. SPM International Institute of Information Technology, Naya Raipur']);
+    ws.addRow(['(A Joint Initiative of Govt. of Chhattisgarh and NTPC)']);
+    ws.addRow(['Email: iiitnr@iiitnr.ac.in, Tel: (0771) 2474040, Web: www.iiitnr.ac.in']);
+    ws.addRow([`MINOR PROJECT — ${evalLabel} EVALUATION | B.Tech. ${semStr} Sem | Batch ${batchYear} | Academic Year ${acadYear}`]);
+    ws.addRow([`Panel No. ${panelNumber}    |    ${panelFacultyNames}`]);
+    ws.addRow([]);
+
+    for (let i = 1; i <= 6; i++) {
+        ws.mergeCells(`A${i}:${lastCol}${i}`);
+        const cell = ws.getCell(`A${i}`);
+        cell.alignment = { horizontal: 'center', vertical: 'middle' };
+        if (i === 1) { cell.font = { bold: true, size: 14, color: { argb: 'FF0070C0' } }; ws.getRow(i).height = 28; }
+        else if (i === 4) { cell.font = { bold: true, size: 12, underline: true }; }
+        else if (i === 5) { cell.font = { bold: true, size: 11, italic: true, color: { argb: 'FF7030A0' } }; }
+        else { cell.font = { size: 11 }; }
+    }
+    return 6;
+};
+
 export const exportEvaluations = async (req: any, res: Response) => {
     try {
         const { batchYear, evalType } = req.query; // evalType: 'midterm' or 'full'
@@ -142,39 +227,35 @@ export const exportEvaluations = async (req: any, res: Response) => {
             return '';
         };
 
-        // Data Population
+        // Data Population — marks are now per-student in studentEvaluations
         filteredGroups.forEach((g: any, gIdx: number) => {
             const project = g.project;
             const members = g.members || [];
-            const midEval = project?.midTermEvaluation;
-            const endEval = project?.endTermEvaluation;
-
-            // Extract Mid-term marks
-            // The data model stores a single panel score (not per-evaluator).
-            // E1 holds that score; E2 is left blank to avoid duplicating the same value.
-            let midE1 = '', midE2 = '', midGuide = '', midAvg = '';
-            if (midEval) {
-                midGuide = String((midEval.guide?.dataElicitation || 0) + (midEval.guide?.problemDefinition || 0) + (midEval.guide?.planning || 0));
-                const midPanelSum = (midEval.panel?.literatureSurvey || 0) + (midEval.panel?.presentationSkills || 0) + (midEval.panel?.technicalUnderstanding || 0);
-                midE1 = String(midPanelSum);
-                midE2 = '';
-                midAvg = String(Number(midGuide) + midPanelSum);
-            }
-
-            // Extract End-term marks
-            let endE1 = '', endE2 = '', endGuide = '', endAvg = '';
-            if (endEval && evalType === 'full') {
-                endGuide = String((endEval.guide?.requirementSpecification || 0) + (endEval.guide?.systemDesign || 0) + (endEval.guide?.implementation || 0) + (endEval.guide?.projectManagement || 0) + (endEval.guide?.planningVsExecution || 0));
-                const endPanelSum = (endEval.panel?.testingAndResults || 0) + (endEval.panel?.innovationAndRelevance || 0) + (endEval.panel?.presentationAndViva || 0) + (endEval.panel?.conceptualDepth || 0);
-                endE1 = String(endPanelSum);
-                endE2 = '';
-                endAvg = String(Number(endGuide) + endPanelSum);
-            }
-
-            const total = evalType === 'full' ? (Number(midAvg || 0) + Number(endAvg || 0)) : 0;
-            const grade = (evalType === 'full' && (midEval || endEval)) ? calculateGrade(total) : '';
+            const studentEvals: any[] = project?.studentEvaluations || [];
 
             members.forEach((m: any, mIdx: number) => {
+                const midSE = studentEvals.find((e: any) => String(e.student?._id || e.student) === String(m._id) && e.evalType === 'mid-term');
+                const endSE = studentEvals.find((e: any) => String(e.student?._id || e.student) === String(m._id) && e.evalType === 'end-term');
+
+                let midE1 = '', midE2 = '', midGuide = '', midAvg = '';
+                if (midSE) {
+                    midGuide = String(Object.values(midSE.guide || {}).reduce((s: number, v: any) => s + Number(v || 0), 0));
+                    const midPanel = Object.values(midSE.panel || {}).reduce((s: number, v: any) => s + Number(v || 0), 0);
+                    midE1 = String(midPanel);
+                    midAvg = String(midSE.marks ?? (Number(midGuide) + midPanel));
+                }
+
+                let endE1 = '', endE2 = '', endGuide = '', endAvg = '';
+                if (endSE && evalType === 'full') {
+                    endGuide = String(Object.values(endSE.guide || {}).reduce((s: number, v: any) => s + Number(v || 0), 0));
+                    const endPanel = Object.values(endSE.panel || {}).reduce((s: number, v: any) => s + Number(v || 0), 0);
+                    endE1 = String(endPanel);
+                    endAvg = String(endSE.marks ?? (Number(endGuide) + endPanel));
+                }
+
+                const total = evalType === 'full' ? (Number(midAvg || 0) + Number(endAvg || 0)) : 0;
+                const grade = (evalType === 'full' && (midSE || endSE)) ? calculateGrade(total) : '';
+
                 const rowData: any[] = [
                     null,
                     mIdx === 0 ? g.name : '',
@@ -858,5 +939,459 @@ export const exportPanels = async (req: any, res: Response) => {
     } catch (error: any) {
         console.error(error);
         res.status(500).json({ message: 'Error exporting panels', error: error.message });
+    }
+};
+
+// ─── Helper: fetch panel + its groups (shared by template/import/export-final) ────
+async function getPanelWithGroups(panelId: string) {
+    const panel = await Panel.findById(panelId).populate('faculty', 'name email').lean() as any;
+    if (!panel) return null;
+
+    // Compute panel number: 1-based index among panels for the same batchYear sorted by createdAt
+    const batchPanels = await Panel.find({ batchYear: panel.batchYear }).sort({ createdAt: 1 }).select('_id').lean();
+    const panelNumber = batchPanels.findIndex((p: any) => String(p._id) === String(panel._id)) + 1;
+
+    const panelFacultyIds = panel.faculty.map((f: any) => f._id.toString());
+    const groups = await Group.find({ status: { $in: ['Approved', 'Forming', 'Pending'] }, isArchived: { $ne: true } })
+        .populate('members', 'name rollNumber email branch department')
+        .populate({ path: 'project', populate: { path: 'faculty', select: 'name email _id' } })
+        .lean();
+
+    const panelGroups = groups.filter((g: any) => {
+        if (!g.project) return false;
+        const projFacId = typeof g.project.faculty === 'string' ? g.project.faculty : g.project.faculty?._id?.toString();
+        if (!projFacId || !panelFacultyIds.includes(projFacId)) return false;
+        const gBatch = g.targetBatch ? String(g.targetBatch) : (g.members?.[0]?.rollNumber ? '20' + String(g.members[0].rollNumber).substring(0, 2) : 'Unknown');
+        return gBatch === String(panel.batchYear);
+    });
+
+    panelGroups.sort((a: any, b: any) => (parseInt(a.name) || 0) - (parseInt(b.name) || 0));
+    return { panel, groups: panelGroups, panelNumber };
+}
+
+// Returns ordered list of rubric columns for the template (and import parser).
+// For end-term: includes mid-term cols first, then end-term cols.
+// section: 'guide' | 'panel1' | 'panel2'
+const getTemplateRubricCols = (evalType: string) => {
+    const mid = RUBRIC_FIELDS['mid-term'];
+    const end = RUBRIC_FIELDS['end-term'];
+    type Col = { key: string; label: string; max: number; section: 'guide' | 'panel1' | 'panel2'; evalT: string; headerLabel: string; bgArgb: string };
+    const cols: Col[] = [];
+
+    const pMid = evalType === 'end-term' ? 'Mid-' : '';
+    mid.guide.forEach(f => cols.push({ ...f, section: 'guide',  evalT: 'mid-term', headerLabel: `[${pMid}Guide] ${f.label} (0-${f.max})`, bgArgb: 'FFD6E4F7' }));
+    mid.panel.forEach(f => cols.push({ ...f, section: 'panel1', evalT: 'mid-term', headerLabel: `[${pMid}E1] ${f.label} (0-${f.max})`,    bgArgb: 'FFD6F5D6' }));
+    mid.panel.forEach(f => cols.push({ ...f, section: 'panel2', evalT: 'mid-term', headerLabel: `[${pMid}E2] ${f.label} (0-${f.max})`,    bgArgb: 'FFFCE4D6' }));
+    if (evalType === 'end-term') {
+        end.guide.forEach(f => cols.push({ ...f, section: 'guide',  evalT: 'end-term', headerLabel: `[End-Guide] ${f.label} (0-${f.max})`, bgArgb: 'FFBDD7EE' }));
+        end.panel.forEach(f => cols.push({ ...f, section: 'panel1', evalT: 'end-term', headerLabel: `[End-E1] ${f.label} (0-${f.max})`,    bgArgb: 'FFB8F2B8' }));
+        end.panel.forEach(f => cols.push({ ...f, section: 'panel2', evalT: 'end-term', headerLabel: `[End-E2] ${f.label} (0-${f.max})`,    bgArgb: 'FFFACDB0' }));
+    }
+    return cols;
+};
+
+// ─── Download blank evaluation template ────────────────────────────────────────
+export const downloadEvaluationTemplate = async (req: any, res: Response) => {
+    try {
+        const { panelId } = req.params;
+        const evalType = (req.query.evalType as string) || 'end-term';
+
+        if (!RUBRIC_FIELDS[evalType]) return res.status(400).json({ message: 'Invalid evalType. Use mid-term or end-term.' });
+
+        const data = await getPanelWithGroups(panelId);
+        if (!data) return res.status(404).json({ message: 'Panel not found' });
+
+        const { panel, groups, panelNumber } = data;
+        const rubricCols = getTemplateRubricCols(evalType);
+        // FIXED_COLS = 8: 2 hidden IDs + Group No + Project Title + Name + Roll + Attendance + Stars
+        const FIXED = 8;
+        const totalCols = FIXED + rubricCols.length + 1; // +1 for Remarks
+
+        const workbook = new ExcelJS.Workbook();
+        const ws = workbook.addWorksheet('Evaluation Template');
+
+        const border: Partial<ExcelJS.Borders> = {
+            top: { style: 'thin' }, left: { style: 'thin' },
+            bottom: { style: 'thin' }, right: { style: 'thin' }
+        };
+
+        ws.columns = [
+            { width: 0, hidden: true }, { width: 0, hidden: true }, // IDs
+            { width: 10 }, { width: 30 }, { width: 22 }, { width: 14 }, // Group/Project/Name/Roll
+            { width: 22 }, { width: 10 },                               // Attendance/Stars
+            ...rubricCols.map(() => ({ width: 20 })),
+            { width: 25 }                                               // Remarks
+        ];
+
+        const evalLabel = evalType === 'mid-term' ? 'MID-TERM' : 'END-TERM';
+        const headerBlockRows = addCollegeAndPanelHeader(ws, panel, evalLabel, totalCols, panelNumber);
+
+        const headerLabels = [
+            '__GROUP_ID__', '__STUDENT_ID__',
+            'Group No.', 'Project Title', 'Student Name', 'Roll No.',
+            'Attendance (Present/Absent)', 'Stars (1-5)',
+            ...rubricCols.map(c => c.headerLabel),
+            'Remarks'
+        ];
+        const hRow = ws.addRow(headerLabels);
+        hRow.font = { bold: true };
+        hRow.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+        hRow.height = 45;
+        hRow.eachCell((cell, colNum) => {
+            if (colNum <= 2) return;
+            cell.border = border;
+            if (colNum <= FIXED) {
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFED7D31' } };
+            } else if (colNum <= FIXED + rubricCols.length) {
+                const rc = rubricCols[colNum - FIXED - 1];
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: rc.bgArgb } };
+            } else {
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFED7D31' } };
+            }
+        });
+
+        // Data rows
+        let excelRowNum = headerBlockRows + 2;
+        groups.forEach((g: any, gIdx: number) => {
+            const members: any[] = g.members || [];
+            const groupStartRow = excelRowNum;
+            const fillColor = gIdx % 2 === 0 ? 'FFFFFFFF' : 'FFEAEAEA';
+
+            members.forEach((m: any, mIdx: number) => {
+                const row = ws.addRow([
+                    g._id.toString(), m._id.toString(),
+                    mIdx === 0 ? g.name : '',
+                    mIdx === 0 ? (g.project?.title || '') : '',
+                    m.name || '', m.rollNumber || '',
+                    'Present', '',
+                    ...rubricCols.map(() => ''),
+                    ''
+                ]);
+
+                // Attendance dropdown (col 7)
+                (row.getCell(7) as any).dataValidation = {
+                    type: 'list', allowBlank: false, formulae: ['"Present,Absent"'],
+                    showErrorMessage: true, error: 'Must be Present or Absent', errorTitle: 'Invalid'
+                };
+                // Stars dropdown (col 8)
+                (row.getCell(8) as any).dataValidation = {
+                    type: 'list', allowBlank: true, formulae: ['"1,2,3,4,5"'],
+                    showErrorMessage: true, error: 'Must be 1-5', errorTitle: 'Invalid'
+                };
+                // Per-rubric range validation
+                rubricCols.forEach((rc, ci) => {
+                    (row.getCell(FIXED + 1 + ci) as any).dataValidation = {
+                        type: 'whole', operator: 'between', formulae: [0, rc.max],
+                        allowBlank: true, showErrorMessage: true,
+                        error: `Must be 0–${rc.max}`, errorTitle: 'Out of Range'
+                    };
+                });
+
+                row.eachCell((cell, colNum) => {
+                    if (colNum <= 2) return;
+                    cell.border = border;
+                    cell.alignment = { horizontal: 'center', vertical: 'middle' };
+                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: fillColor } };
+                });
+                excelRowNum++;
+            });
+
+            if (members.length > 1) {
+                const groupEndRow = groupStartRow + members.length - 1;
+                ws.mergeCells(groupStartRow, 3, groupEndRow, 3);
+                ws.mergeCells(groupStartRow, 4, groupEndRow, 4);
+                ws.getCell(groupStartRow, 3).alignment = { horizontal: 'center', vertical: 'middle' };
+                ws.getCell(groupStartRow, 4).alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+            }
+        });
+
+        if (groups.length === 0) ws.addRow(['', '', 'No groups assigned to this panel yet.']);
+
+        const buffer = await workbook.xlsx.writeBuffer();
+        res.set('Content-Disposition', `attachment; filename=eval_template_panel_${panelId}_${evalType}.xlsx`);
+        res.set('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.send(buffer);
+    } catch (error: any) {
+        console.error(error);
+        res.status(500).json({ message: 'Error generating template', error: error.message });
+    }
+};
+
+// ─── Import filled evaluation template ─────────────────────────────────────────
+export const importEvaluationTemplate = async (req: any, res: Response) => {
+    const filePath = req.file?.path;
+    try {
+        const { panelId } = req.params;
+        const evalType = (req.query.evalType as string) || 'end-term';
+
+        if (!RUBRIC_FIELDS[evalType]) return res.status(400).json({ message: 'Invalid evalType.' });
+        if (!req.file) return res.status(400).json({ message: 'No file uploaded.' });
+
+        const data = await getPanelWithGroups(panelId);
+        if (!data) return res.status(404).json({ message: 'Panel not found' });
+
+        const rubricCols = getTemplateRubricCols(evalType);
+        const FIXED = 8;
+        const remarksColIdx = FIXED + rubricCols.length + 1;
+
+        const workbook = new ExcelJS.Workbook();
+        await workbook.xlsx.readFile(filePath!);
+        const ws = workbook.getWorksheet('Evaluation Template');
+        if (!ws) return res.status(400).json({ message: 'Worksheet "Evaluation Template" not found in file.' });
+
+        const errors: { row: number; message: string }[] = [];
+        type StudentEntry = {
+            studentId: string; attendance: string; stars: number;
+            scores: Record<string, Record<string, Record<string, number>>>; // evalT → section → key → val
+            remarks: string;
+        };
+        const groupMap: Record<string, { groupId: string; students: StudentEntry[] }> = {};
+
+        const totalRows = ws.rowCount;
+        for (let r = 2; r <= totalRows; r++) {
+            const row = ws.getRow(r);
+            const getCell = (col: number) => {
+                const v = row.getCell(col).value;
+                if (v === null || v === undefined) return '';
+                return typeof v === 'object' && 'result' in v ? String((v as any).result) : String(v).trim();
+            };
+
+            const groupId = getCell(1);
+            const studentId = getCell(2);
+            if (!groupId || !studentId) continue;
+
+            const groupName = getCell(3);
+            const attendance = getCell(7);
+            const starsRaw = getCell(8);
+
+            if (!['Present', 'Absent'].includes(attendance))
+                errors.push({ row: r, message: `Group ${groupName}: Attendance must be "Present" or "Absent", got "${attendance}"` });
+
+            let stars = 0;
+            if (starsRaw !== '') {
+                stars = Number(starsRaw);
+                if (isNaN(stars) || stars < 1 || stars > 5)
+                    errors.push({ row: r, message: `Group ${groupName}: Stars must be 1-5, got "${starsRaw}"` });
+            }
+
+            // Parse rubric scores
+            const scores: Record<string, Record<string, Record<string, number>>> = {};
+            rubricCols.forEach((rc, ci) => {
+                const val = getCell(FIXED + 1 + ci);
+                if (!scores[rc.evalT]) scores[rc.evalT] = {};
+                if (!scores[rc.evalT][rc.section]) scores[rc.evalT][rc.section] = {};
+                if (val === '') { scores[rc.evalT][rc.section][rc.key] = 0; return; }
+                const num = Number(val);
+                if (isNaN(num) || num < 0 || num > rc.max)
+                    errors.push({ row: r, message: `Group ${groupName}: ${rc.headerLabel} must be 0-${rc.max}, got "${val}"` });
+                scores[rc.evalT][rc.section][rc.key] = isNaN(num) ? 0 : Math.min(num, rc.max);
+            });
+
+            const remarks = getCell(remarksColIdx);
+            if (!groupMap[groupId]) groupMap[groupId] = { groupId, students: [] };
+            groupMap[groupId].students.push({ studentId, attendance, stars, scores, remarks });
+        }
+
+        if (errors.length > 0)
+            return res.status(400).json({ message: 'Validation errors found. No data was saved.', errors });
+
+        // Write to DB
+        const upsert = (project: any, sv: StudentEntry, et: string) => {
+            const sections = sv.scores[et] || {};
+            const guide = sections.guide || {};
+            const panel1 = sections.panel1 || {};
+            const panel2 = sections.panel2 || {};
+            const guideTotal = Object.values(guide).reduce((s: number, v: any) => s + Number(v || 0), 0);
+            const p1Total = Object.values(panel1).reduce((s: number, v: any) => s + Number(v || 0), 0);
+            const p2Total = Object.values(panel2).reduce((s: number, v: any) => s + Number(v || 0), 0);
+            const panelAvg = p2Total > 0 ? (p1Total + p2Total) / 2 : p1Total;
+            const marks = guideTotal + panelAvg;
+
+            const existing = (project.studentEvaluations as any[]).find(
+                (e: any) => String(e.student) === sv.studentId && e.evalType === et
+            );
+            if (existing) {
+                if (et === evalType) { existing.attendance = sv.attendance.toLowerCase(); existing.stars = sv.stars; }
+                existing.guide = guide; existing.panel1 = panel1; existing.panel2 = panel2;
+                existing.marks = marks; existing.updatedAt = new Date();
+            } else {
+                (project.studentEvaluations as any[]).push({
+                    student: sv.studentId, evalType: et,
+                    attendance: et === evalType ? sv.attendance.toLowerCase() : 'present',
+                    stars: et === evalType ? sv.stars : 0,
+                    guide, panel1, panel2, marks, updatedAt: new Date()
+                });
+            }
+        };
+
+        let updatedCount = 0;
+        for (const entry of Object.values(groupMap)) {
+            const group = data.groups.find((g: any) => g._id.toString() === entry.groupId) as any;
+            if (!group?.project?._id) continue;
+            const project = await Project.findById(group.project._id);
+            if (!project) continue;
+
+            const evalMeta: any = { remarks: entry.students[0]?.remarks || '', gradedBy: req.user.id, date: new Date() };
+            if (evalType === 'mid-term') project.midTermEvaluation = evalMeta;
+            else { project.endTermEvaluation = evalMeta; project.midTermEvaluation = project.midTermEvaluation || evalMeta; }
+            project.markModified('midTermEvaluation');
+            project.markModified('endTermEvaluation');
+
+            if (!project.studentEvaluations) project.studentEvaluations = [];
+            // Collect all evalTypes present in the rubricCols
+            const evalTypes = [...new Set(rubricCols.map(rc => rc.evalT))];
+            for (const sv of entry.students) {
+                for (const et of evalTypes) upsert(project, sv, et);
+            }
+            project.markModified('studentEvaluations');
+            await project.save();
+            updatedCount++;
+        }
+
+        res.json({ message: 'Evaluations imported successfully.', updatedGroups: updatedCount });
+    } catch (error: any) {
+        console.error(error);
+        res.status(500).json({ message: 'Error importing evaluations', error: error.message });
+    } finally {
+        if (filePath && fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    }
+};
+
+// ─── Export final sheet with marks + grades for a single panel ─────────────────
+export const exportPanelFinalSheet = async (req: any, res: Response) => {
+    try {
+        const { panelId } = req.params;
+        const evalType = (req.query.evalType as string) || 'full';
+
+        const data = await getPanelWithGroups(panelId);
+        if (!data) return res.status(404).json({ message: 'Panel not found' });
+
+        const { panel, groups, panelNumber } = data;
+        const workbook = new ExcelJS.Workbook();
+        const ws = workbook.addWorksheet('Final Sheet');
+
+        const border: Partial<ExcelJS.Borders> = {
+            top: { style: 'thin' }, left: { style: 'thin' },
+            bottom: { style: 'thin' }, right: { style: 'thin' }
+        };
+
+        const midRubric = RUBRIC_FIELDS['mid-term'];
+        const endRubric = RUBRIC_FIELDS['end-term'];
+        const includeMid = evalType === 'full' || evalType === 'mid-term';
+        const includeEnd = evalType === 'full' || evalType === 'end-term';
+
+        // Column definitions
+        const cols: any[] = [
+            { header: 'Group No.', width: 10 },
+            { header: 'Student Name', width: 25 },
+            { header: 'Roll No.', width: 15 },
+            { header: 'Branch', width: 12 },
+            { header: 'Project Title', width: 35 },
+            { header: 'Guide', width: 20 },
+            { header: 'Attendance', width: 12 },
+            { header: 'Stars', width: 8 },
+        ];
+
+        // Helper: read rubric field from panel1 (with fallback to legacy panel) or panel2
+        const getP = (se: any, section: 'panel1' | 'panel2', key: string) =>
+            se?.[section]?.[key] ?? (section === 'panel1' ? se?.panel?.[key] : 0) ?? 0;
+
+        if (includeMid) {
+            midRubric.guide.forEach(f => cols.push({ header: `[Mid-Guide] ${f.label}`, width: 20 }));
+            midRubric.panel.forEach(f => cols.push({ header: `[Mid-E1] ${f.label}`, width: 20 }));
+            midRubric.panel.forEach(f => cols.push({ header: `[Mid-E2] ${f.label}`, width: 20 }));
+            cols.push({ header: 'Mid Total', width: 12 });
+        }
+        if (includeEnd) {
+            endRubric.guide.forEach(f => cols.push({ header: `[End-Guide] ${f.label}`, width: 20 }));
+            endRubric.panel.forEach(f => cols.push({ header: `[End-E1] ${f.label}`, width: 20 }));
+            endRubric.panel.forEach(f => cols.push({ header: `[End-E2] ${f.label}`, width: 20 }));
+            cols.push({ header: 'End Total', width: 12 });
+        }
+        if (evalType === 'full') {
+            cols.push({ header: 'Grand Total', width: 13 });
+            cols.push({ header: 'Grade', width: 10 });
+        }
+
+        ws.columns = cols.map(c => ({ width: c.width }));
+
+        const finalEvalLabel = evalType === 'mid-term' ? 'MID-TERM' : evalType === 'end-term' ? 'END-TERM' : 'FULL';
+        addCollegeAndPanelHeader(ws, panel, finalEvalLabel, cols.length, panelNumber);
+
+        const hRow = ws.addRow(cols.map(c => c.header));
+        hRow.font = { bold: true };
+        hRow.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+        hRow.height = 45;
+        hRow.eachCell((cell) => {
+            cell.border = border;
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFED7D31' } };
+        });
+
+        groups.forEach((g: any, gIdx: number) => {
+            const members: any[] = g.members || [];
+            const studentEvals: any[] = g.project?.studentEvaluations || [];
+            const fillColor = gIdx % 2 === 0 ? 'FFFFFFFF' : 'FFEAEAEA';
+
+            members.forEach((m: any, mIdx: number) => {
+                const midSE = studentEvals.find((e: any) => String(e.student?._id || e.student) === String(m._id) && e.evalType === 'mid-term');
+                const endSE = studentEvals.find((e: any) => String(e.student?._id || e.student) === String(m._id) && e.evalType === 'end-term');
+                const primarySE = includeEnd ? endSE : midSE;
+
+                const rowData: any[] = [
+                    mIdx === 0 ? g.name : '',
+                    m.name || '',
+                    m.rollNumber || '',
+                    m.branch || m.department || '',
+                    mIdx === 0 ? g.project?.title || '' : '',
+                    mIdx === 0 ? (typeof g.project?.faculty === 'string' ? '' : g.project?.faculty?.name || '') : '',
+                    primarySE ? (primarySE.attendance === 'present' ? 'Present' : 'Absent') : '',
+                    primarySE?.stars || '',
+                ];
+
+                let midTotal = 0;
+                if (includeMid) {
+                    midRubric.guide.forEach(f => { const v = midSE?.guide?.[f.key] || 0; rowData.push(v); midTotal += v; });
+                    midRubric.panel.forEach(f => { const v = getP(midSE, 'panel1', f.key); rowData.push(v); midTotal += v; });
+                    const midP2 = midRubric.panel.reduce((s, f) => s + getP(midSE, 'panel2', f.key), 0);
+                    midRubric.panel.forEach(f => rowData.push(getP(midSE, 'panel2', f.key)));
+                    const midActual = midSE ? (midSE.marks ?? midTotal) : '';
+                    rowData.push(midActual);
+                    if (midSE) midTotal = Number(midActual) || midTotal;
+                }
+
+                let endTotal = 0;
+                if (includeEnd) {
+                    endRubric.guide.forEach(f => { const v = endSE?.guide?.[f.key] || 0; rowData.push(v); endTotal += v; });
+                    endRubric.panel.forEach(f => { const v = getP(endSE, 'panel1', f.key); rowData.push(v); endTotal += v; });
+                    const endP2 = endRubric.panel.reduce((s, f) => s + getP(endSE, 'panel2', f.key), 0);
+                    endRubric.panel.forEach(f => rowData.push(getP(endSE, 'panel2', f.key)));
+                    const endActual = endSE ? (endSE.marks ?? endTotal) : '';
+                    rowData.push(endActual);
+                    if (endSE) endTotal = Number(endActual) || endTotal;
+                }
+
+                if (evalType === 'full') {
+                    const grand = (midSE ? midTotal : 0) + (endSE ? endTotal : 0);
+                    rowData.push((midSE || endSE) ? grand : '');
+                    rowData.push((midSE || endSE) ? calculateGrade(grand) : '');
+                }
+
+                const row = ws.addRow(rowData);
+                row.eachCell((cell) => {
+                    cell.border = border;
+                    cell.alignment = { horizontal: 'center', vertical: 'middle' };
+                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: fillColor } };
+                });
+            });
+        });
+
+        const panelFacultyNames = panel.faculty.map((f: any) => f.name).join('_');
+        const buffer = await workbook.xlsx.writeBuffer();
+        res.set('Content-Disposition', `attachment; filename=final_sheet_panel_${panelFacultyNames}_${evalType}.xlsx`);
+        res.set('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.send(buffer);
+    } catch (error: any) {
+        console.error(error);
+        res.status(500).json({ message: 'Error exporting final sheet', error: error.message });
     }
 };

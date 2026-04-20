@@ -20,6 +20,11 @@ export interface IProject extends Document {
         stars: number;
         attendance: 'present' | 'absent';
         evalType: 'mid-term' | 'end-term';
+        guide?: Record<string, number>;
+        panel?: Record<string, number>;   // legacy
+        panel1?: Record<string, number>;
+        panel2?: Record<string, number>;
+        marks?: number;
         updatedAt: Date;
     }[];
     createdAt: Date;
@@ -117,6 +122,11 @@ const ProjectSchema: Schema = new Schema({
         stars: { type: Number, min: 0, max: 5, default: 0 },
         attendance: { type: String, enum: ['present', 'absent'], default: 'present' },
         evalType: { type: String, enum: ['mid-term', 'end-term'] },
+        guide: { type: Schema.Types.Mixed },
+        panel: { type: Schema.Types.Mixed },   // legacy — treated as panel1 on read
+        panel1: { type: Schema.Types.Mixed },  // E1 panel evaluator scores
+        panel2: { type: Schema.Types.Mixed },  // E2 panel evaluator scores
+        marks: { type: Number },
         updatedAt: { type: Date, default: Date.now }
     }],
     updates: [{

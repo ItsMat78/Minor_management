@@ -574,47 +574,82 @@ export const deleteProject = async (req: Request, res: Response) => {
 export const submitEvaluation = async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
-        const { type, marks, remarks, guide, panel } = req.body;
+        // New payload: { type, remarks, students: [{ studentId, stars, attendance, guide, panel }] }
+        const { type, remarks, students, midStudents } = req.body;
         const userId = (req as any).user.id;
+
+        if (!['mid-term', 'end-term', 'final-report'].includes(type)) {
+            return res.status(400).json({ message: 'Invalid evaluation type' });
+        }
 
         const project = await Project.findById(id);
         if (!project) return res.status(404).json({ message: 'Project not found' });
 
-        // Authorization: Only assigned faculty or Admin
         let isAuthorized = String(project.faculty) === userId || (req as any).user.role === 'Admin';
-
         if (!isAuthorized && project.faculty) {
             const panelDoc = await Panel.findOne({ faculty: { $all: [project.faculty, userId] } });
             if (panelDoc) isAuthorized = true;
         }
+        if (!isAuthorized) return res.status(403).json({ message: 'Not authorized to evaluate this project' });
 
-        if (!isAuthorized) {
-            return res.status(403).json({ message: 'Not authorized to evaluate this project' });
-        }
+        // Save group-level metadata (remarks only, no group-level rubric scores)
+        const evalMeta: any = { remarks, gradedBy: userId, date: new Date() };
+        if (type === 'mid-term') project.midTermEvaluation = evalMeta;
+        else if (type === 'end-term') project.endTermEvaluation = evalMeta;
+        else if (type === 'final-report') project.finalReportEvaluation = evalMeta;
 
-        const evaluationData: any = {
-            marks,
-            remarks,
-            gradedBy: userId,
-            date: new Date(),
-            guide,
-            panel
-        };
-
-        if (type === 'mid-term') {
-            project.midTermEvaluation = evaluationData;
-        } else if (type === 'end-term') {
-            project.endTermEvaluation = evaluationData;
-        } else if (type === 'final-report') {
-            project.finalReportEvaluation = evaluationData;
-        } else {
-            return res.status(400).json({ message: 'Invalid evaluation type' });
-        }
-
-        // Mark as modified if necessary
         project.markModified('midTermEvaluation');
         project.markModified('endTermEvaluation');
         project.markModified('finalReportEvaluation');
+
+        // Helper: upsert one studentEvaluations entry
+        const upsertStudentEval = (sv: any, evalType: string) => {
+            const guideScores = sv.guide || {};
+            const panel1Scores = sv.panel1 || sv.panel || {}; // panel = legacy fallback
+            const panel2Scores = sv.panel2 || {};
+            const guideTotal = Object.values(guideScores).reduce((s: number, v: any) => s + Number(v || 0), 0);
+            const p1Total = Object.values(panel1Scores).reduce((s: number, v: any) => s + Number(v || 0), 0);
+            const p2Total = Object.values(panel2Scores).reduce((s: number, v: any) => s + Number(v || 0), 0);
+            // marks = guide + average of E1 and E2 (if E2 absent, just E1)
+            const panelAvg = p2Total > 0 ? (p1Total + p2Total) / 2 : p1Total;
+            const studentMarks = guideTotal + panelAvg;
+
+            const existing = (project.studentEvaluations as any[]).find(
+                (e: any) => String(e.student) === sv.studentId && e.evalType === evalType
+            );
+            if (existing) {
+                existing.stars = sv.stars ?? existing.stars;
+                existing.attendance = sv.attendance ?? existing.attendance;
+                existing.guide = guideScores;
+                existing.panel1 = panel1Scores;
+                existing.panel2 = panel2Scores;
+                existing.marks = studentMarks;
+                existing.updatedAt = new Date();
+            } else {
+                (project.studentEvaluations as any[]).push({
+                    student: new mongoose.Types.ObjectId(sv.studentId),
+                    stars: sv.stars || 0,
+                    attendance: sv.attendance || 'present',
+                    evalType,
+                    guide: guideScores,
+                    panel1: panel1Scores,
+                    panel2: panel2Scores,
+                    marks: studentMarks,
+                    updatedAt: new Date()
+                });
+            }
+        };
+
+        // Save per-student rubric scores into studentEvaluations
+        if (Array.isArray(students) && students.length > 0) {
+            if (!project.studentEvaluations) project.studentEvaluations = [];
+            for (const sv of students) upsertStudentEval(sv, type);
+            // For end-term, also overwrite mid-term entries if provided
+            if (type === 'end-term' && Array.isArray(midStudents) && midStudents.length > 0) {
+                for (const sv of midStudents) upsertStudentEval(sv, 'mid-term');
+            }
+            project.markModified('studentEvaluations');
+        }
 
         const savedProject = await project.save();
         res.json(savedProject);
@@ -743,7 +778,11 @@ export const saveStudentEvaluations = async (req: Request, res: Response) => {
         const project = await Project.findById(id);
         if (!project) return res.status(404).json({ message: 'Project not found' });
 
-        const isAuthorized = String(project.faculty) === userId || (req as any).user.role === 'Admin';
+        let isAuthorized = String(project.faculty) === userId || (req as any).user.role === 'Admin';
+        if (!isAuthorized && project.faculty) {
+            const panelDoc = await Panel.findOne({ faculty: { $all: [project.faculty, userId] } });
+            if (panelDoc) isAuthorized = true;
+        }
         if (!isAuthorized) return res.status(403).json({ message: 'Not authorized' });
 
         if (!project.studentEvaluations) project.studentEvaluations = [];

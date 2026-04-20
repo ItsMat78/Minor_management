@@ -1,7 +1,8 @@
 import express from 'express';
-import { createPanel, getPanels, deletePanel, getMyPanelEvaluationGroups, exportPanels, updatePanel, exportEvaluations } from '../controllers/panelController';
+import { createPanel, getPanels, deletePanel, getMyPanelEvaluationGroups, exportPanels, updatePanel, exportEvaluations, downloadEvaluationTemplate, importEvaluationTemplate, exportPanelFinalSheet } from '../controllers/panelController';
 import { auth } from '../middleware/authMiddleware';
 import { UserRole } from '../models/User';
+import { upload } from '../middleware/uploadMiddleware';
 
 const router = express.Router();
 
@@ -28,5 +29,8 @@ router.put('/:id', auth, adminAuth, updatePanel);
 router.get('/my-panels', auth, facultyAuth, getMyPanelEvaluationGroups);
 router.get('/export', auth, adminAuth, exportPanels);
 router.get('/export-evaluations', auth, adminAuth, exportEvaluations);
+router.get('/:panelId/evaluation-template', auth, facultyAuth, downloadEvaluationTemplate);
+router.post('/:panelId/evaluation-import', auth, facultyAuth, upload.single('file'), importEvaluationTemplate);
+router.get('/:panelId/export-final', auth, facultyAuth, exportPanelFinalSheet);
 
 export default router;
