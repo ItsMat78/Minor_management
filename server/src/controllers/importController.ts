@@ -323,8 +323,11 @@ export const commitExcelImport = async (req: Request, res: Response) => {
                                 errors.push({ groupNumber: g.groupNumber, student: s.name, reason: 'No email in Excel — cannot create student account (add an email column or import students first)' });
                                 continue;
                             }
-                            // New students are never droppers; they're simply enrolled into the selected batch
+                            // Only set targetBatch when the student's roll-derived batch
+                            // differs from the expected batch (i.e. actual dropper).
+                            const rollBatch = s.roll && /^\d{2}/.test(s.roll) ? '20' + s.roll.substring(0, 2) : null;
                             const studentBatch = expectedBatch ? String(expectedBatch) : (g.batchYear || undefined);
+                            const isActualDropper = !!(studentBatch && rollBatch && rollBatch !== studentBatch);
                             const newStudent = await User.create({
                                 name:        s.name,
                                 email:       s.email,
@@ -333,14 +336,14 @@ export const commitExcelImport = async (req: Request, res: Response) => {
                                 rollNumber:  s.roll,
                                 branch:      s.branch || 'CSE',
                                 semester:    g.semester || undefined,
-                                targetBatch: studentBatch,
+                                targetBatch: isActualDropper ? studentBatch : undefined,
                                 isVerified:  false,
                                 mustChangePassword: true,
                                 isParticipating: studentParticipates(studentBatch, s.roll, participatingBatches)
                             });
                             memberIds.push(newStudent._id as mongoose.Types.ObjectId);
                             created.students++;
-                            created.studentList.push({ name: s.name, roll: s.roll, email: s.email, branch: s.branch || 'CSE', isDropper: false });
+                            created.studentList.push({ name: s.name, roll: s.roll, email: s.email, branch: s.branch || 'CSE', isDropper: isActualDropper });
                         }
                     } catch (sErr: any) {
                         const reason = sErr.code === 11000 ? 'Duplicate email or roll number' : (sErr.message || 'Unknown error');
@@ -370,12 +373,20 @@ export const commitExcelImport = async (req: Request, res: Response) => {
                 if (availableIds.length === 0) { created.skipped++; continue; }
 
                 // 4. Create group with only the available members
+                // Only set targetBatch on the group when it contains at least one
+                // student whose roll-derived batch differs from the expected batch.
+                // This prevents normal groups from being flagged as dropper.
                 const groupBatch = expectedBatch ? String(expectedBatch) : (g.batchYear || undefined);
+                const hasDropperMember = g.students.some((s: any) => {
+                    if (!s.roll || !/^\d{2}/.test(s.roll)) return false;
+                    const rollBatch = '20' + s.roll.substring(0, 2);
+                    return groupBatch && rollBatch !== groupBatch;
+                });
                 const groupDoc = await Group.create({
                     name:        g.groupNumber,
                     members:     availableIds,
                     status:      'Approved',
-                    targetBatch: groupBatch
+                    targetBatch: hasDropperMember ? groupBatch : undefined
                 });
                 created.groups++;
                 created.groupList.push({ groupNumber: g.groupNumber, projectTitle: g.projectTitle || `Group ${g.groupNumber} Project`, memberCount: availableIds.length });

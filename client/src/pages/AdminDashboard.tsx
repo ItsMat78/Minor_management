@@ -7,6 +7,7 @@ import { motion } from 'framer-motion';
 import MenteeGroupDetails from '../components/MenteeGroupDetails';
 import AutoCreatePanelsModal from '../components/AutoCreatePanelsModal';
 import { GlobalEventBanner } from '../components/GlobalEventBanner';
+import * as Dialog from '@radix-ui/react-dialog';
 
 export const getGroupBatchYear = (group: any) => {
     if (group.targetBatch) return group.targetBatch.toString();
@@ -163,6 +164,181 @@ const AdminDashboard: React.FC = () => {
     const [excelImportResult, setExcelImportResult] = useState<{ created: any; errors: { groupNumber: string; student?: string; reason: string }[] } | null>(null);
     const [excelImportResultTab, setExcelImportResultTab] = useState<'students' | 'faculty' | 'groups' | 'errors'>('students');
     const [snapshotImportResult, setSnapshotImportResult] = useState<{ result: any; errors: { type: string; key: string; reason: string }[] } | null>(null);
+
+    // === Admin Evaluation State ===
+    const [evaluatingProject, setEvaluatingProject] = useState<any>(null);
+    const [evaluationMarks, setEvaluationMarks] = useState<number>(0);
+    const [evaluationRemarks, setEvaluationRemarks] = useState<string>('');
+    const [evaluationDetails, setEvaluationDetails] = useState<any>({});
+    const [evaluationType, setEvaluationType] = useState<'mid-term' | 'end-term' | null>(null);
+    const [evaluationFeedback, setEvaluationFeedback] = useState<string>('');
+    const [savingFeedback, setSavingFeedback] = useState(false);
+    const [studentEvalData, setStudentEvalData] = useState<Record<string, { stars: number; attendance: 'present' | 'absent' }>>({});
+    const [manualMarksMode, setManualMarksMode] = useState(false);
+
+    const ADMIN_RUBRIC_CONFIG: any = {
+        'mid-term': {
+            maxMarks: 30,
+            sections: [
+                { title: 'Guide Evaluation', maxMarks: 15, fields: [
+                    { key: 'dataElicitation', label: 'Data Elicitation', max: 5, description: 'Identifies topic, explores basic trends' },
+                    { key: 'problemDefinition', label: 'Problem Definition', max: 5, description: 'Simple and well-scoped' },
+                    { key: 'planning', label: 'Planning', max: 5, description: 'Basic timeline, effort distribution' },
+                ], key: 'guide' },
+                { title: 'Panel Evaluation', maxMarks: 15, fields: [
+                    { key: 'literatureSurvey', label: 'Literature Survey', max: 5, description: '4-6 generic online sources' },
+                    { key: 'presentationSkills', label: 'Presentation Skills', max: 5, description: 'Basic slide design, clarity in speech' },
+                    { key: 'technicalUnderstanding', label: 'Technical Understanding', max: 5, description: 'Working knowledge of tools' },
+                ], key: 'panel' }
+            ]
+        },
+        'end-term': {
+            maxMarks: 70,
+            sections: [
+                { title: 'Guide Evaluation', maxMarks: 35, fields: [
+                    { key: 'requirementSpecification', label: 'Requirement Specification', max: 7, description: 'Functional needs outlined' },
+                    { key: 'systemDesign', label: 'System Design', max: 7, description: 'Block diagram or flowchart' },
+                    { key: 'implementation', label: 'Implementation', max: 7, description: 'Working model with basic coding' },
+                    { key: 'projectManagement', label: 'Project Management', max: 7, description: 'Manual task tracking, logbook' },
+                    { key: 'planningVsExecution', label: 'Planning vs Execution', max: 7, description: 'Deviations noted casually' },
+                ], key: 'guide' },
+                { title: 'Panel Evaluation', maxMarks: 35, fields: [
+                    { key: 'testingAndResults', label: 'Testing & Results', max: 10, description: 'Functional testing with screenshots' },
+                    { key: 'innovationAndRelevance', label: 'Innovation & Relevance', max: 5, description: 'Minor creative aspect' },
+                    { key: 'presentationAndViva', label: 'Presentation & Viva', max: 10, description: 'Clear explanation, guided answers' },
+                    { key: 'conceptualDepth', label: 'Conceptual Depth', max: 10, description: 'Understanding basic tools and outcomes' },
+                ], key: 'panel' }
+            ]
+        }
+    };
+
+    const getAdminRubricConfig = (type: string) => {
+        const eventType = type === 'mid-term' ? 'mid_term_evaluation' : 'end_term_evaluation';
+        const event = events?.find((e: any) => e.type === eventType);
+        if (event?.rubricParams) return event.rubricParams;
+        return ADMIN_RUBRIC_CONFIG[type];
+    };
+
+    const handleAdminOpenEvaluation = (group: any, type: 'mid-term' | 'end-term') => {
+        setEvaluatingProject(group);
+        setEvaluationType(type);
+        const projectData = group.project || group;
+        let existingEval: any;
+        if (type === 'mid-term') existingEval = projectData.midTermEvaluation;
+        else if (type === 'end-term') existingEval = projectData.endTermEvaluation;
+
+        const config = getAdminRubricConfig(type);
+        const initialDetails: any = { guide: {}, panel: {}, facultyScores: {} };
+        if (config) {
+            config.sections.forEach((section: any) => {
+                section.fields.forEach((field: any) => {
+                    initialDetails[section.key][field.key] = existingEval?.[section.key]?.[field.key] || '';
+                });
+            });
+        }
+        if (existingEval?.facultyScores) {
+            initialDetails.facultyScores = { ...existingEval.facultyScores };
+        }
+        setEvaluationDetails(initialDetails);
+        setEvaluationMarks(existingEval?.marks || 0);
+        setEvaluationRemarks(existingEval?.remarks || '');
+        setEvaluationFeedback(projectData?.feedback || '');
+        setManualMarksMode(existingEval ? existingEval.evaluationMode !== 'rubric' : true);
+
+        const members = group.members || [];
+        const existingStudentEvals = (projectData?.studentEvaluations || []).filter((e: any) => e.evalType === type);
+        const initStudentData: Record<string, { stars: number; attendance: 'present' | 'absent' }> = {};
+        members.forEach((m: any) => {
+            const ev = existingStudentEvals.find((e: any) => String(e.student?._id || e.student) === String(m._id));
+            initStudentData[m._id] = { stars: ev?.stars || 0, attendance: ev?.attendance || 'present' };
+        });
+        setStudentEvalData(initStudentData);
+    };
+
+    const handleAdminDetailChange = (section: string, field: string, value: number | string) => {
+        setEvaluationDetails((prev: any) => ({
+            ...prev,
+            [section]: { ...prev[section], [field]: value }
+        }));
+    };
+
+    // Auto-calculate marks when details change
+    useEffect(() => {
+        const config = evaluationType ? getAdminRubricConfig(evaluationType) : null;
+        if (!evaluationType || !config) return;
+        if (manualMarksMode) {
+            // In manual/direct mode, admin enters total directly via marks field
+            // Nothing to auto-calculate for admin (no panel member breakdown)
+        } else {
+            let total = 0;
+            config.sections.forEach((sect: any) => {
+                sect.fields.forEach((f: any) => {
+                    total += Number(evaluationDetails[sect.key]?.[f.key] || 0);
+                });
+            });
+            setEvaluationMarks(total);
+        }
+    }, [evaluationDetails, evaluationType, manualMarksMode, events]);
+
+    const handleAdminSaveEvaluationFeedback = async () => {
+        if (!evaluatingProject) return;
+        const projectData = evaluatingProject.project || evaluatingProject;
+        const projectId = projectData._id;
+        setSavingFeedback(true);
+        try {
+            await api.put(`/projects/${projectId}/feedback`, { feedback: evaluationFeedback });
+            await refreshGroups();
+        } catch (error) {
+            console.error('Failed to save feedback', error);
+            alert('Failed to save feedback.');
+        } finally {
+            setSavingFeedback(false);
+        }
+    };
+
+    const handleAdminSubmitEvaluation = async () => {
+        if (!evaluatingProject || !evaluationType) return;
+        try {
+            const projectData = evaluatingProject.project || evaluatingProject;
+            const projectId = projectData._id;
+            const sanitize = (obj: any) => {
+                const clean: any = {};
+                Object.keys(obj || {}).forEach(k => { clean[k] = obj[k] === '' ? 0 : Number(obj[k]); });
+                return clean;
+            };
+            const payload: any = {
+                type: evaluationType,
+                marks: evaluationMarks,
+                remarks: evaluationRemarks,
+                evaluationMode: manualMarksMode ? 'direct' : 'rubric',
+            };
+            if (manualMarksMode) {
+                payload.guide = {};
+                payload.panel = {};
+            } else {
+                payload.guide = sanitize(evaluationDetails.guide);
+                payload.panel = sanitize(evaluationDetails.panel);
+            }
+            await api.put(`/projects/${projectId}/evaluation`, payload);
+            if (Object.keys(studentEvalData).length > 0) {
+                const evaluations = Object.entries(studentEvalData).map(([studentId, data]) => ({
+                    studentId, stars: data.stars, attendance: data.attendance,
+                }));
+                await api.put(`/projects/${projectId}/student-evaluations`, { evaluations, evalType: evaluationType });
+            }
+            await refreshGroups();
+            setEvaluatingProject(null);
+            setEvaluationType(null);
+            setEvaluationDetails({});
+            setEvaluationMarks(0);
+            setEvaluationRemarks('');
+            setManualMarksMode(false);
+            setStudentEvalData({});
+        } catch (error) {
+            console.error('Failed to submit evaluation', error);
+            alert('Failed to submit evaluation. Check console for details.');
+        }
+    };
 
 
     useEffect(() => {
@@ -1434,7 +1610,7 @@ const AdminDashboard: React.FC = () => {
                                                                                                 <div className="flex flex-col">
                                                                                                     <span className="font-bold text-neutral-900 group-hover:text-indigo-600 transition-colors">{item.project?.title || 'No Project'}</span>
                                                                                                     <span className="text-sm text-neutral-500 line-clamp-1 mb-1">
-                                                                                                        {item.name ? `Group ${item.name}` : ''} {item.targetBatch ? `(Dropper/Batch override: ${item.targetBatch})` : ''}
+                                                                                                        {item.name ? `Group ${item.name}` : ''} {item.targetBatch && item.targetBatch !== getOriginalGroupBatchYear(item) ? `(Dropper/Batch override: ${item.targetBatch})` : ''}
                                                                                                     </span>
                                                                                                     <div className="flex flex-wrap gap-1 mt-1">
                                                                                                         {item.members?.map((m: any, idx: number) => (
@@ -1501,7 +1677,7 @@ const AdminDashboard: React.FC = () => {
                                                                                                             <MoreVertical className="w-5 h-5" />
                                                                                                         </button>
                                                                                                         {configBatchMenuOpen === item._id && (
-                                                                                                            <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-lg border border-neutral-200 py-1 z-30" onClick={e => e.stopPropagation()}>
+                                                                                                            <div className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-lg border border-neutral-200 py-1 z-30" onClick={e => e.stopPropagation()}>
                                                                                                                 <button
                                                                                                                     onClick={() => {
                                                                                                                         setConfigBatchGroup(item);
@@ -1511,6 +1687,29 @@ const AdminDashboard: React.FC = () => {
                                                                                                                 >
                                                                                                                     <Settings className="w-4 h-4" /> Configure Batch
                                                                                                                 </button>
+                                                                                                                {item.project && item.status === 'Approved' && (
+                                                                                                                    <>
+                                                                                                                        <div className="h-px bg-neutral-100 my-1" />
+                                                                                                                        <button
+                                                                                                                            onClick={() => {
+                                                                                                                                handleAdminOpenEvaluation(item, 'mid-term');
+                                                                                                                                setConfigBatchMenuOpen(null);
+                                                                                                                            }}
+                                                                                                                            className="w-full text-left px-4 py-2 text-sm text-indigo-700 hover:bg-indigo-50 flex items-center gap-2"
+                                                                                                                        >
+                                                                                                                            <Pencil className="w-4 h-4" /> {item.project?.midTermEvaluation?.marks != null ? 'Edit' : 'Add'} Mid-Term Eval
+                                                                                                                        </button>
+                                                                                                                        <button
+                                                                                                                            onClick={() => {
+                                                                                                                                handleAdminOpenEvaluation(item, 'end-term');
+                                                                                                                                setConfigBatchMenuOpen(null);
+                                                                                                                            }}
+                                                                                                                            className="w-full text-left px-4 py-2 text-sm text-purple-700 hover:bg-purple-50 flex items-center gap-2"
+                                                                                                                        >
+                                                                                                                            <Pencil className="w-4 h-4" /> {item.project?.endTermEvaluation?.marks != null ? 'Edit' : 'Add'} End-Term Eval
+                                                                                                                        </button>
+                                                                                                                    </>
+                                                                                                                )}
                                                                                                             </div>
                                                                                                         )}
                                                                                                     </div>
@@ -4592,6 +4791,248 @@ const AdminDashboard: React.FC = () => {
                     </motion.div>
                 )}
             </div>
+
+            {/* Admin Evaluation Modal */}
+            <Dialog.Root open={!!evaluatingProject} onOpenChange={(open) => !open && setEvaluatingProject(null)}>
+                <Dialog.Portal>
+                    <Dialog.Overlay className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 transition-opacity" />
+                    <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-6xl bg-white rounded-3xl shadow-2xl z-50 overflow-hidden flex flex-col focus:outline-none max-h-[90vh]">
+                        <div className="flex items-center justify-between p-6 border-b border-neutral-100 bg-neutral-50/50">
+                            <div>
+                                <Dialog.Title className="text-xl font-bold text-neutral-900">
+                                    {evaluationType === 'mid-term' ? 'Mid-Term Evaluation' : 'End-Term Evaluation'}
+                                    <span className="ml-2 text-xs font-bold uppercase tracking-wider text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-100">Admin Override</span>
+                                </Dialog.Title>
+                            </div>
+                            <Dialog.Close className="p-2 rounded-full hover:bg-neutral-100 transition-colors">
+                                <X className="w-5 h-5 text-neutral-500" />
+                            </Dialog.Close>
+                        </div>
+
+                        <div className="flex-1 overflow-hidden grid grid-cols-1 lg:grid-cols-3">
+                            {/* Left Column: Project Details */}
+                            <div className="col-span-1 border-r border-neutral-100 bg-white p-8 overflow-y-auto hidden lg:block">
+                                <div className="mb-8 flex items-start gap-3">
+                                    <div className="mt-1 shrink-0">
+                                        <FileText className="w-6 h-6 text-indigo-500" />
+                                    </div>
+                                    <h3 className="text-2xl font-black text-indigo-900 leading-tight">
+                                        {evaluatingProject?.project?.title || evaluatingProject?.title || 'Project Details'}
+                                    </h3>
+                                </div>
+
+                                <div className="space-y-8">
+                                    <div>
+                                        <h4 className="flex items-center gap-2 text-sm font-bold text-neutral-900 mb-2">
+                                            <div className="w-1.5 h-1.5 rounded-full bg-indigo-500"></div>
+                                            Abstract & Description
+                                        </h4>
+                                        <p className="text-sm text-neutral-600 leading-relaxed">
+                                            {evaluatingProject?.project?.description || evaluatingProject?.description || 'No description provided.'}
+                                        </p>
+                                    </div>
+
+                                    {((evaluatingProject?.members) || (evaluatingProject?.group?.members))?.length > 0 && (
+                                        <div>
+                                            <h4 className="flex items-center gap-2 text-sm font-bold text-neutral-900 mb-3">
+                                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
+                                                Student Evaluation
+                                            </h4>
+                                            <div className="space-y-3">
+                                                {(evaluatingProject?.members || evaluatingProject?.group?.members).map((member: any) => {
+                                                    const sd = studentEvalData[member._id] || { stars: 0, attendance: 'present' };
+                                                    return (
+                                                        <div key={member._id} className="p-3 rounded-xl bg-neutral-50 border border-neutral-100">
+                                                            <div className="flex items-center gap-3 mb-2">
+                                                                <div className="w-8 h-8 rounded-full bg-indigo-50 text-indigo-700 flex items-center justify-center font-bold text-xs ring-1 ring-indigo-100 shrink-0">
+                                                                    {member.name?.charAt(0) || '?'}
+                                                                </div>
+                                                                <div className="flex-1 min-w-0">
+                                                                    <p className="text-sm font-bold text-neutral-900 truncate">{member.name}</p>
+                                                                    <p className="text-xs text-neutral-500 font-medium">{member.rollNumber}</p>
+                                                                </div>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setStudentEvalData(prev => ({ ...prev, [member._id]: { ...sd, attendance: sd.attendance === 'present' ? 'absent' : 'present' } }))}
+                                                                    className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider border-2 cursor-pointer transition-all select-none shadow-sm hover:scale-105 active:scale-95 ${sd.attendance === 'present' ? 'bg-emerald-500 text-white border-emerald-600 hover:bg-emerald-600' : 'bg-red-500 text-white border-red-600 hover:bg-red-600'}`}
+                                                                >
+                                                                    {sd.attendance === 'present' ? '✓ Present' : '✗ Absent'}
+                                                                </button>
+                                                            </div>
+                                                            <div className="flex items-center gap-1 ml-11">
+                                                                {[1,2,3,4,5].map(star => (
+                                                                    <button key={star} type="button"
+                                                                        onClick={() => setStudentEvalData(prev => ({ ...prev, [member._id]: { ...sd, stars: star } }))}
+                                                                        className={`text-lg transition-colors ${star <= sd.stars ? 'text-amber-400' : 'text-neutral-300 hover:text-amber-300'}`}
+                                                                    >★</button>
+                                                                ))}
+                                                                <span className="text-xs text-neutral-400 ml-1">{sd.stars > 0 ? `${sd.stars}/5` : 'Rate'}</span>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {(evaluatingProject?.project?.attachments?.length > 0 || evaluatingProject?.attachments?.length > 0) && (
+                                        <div>
+                                            <h4 className="flex items-center gap-2 text-sm font-bold text-neutral-900 mb-3">
+                                                <div className="w-1.5 h-1.5 rounded-full bg-amber-500"></div>
+                                                Resources & Links
+                                            </h4>
+                                            <div className="space-y-2">
+                                                {(evaluatingProject?.project?.attachments || evaluatingProject?.attachments || []).map((att: string, i: number) => {
+                                                    const isLink = att.startsWith('http') && !att.includes('/uploads/');
+                                                    return (
+                                                        <a key={i} href={att} target="_blank" rel="noopener noreferrer"
+                                                            className="flex items-center gap-3 p-2.5 bg-neutral-50 border border-neutral-100 rounded-xl hover:border-indigo-300 hover:bg-indigo-50/50 transition-colors group">
+                                                            <div className="text-indigo-600"><FileText className="w-4 h-4" /></div>
+                                                            <div className="flex-1 min-w-0">
+                                                                <p className="text-sm font-bold text-neutral-800 truncate group-hover:text-indigo-700 transition-colors">
+                                                                    {isLink ? 'External Link' : att.split('/').pop()}
+                                                                </p>
+                                                            </div>
+                                                        </a>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {evaluationType === 'end-term' && (
+                                        <div>
+                                            <h4 className="flex items-center gap-2 text-sm font-bold text-neutral-900 mb-3">
+                                                <div className="w-1.5 h-1.5 rounded-full bg-orange-500"></div>
+                                                Faculty Feedback
+                                            </h4>
+                                            <textarea
+                                                value={evaluationFeedback}
+                                                onChange={(e) => setEvaluationFeedback(e.target.value)}
+                                                placeholder="Share overall feedback visible to the team on their project..."
+                                                className="w-full px-3 py-2 rounded-xl border border-neutral-200 focus:outline-none focus:ring-2 focus:ring-orange-500/20 text-sm h-[120px] resize-none bg-orange-50/30"
+                                            />
+                                            <button
+                                                onClick={handleAdminSaveEvaluationFeedback}
+                                                disabled={savingFeedback}
+                                                className="mt-2 w-full py-2 bg-orange-600 text-white text-xs font-bold rounded-lg hover:bg-orange-700 disabled:opacity-50"
+                                            >
+                                                {savingFeedback ? 'Saving...' : 'Save Feedback'}
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Right Column: Evaluation Inputs */}
+                            <div className="col-span-1 lg:col-span-2 flex flex-col overflow-hidden h-full">
+                                <div className="p-6 space-y-8 overflow-y-auto flex-1">
+                                    {/* Sticky Score Display */}
+                                    <div className="sticky top-0 z-10 flex items-center justify-between bg-indigo-600 text-white p-6 rounded-2xl shadow-lg shadow-indigo-200 border border-indigo-500 backdrop-blur-md">
+                                        <div>
+                                            <h4 className="font-bold text-indigo-100 text-sm uppercase tracking-wider mb-1">Total Score</h4>
+                                            <div className="flex items-baseline gap-2">
+                                                <span className="text-4xl font-bold">{evaluationMarks}</span>
+                                                <span className="text-indigo-200 font-medium">/ {evaluationType ? (getAdminRubricConfig(evaluationType)?.maxMarks ?? 100) : 100}</span>
+                                            </div>
+                                        </div>
+                                        <div className="text-right flex flex-col items-end">
+                                            <div className="flex items-center gap-3 mb-4">
+                                                <span className="text-xs font-medium text-indigo-200 uppercase tracking-wider">Direct Marks Entry</span>
+                                                <button
+                                                    onClick={() => setManualMarksMode(!manualMarksMode)}
+                                                    className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${manualMarksMode ? 'bg-emerald-400' : 'bg-indigo-400/50'}`}
+                                                >
+                                                    <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${manualMarksMode ? 'translate-x-4.5' : 'translate-x-1'}`} />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Rubric Sections OR Manual Mode */}
+                                    {manualMarksMode ? (
+                                        <div className="space-y-4">
+                                            <h4 className="text-lg font-bold text-neutral-900 border-b border-neutral-100 pb-2">Direct Total Marks Entry</h4>
+                                            <div className="bg-white border border-neutral-200 rounded-2xl p-6">
+                                                <label className="text-sm font-bold text-neutral-700 block mb-2">Total Marks</label>
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    max={evaluationType ? (getAdminRubricConfig(evaluationType)?.maxMarks ?? 100) : 100}
+                                                    value={evaluationMarks}
+                                                    onChange={(e) => setEvaluationMarks(Math.min(Number(e.target.value), evaluationType ? (getAdminRubricConfig(evaluationType)?.maxMarks ?? 100) : 100))}
+                                                    className="w-32 px-3 py-2 border border-neutral-300 rounded-lg text-2xl font-bold text-center focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                                                />
+                                                <span className="text-sm font-bold text-neutral-400 ml-2">/ {evaluationType ? (getAdminRubricConfig(evaluationType)?.maxMarks ?? 100) : 100}</span>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        evaluationType && getAdminRubricConfig(evaluationType)?.sections?.map((section: any, idx: number) => (
+                                            <div key={idx} className="space-y-4">
+                                                <div className="flex items-center justify-between border-b border-neutral-100 pb-2">
+                                                    <h4 className="text-lg font-bold text-neutral-900 flex items-center gap-2">
+                                                        {section.title}
+                                                        <span className="text-xs font-normal text-neutral-500 bg-neutral-100 px-2 py-0.5 rounded-full">Max {section.maxMarks}</span>
+                                                    </h4>
+                                                </div>
+                                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                                    {section.fields.map((field: any) => (
+                                                        <div key={field.key} className="bg-neutral-50 p-4 rounded-xl border border-neutral-100 hover:border-indigo-100 transition-colors">
+                                                            <div className="flex justify-between items-start mb-2">
+                                                                <label className="text-sm font-bold text-neutral-700 block mb-1">{field.label}</label>
+                                                                <span className="text-xs font-bold text-neutral-400 bg-white px-1.5 py-0.5 rounded border border-neutral-100">/{field.max}</span>
+                                                            </div>
+                                                            <p className="text-xs text-neutral-500 mb-3 h-8 line-clamp-2" title={field.description}>{field.description}</p>
+                                                            <input
+                                                                type="number" min="0" max={field.max}
+                                                                value={evaluationDetails[section.key]?.[field.key] ?? ''}
+                                                                onChange={(e) => {
+                                                                    const rawVal = e.target.value;
+                                                                    if (rawVal === '') handleAdminDetailChange(section.key, field.key, '');
+                                                                    else handleAdminDetailChange(section.key, field.key, Math.min(Number(rawVal), field.max));
+                                                                }}
+                                                                className="w-full px-3 py-2 rounded-lg border border-neutral-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold text-neutral-900 bg-white"
+                                                            />
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        ))
+                                    )}
+
+                                    <div className="h-px bg-neutral-100 w-full"></div>
+
+                                    <div className="space-y-2">
+                                        <label className="block text-sm font-bold text-neutral-700">Remarks & Feedback</label>
+                                        <textarea
+                                            value={evaluationRemarks}
+                                            onChange={(e) => setEvaluationRemarks(e.target.value)}
+                                            placeholder="Enter detailed feedback for the team..."
+                                            className="w-full px-4 py-3 rounded-xl border border-neutral-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-sm h-[100px] resize-none"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="p-6 border-t border-neutral-100 bg-neutral-50 flex gap-3">
+                                    <button
+                                        onClick={() => setEvaluatingProject(null)}
+                                        className="flex-1 py-3 bg-white border border-neutral-200 text-neutral-600 font-bold rounded-xl hover:bg-neutral-50 transition-colors"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        onClick={handleAdminSubmitEvaluation}
+                                        className="flex-1 py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 shadow-sm shadow-indigo-200 transition-colors flex items-center justify-center gap-2"
+                                    >
+                                        <CheckCircle className="w-4 h-4" /> Submit Evaluation
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </Dialog.Content>
+                </Dialog.Portal>
+            </Dialog.Root>
+
         </div>
     );
 };
