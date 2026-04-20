@@ -94,7 +94,7 @@ export const createProject = async (req: Request, res: Response) => {
 export const getFacultyProjects = async (req: Request, res: Response) => {
     try {
         const userId = (req as any).user.id;
-        const projects = await Project.find({ faculty: userId })
+        const projects = await Project.find({ faculty: userId, isArchived: { $ne: true } })
             .populate({
                 path: 'group',
                 populate: { path: 'members', select: 'name email rollNumber branch' }
@@ -239,10 +239,10 @@ export const getProjects = async (req: Request, res: Response) => {
     try {
         const { id: userId, role } = (req as any).user;
 
-        let query: any = {};
+        let query: any = { isArchived: { $ne: true } };
 
         if (role === UserRole.ADMIN) {
-            // Admin sees all projects — support pagination
+            // Admin sees all non-archived projects — support pagination
         } else if (role === UserRole.FACULTY) {
             query.faculty = userId;
         } else {

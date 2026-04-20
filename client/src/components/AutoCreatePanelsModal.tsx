@@ -188,31 +188,43 @@ const UnallocatedSidebar = ({ faculties, onAutoAdjust }: { faculties: FacultyWor
     );
 };
 
+// --- Combined state to guarantee atomic updates (prevents duplication bugs) ---
+interface BoardState {
+    panels: DraftPanel[];
+    unallocated: FacultyWorkload[];
+}
+
 const AutoCreatePanelsModal: React.FC<AutoCreatePanelsModalProps> = ({ faculties, batchYear, onClose, onConfirm, isEditingMode, initialPanels }) => {
-    const [draftPanels, setDraftPanels] = useState<DraftPanel[]>([]);
-    const [unallocatedFaculties, setUnallocatedFaculties] = useState<FacultyWorkload[]>([]);
+    const [board, setBoard] = useState<BoardState>({ panels: [], unallocated: [] });
     const [isSaving, setIsSaving] = useState(false);
     const [hasOvercrowded, setHasOvercrowded] = useState(false);
     const [activeFaculty, setActiveFaculty] = useState<FacultyWorkload | null>(null);
+
+    // Convenience accessors (derived from single source of truth)
+    const draftPanels = board.panels;
+    const unallocatedFaculties = board.unallocated;
 
     const sensors = useSensors(
         useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
         useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
     );
 
-    const findContainer = (id: string) => {
-        if (unallocatedFaculties.some(f => f._id === id)) return "unallocated-sidebar";
-        const panel = draftPanels.find(p => p.faculties.some(f => f._id === id));
+    // Pure helper — takes state snapshot, returns container id
+    const findContainerIn = (state: BoardState, facultyId: string): string | null => {
+        if (state.unallocated.some(f => f._id === facultyId)) return "unallocated-sidebar";
+        const panel = state.panels.find(p => p.faculties.some(f => f._id === facultyId));
         return panel ? panel.id : null;
     };
 
     const deletePanel = (panelId: string) => {
-        setDraftPanels(prev => {
-            const panel = prev.find(p => p.id === panelId);
-            if (panel) {
-                setUnallocatedFaculties(u => [...u, ...panel.faculties]);
-            }
-            return prev.filter(p => p.id !== panelId);
+        setBoard(prev => {
+            const panel = prev.panels.find(p => p.id === panelId);
+            if (!panel) return prev;
+            const existingIds = new Set(prev.unallocated.map(f => f._id));
+            return {
+                panels: prev.panels.filter(p => p.id !== panelId),
+                unallocated: [...prev.unallocated, ...panel.faculties.filter(f => !existingIds.has(f._id))]
+            };
         });
     };
 
@@ -233,33 +245,30 @@ const AutoCreatePanelsModal: React.FC<AutoCreatePanelsModalProps> = ({ faculties
     };
 
     const autoFillReserve = () => {
-        if (unallocatedFaculties.length === 0) return;
-
-        setDraftPanels(prev => {
-            const next = [...prev];
-            const reserve = [...unallocatedFaculties];
+        setBoard(prev => {
+            if (prev.unallocated.length === 0) return prev;
+            const nextPanels = prev.panels.map(p => ({ ...p, faculties: [...p.faculties] }));
+            const reserve = [...prev.unallocated];
             
             // Distribute as many as possible to panels with < 3 members
-            for (let i = 0; i < next.length && reserve.length > 0; i++) {
-                while (next[i].faculties.length < 3 && reserve.length > 0) {
-                    next[i] = {
-                        ...next[i],
-                        faculties: [...next[i].faculties, reserve.shift()!]
-                    };
+            for (let i = 0; i < nextPanels.length && reserve.length > 0; i++) {
+                while (nextPanels[i].faculties.length < 3 && reserve.length > 0) {
+                    nextPanels[i].faculties.push(reserve.shift()!);
                 }
             }
             
-            setUnallocatedFaculties(reserve);
-            return next;
+            return { panels: nextPanels, unallocated: reserve };
         });
     };
 
     useEffect(() => {
         if (isEditingMode && initialPanels) {
-            setDraftPanels(initialPanels);
             // Any faculty from the provided list NOT in initialPanels should be unallocated
             const usedFacIds = new Set(initialPanels.flatMap(p => p.faculties.map((f: any) => f._id)));
-            setUnallocatedFaculties(faculties.filter(f => !usedFacIds.has(f._id)));
+            setBoard({
+                panels: initialPanels,
+                unallocated: faculties.filter(f => !usedFacIds.has(f._id))
+            });
             return;
         }
 
@@ -290,8 +299,7 @@ const AutoCreatePanelsModal: React.FC<AutoCreatePanelsModalProps> = ({ faculties
             if (targetPanel) targetPanel.faculties.push(f);
         });
 
-        setDraftPanels(initialDrafts);
-        setUnallocatedFaculties(reserveFacs);
+        setBoard({ panels: initialDrafts, unallocated: reserveFacs });
     }, [faculties, isEditingMode, initialPanels]);
 
     useEffect(() => {
@@ -315,47 +323,55 @@ const AutoCreatePanelsModal: React.FC<AutoCreatePanelsModalProps> = ({ faculties
         const isActiveFaculty = active.data.current?.type === "Faculty";
         if (!isActiveFaculty) return;
 
-        const activeContainerId = findContainer(activeId);
         const isOverSidebar = over.data.current?.type === "Sidebar" || over.id === "unallocated-sidebar";
         const overContainerId = isOverSidebar ? "unallocated-sidebar" : (over.data.current?.type === "Panel" ? over.id : over.data.current?.currentPanelId);
 
-        if (!activeContainerId || !overContainerId || activeContainerId === overContainerId) return;
+        if (!overContainerId) return;
 
-        // Perform atomic move if moving between containers
-        const facultyToMove = active.data.current?.faculty;
+        const facultyToMove = active.data.current?.faculty as FacultyWorkload;
 
-        // 1. Remove from source
-        if (activeContainerId === "unallocated-sidebar") {
-            setUnallocatedFaculties(prev => prev.filter(f => f._id !== activeId));
-        } else {
-            setDraftPanels(prev => prev.map(p => 
-                p.id === activeContainerId 
-                    ? { ...p, faculties: p.faculties.filter(f => f._id !== activeId) }
-                    : p
-            ));
-        }
+        // Single atomic state update — finds source container from *latest* state
+        setBoard(prev => {
+            const activeContainerId = findContainerIn(prev, activeId);
+            if (!activeContainerId || activeContainerId === overContainerId) return prev;
 
-        // 2. Add to destination
-        if (overContainerId === "unallocated-sidebar") {
-            setUnallocatedFaculties(prev => {
-                if (prev.some(f => f._id === activeId)) return prev;
-                return [...prev, facultyToMove];
-            });
-        } else {
-            setDraftPanels(prev => prev.map(p => {
-                if (p.id !== overContainerId) return p;
-                if (p.faculties.some(f => f._id === activeId)) return p;
-                
-                const nextFaculties = [...p.faculties];
-                if (over.data.current?.type === "Faculty") {
-                    const overIdx = nextFaculties.findIndex(f => f._id === overId);
-                    nextFaculties.splice(overIdx, 0, facultyToMove);
-                } else {
-                    nextFaculties.push(facultyToMove);
+            let nextPanels = prev.panels;
+            let nextUnallocated = prev.unallocated;
+
+            // 1. Remove from source
+            if (activeContainerId === "unallocated-sidebar") {
+                nextUnallocated = nextUnallocated.filter(f => f._id !== activeId);
+            } else {
+                nextPanels = nextPanels.map(p =>
+                    p.id === activeContainerId
+                        ? { ...p, faculties: p.faculties.filter(f => f._id !== activeId) }
+                        : p
+                );
+            }
+
+            // 2. Add to destination (with duplicate guard)
+            if (overContainerId === "unallocated-sidebar") {
+                if (!nextUnallocated.some(f => f._id === activeId)) {
+                    nextUnallocated = [...nextUnallocated, facultyToMove];
                 }
-                return { ...p, faculties: nextFaculties };
-            }));
-        }
+            } else {
+                nextPanels = nextPanels.map(p => {
+                    if (p.id !== overContainerId) return p;
+                    if (p.faculties.some(f => f._id === activeId)) return p;
+
+                    const nextFaculties = [...p.faculties];
+                    if (over.data.current?.type === "Faculty") {
+                        const overIdx = nextFaculties.findIndex(f => f._id === overId);
+                        nextFaculties.splice(overIdx, 0, facultyToMove);
+                    } else {
+                        nextFaculties.push(facultyToMove);
+                    }
+                    return { ...p, faculties: nextFaculties };
+                });
+            }
+
+            return { panels: nextPanels, unallocated: nextUnallocated };
+        });
     };
 
     const handleDragEnd = (event: DragEndEvent) => {
@@ -366,35 +382,35 @@ const AutoCreatePanelsModal: React.FC<AutoCreatePanelsModalProps> = ({ faculties
         const activeId = active.id.toString();
         const overId = over.id.toString();
 
-        const activeContainerId = findContainer(activeId);
-        const overContainerId = over.data.current?.currentPanelId || findContainer(overId) || over.id.toString();
+        if (activeId === overId) return;
 
-        if (!activeContainerId || !overContainerId) return;
+        // Single atomic update for same-container reordering
+        setBoard(prev => {
+            const activeContainerId = findContainerIn(prev, activeId);
+            const overContainerId = over.data.current?.currentPanelId || findContainerIn(prev, overId) || over.id.toString();
 
-        if (activeContainerId === overContainerId && activeId !== overId) {
+            if (!activeContainerId || !overContainerId) return prev;
+            if (activeContainerId !== overContainerId) return prev;
+
             if (activeContainerId === "unallocated-sidebar") {
-                setUnallocatedFaculties(prev => {
-                    const activeIndex = prev.findIndex(f => f._id === activeId);
-                    const overIndex = prev.findIndex(f => f._id === overId);
-                    if (activeIndex === -1 || overIndex === -1) return prev;
-                    return arrayMove(prev, activeIndex, overIndex);
-                });
+                const activeIndex = prev.unallocated.findIndex(f => f._id === activeId);
+                const overIndex = prev.unallocated.findIndex(f => f._id === overId);
+                if (activeIndex === -1 || overIndex === -1) return prev;
+                return { ...prev, unallocated: arrayMove(prev.unallocated, activeIndex, overIndex) };
             } else {
-                setDraftPanels(prev => {
-                    const panelIdx = prev.findIndex(p => p.id === activeContainerId);
-                    if (panelIdx === -1) return prev;
-                    const next = [...prev];
-                    const activeIndex = next[panelIdx].faculties.findIndex(f => f._id === activeId);
-                    const overIndex = next[panelIdx].faculties.findIndex(f => f._id === overId);
-                    if (activeIndex === -1 || overIndex === -1) return prev;
-                    next[panelIdx] = {
-                        ...next[panelIdx],
-                        faculties: arrayMove(next[panelIdx].faculties, activeIndex, overIndex)
-                    };
-                    return next;
-                });
+                const panelIdx = prev.panels.findIndex(p => p.id === activeContainerId);
+                if (panelIdx === -1) return prev;
+                const activeIndex = prev.panels[panelIdx].faculties.findIndex(f => f._id === activeId);
+                const overIndex = prev.panels[panelIdx].faculties.findIndex(f => f._id === overId);
+                if (activeIndex === -1 || overIndex === -1) return prev;
+                const nextPanels = [...prev.panels];
+                nextPanels[panelIdx] = {
+                    ...nextPanels[panelIdx],
+                    faculties: arrayMove(nextPanels[panelIdx].faculties, activeIndex, overIndex)
+                };
+                return { ...prev, panels: nextPanels };
             }
-        }
+        });
     };
 
     const handleConfirm = async () => {
@@ -478,7 +494,7 @@ const AutoCreatePanelsModal: React.FC<AutoCreatePanelsModalProps> = ({ faculties
                                         <DroppablePanel key={p.id} panel={p} index={i} onDelete={() => deletePanel(p.id)} />
                                     ))}
                                     <div className="bg-neutral-50/50 rounded-2xl p-5 border-2 border-dashed border-neutral-300 flex items-center justify-center flex-col text-neutral-500 hover:bg-indigo-50/30 hover:border-indigo-300 hover:text-indigo-600 transition-all cursor-pointer group" onClick={() => {
-                                        setDraftPanels(prev => [...prev, { id: `new-panel-${Date.now()}`, faculties: [] }]);
+                                        setBoard(prev => ({ ...prev, panels: [...prev.panels, { id: `new-panel-${Date.now()}`, faculties: [] }] }));
                                     }}>
                                         <div className="h-10 w-10 bg-white rounded-full flex items-center justify-center shadow-sm mb-3 group-hover:scale-110 transition-transform">
                                             <Users className="w-5 h-5" />
