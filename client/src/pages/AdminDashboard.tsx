@@ -1518,24 +1518,10 @@ const AdminDashboard: React.FC = () => {
                                                                     </button>
                                                                     <button
                                                                         onClick={() => handleEditFaculty(f)}
-                                                                        className="p-1.5 rounded-lg hover:bg-indigo-50 text-neutral-400 hover:text-indigo-600 transition-colors"
-                                                                        title="Configure limits"
+                                                                        className="px-3 py-2 rounded-lg bg-neutral-900 text-white hover:bg-neutral-800 transition-colors font-medium text-xs flex items-center gap-1.5 shadow-sm"
+                                                                        title="Settings"
                                                                     >
-                                                                        <Settings className="w-4 h-4" />
-                                                                    </button>
-                                                                    <button
-                                                                        onClick={() => handleEditUser(f)}
-                                                                        className="p-1.5 rounded-lg hover:bg-amber-50 text-neutral-400 hover:text-amber-600 transition-colors"
-                                                                        title="Edit faculty"
-                                                                    >
-                                                                        <Pencil className="w-4 h-4" />
-                                                                    </button>
-                                                                    <button
-                                                                        onClick={() => setDeleteConfirm(f)}
-                                                                        className="p-1.5 rounded-lg hover:bg-red-50 text-neutral-400 hover:text-red-600 transition-colors"
-                                                                        title="Delete faculty"
-                                                                    >
-                                                                        <Trash2 className="w-4 h-4" />
+                                                                        <Settings className="w-3.5 h-3.5" /> Manage
                                                                     </button>
                                                                 </div>
                                                             </td>
@@ -2722,17 +2708,36 @@ const AdminDashboard: React.FC = () => {
 
                             <div className="p-8 overflow-y-auto">
                                 {/* Profile Header */}
-                                <div className="flex items-start gap-6 mb-8">
-                                    <div className="h-20 w-20 rounded-2xl bg-indigo-100 flex items-center justify-center text-3xl font-bold text-indigo-600 border-4 border-white shadow-lg">
-                                        {editingFaculty.name?.charAt(0)}
+                                <div className="flex items-start justify-between gap-6 mb-8">
+                                    <div className="flex items-center gap-6">
+                                        <div className="h-20 w-20 rounded-2xl bg-indigo-100 flex items-center justify-center text-3xl font-bold text-indigo-600 shadow-md shrink-0 overflow-hidden border-2 border-white">
+                                            {editingFaculty.photoUrl ? (
+                                                <img src={editingFaculty.photoUrl} alt={editingFaculty.name} className="w-full h-full object-cover" />
+                                            ) : (
+                                                editingFaculty.name?.charAt(0) || 'F'
+                                            )}
+                                        </div>
+                                        <div>
+                                            <h2 className="text-2xl font-bold text-gray-900">{editingFaculty.name}</h2>
+                                            <p className="text-neutral-400 text-sm flex items-center gap-2 mt-1.5">
+                                                <span className="bg-neutral-100 px-2 py-0.5 rounded text-neutral-600 font-mono">{editingFaculty.email}</span>
+                                                <span className="bg-neutral-100 px-2 py-0.5 rounded text-neutral-600">{editingFaculty.department || 'Dept N/A'}</span>
+                                            </p>
+                                        </div>
                                     </div>
-                                    <div>
-                                        <h2 className="text-2xl font-bold text-gray-900">{editingFaculty.name}</h2>
-
-                                        <p className="text-neutral-400 text-sm flex items-center gap-2">
-                                            <span className="bg-neutral-100 px-2 py-0.5 rounded text-neutral-600 font-mono">{editingFaculty.email}</span>
-                                            <span className="bg-neutral-100 px-2 py-0.5 rounded text-neutral-600">{editingFaculty.department || 'Dept N/A'}</span>
-                                        </p>
+                                    <div className="flex flex-col gap-2 shrink-0">
+                                        <button
+                                            onClick={() => handleEditUser(editingFaculty)}
+                                            className="px-4 py-2 text-sm font-medium border border-amber-200 text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-xl transition-colors flex items-center gap-2"
+                                        >
+                                            <Pencil className="w-4 h-4" /> Edit Profile
+                                        </button>
+                                        <button
+                                            onClick={() => setDeleteConfirm(editingFaculty)}
+                                            className="px-4 py-2 text-sm font-medium border border-red-200 text-red-700 bg-red-50 hover:bg-red-100 rounded-xl transition-colors flex items-center gap-2"
+                                        >
+                                            <Trash2 className="w-4 h-4" /> Delete Faculty
+                                        </button>
                                     </div>
                                 </div>
 
