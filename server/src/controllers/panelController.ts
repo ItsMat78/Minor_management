@@ -1563,10 +1563,24 @@ export const previewPanelImport = async (req: any, res: Response) => {
 
         const groups = await Group.find({ status: { $in: ['Approved', 'Pending'] }, isArchived: { $ne: true } })
              .populate('project', 'faculty')
+             .populate('members', 'targetBatch rollNumber')
              .lean();
              
+        const getGroupBatchYear = (g: any) => {
+            if (g.targetBatch) return String(g.targetBatch);
+            if (g.batchYear) return String(g.batchYear);
+            if (g.members && g.members.length > 0) {
+                 const m = g.members[0];
+                 if (m.targetBatch) return String(m.targetBatch);
+                 if (m.rollNumber) return '20' + String(m.rollNumber).substring(0, 2);
+            }
+            return '';
+        };
+
+        const batchGroups = groups.filter((g: any) => getGroupBatchYear(g) === String(req.body.batchYear));
+
         const getGroupCount = (facId: string) => {
-            return groups.filter((g: any) => g.project && (String(g.project.faculty) === facId || (g.project.faculty && String(g.project.faculty._id) === facId))).length;
+            return batchGroups.filter((g: any) => g.project && (String(g.project.faculty) === facId || (g.project.faculty && String(g.project.faculty._id) === facId))).length;
         };
 
         for (const [panelNo, panelData] of Object.entries(panelsMap)) {

@@ -574,7 +574,8 @@ const AdminDashboard: React.FC = () => {
             const allFaculties = Array.isArray(facRes.data) ? facRes.data : [];
             const groupsRes = await api.get('/groups');
             const allGroups = Array.isArray(groupsRes.data) ? groupsRes.data : [];
-            const getGroupCount = (facId: string) => allGroups.filter((g: any) => g.project && (g.project.faculty === facId || (g.project.faculty && g.project.faculty._id === facId))).length;
+            const batchGroups = allGroups.filter((g: any) => getGroupBatchYear(g) === panelExcelBatch);
+            const getGroupCount = (facId: string) => batchGroups.filter((g: any) => g.project && (g.project.faculty === facId || (g.project.faculty && g.project.faculty._id === facId))).length;
             
             const facultiesWithWorkload = allFaculties.map(f => ({
                 _id: f._id, name: f.name, email: f.email, groupCount: getGroupCount(f._id)
