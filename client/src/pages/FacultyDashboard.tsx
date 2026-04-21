@@ -20,6 +20,7 @@ interface Project {
     group: {
         _id: string;
         name: string;
+        targetBatch?: number | string;
         members: {
             _id: string;
             name: string;
@@ -340,7 +341,7 @@ const renderEvalCard = (item: any, activeTab: string, handleOpenEvaluation: any,
                         className={`px-3 py-1 rounded-md text-xs font-bold transition-colors whitespace-nowrap ${isEvaluated
                             ? 'bg-white border border-neutral-200 text-neutral-600 hover:border-indigo-300 hover:text-indigo-600'
                             : 'bg-indigo-600 text-white hover:bg-indigo-700'
-                        }`}
+                            }`}
                     >
                         {isEvaluated ? 'Edit' : 'Evaluate'}
                     </button>
@@ -1542,10 +1543,6 @@ const FacultyDashboard: React.FC = () => {
                                                                 {/* Panel Groups */}
                                                                 {panelGroupsInBatch.length > 0 && (
                                                                     <div>
-                                                                        <h3 className="text-2xl font-black text-indigo-900 mb-6 flex items-center gap-3">
-                                                                            <Users className="w-6 h-6 text-indigo-500" />
-                                                                            Your Panel Area
-                                                                        </h3>
                                                                         {panelGroupsInBatch.map((pData: any, idx: number) => {
                                                                             if (pData.groups.length === 0) return null;
 
@@ -1564,14 +1561,7 @@ const FacultyDashboard: React.FC = () => {
                                                                                     {/* Per-panel bulk actions toolbar */}
                                                                                     <div className="mb-5 flex flex-col xl:flex-row xl:items-center gap-3 p-4 bg-indigo-50/50 border border-indigo-100 rounded-2xl">
                                                                                         <div className="flex items-center gap-3 mr-auto flex-wrap">
-                                                                                            <span className="text-xs font-bold text-indigo-700 uppercase tracking-wider">Bulk Actions</span>
-                                                                                            {/* Room badge */}
-                                                                                            {pData.panel?.room && (
-                                                                                                <div className="flex items-center gap-1.5 px-3 py-1 bg-amber-50 border border-amber-200 text-amber-700 rounded-lg text-xs font-bold">
-                                                                                                    <span>📍</span>
-                                                                                                    <span>Venue: {pData.panel.room}</span>
-                                                                                                </div>
-                                                                                            )}
+                                                                                            <span className="text-xs font-bold text-indigo-700 uppercase tracking-wider">EVALUATIONS</span>
                                                                                             <div className="flex items-center gap-2 border-l border-indigo-200 pl-3">
                                                                                                 <button
                                                                                                     onClick={() => setManualMarksMode(!manualMarksMode)}
@@ -1587,31 +1577,31 @@ const FacultyDashboard: React.FC = () => {
                                                                                         <div className="flex flex-wrap items-center gap-3 mt-3 xl:mt-0">
                                                                                             <button
                                                                                                 onClick={() => handleDownloadTemplate(panelId, manualMarksMode ? 'direct' : 'rubric')}
-                                                                                            className="flex items-center gap-2 px-4 py-2 bg-white border border-indigo-200 text-indigo-700 rounded-lg text-xs font-bold hover:bg-indigo-50 transition-colors shadow-sm"
-                                                                                        >
-                                                                                            <Download className="w-3.5 h-3.5" /> Download Template
-                                                                                        </button>
-                                                                                        <label className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold cursor-pointer shadow-sm transition-colors ${importingPanelId === panelId ? 'bg-neutral-100 text-neutral-400 border border-neutral-200' : 'bg-white border border-emerald-200 text-emerald-700 hover:bg-emerald-50'}`}>
-                                                                                            <Upload className="w-3.5 h-3.5" />
-                                                                                            {importingPanelId === panelId ? 'Uploading...' : 'Upload Evaluations'}
-                                                                                            <input
-                                                                                                type="file"
-                                                                                                accept=".xlsx"
-                                                                                                className="hidden"
-                                                                                                disabled={!!importingPanelId}
-                                                                                                onChange={(e) => {
-                                                                                                    const f = e.target.files?.[0];
-                                                                                                    if (f) { setImportErrors([]); setImportSuccess(null); handleImportTemplate(panelId, f, manualMarksMode ? 'direct' : 'rubric'); }
-                                                                                                    e.target.value = '';
-                                                                                                }}
-                                                                                            />
-                                                                                        </label>
-                                                                                        <button
-                                                                                            onClick={() => handleExportFinalSheet(panelId)}
-                                                                                            className="flex items-center gap-2 px-4 py-2 bg-white border border-amber-200 text-amber-700 rounded-lg text-xs font-bold hover:bg-amber-50 transition-colors shadow-sm"
-                                                                                        >
-                                                                                            <FileText className="w-3.5 h-3.5" /> Export Final Sheet
-                                                                                        </button>
+                                                                                                className="flex items-center gap-2 px-4 py-2 bg-white border border-indigo-200 text-indigo-700 rounded-lg text-xs font-bold hover:bg-indigo-50 transition-colors shadow-sm"
+                                                                                            >
+                                                                                                <Download className="w-3.5 h-3.5" /> Download Template
+                                                                                            </button>
+                                                                                            <label className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold cursor-pointer shadow-sm transition-colors ${importingPanelId === panelId ? 'bg-neutral-100 text-neutral-400 border border-neutral-200' : 'bg-white border border-emerald-200 text-emerald-700 hover:bg-emerald-50'}`}>
+                                                                                                <Upload className="w-3.5 h-3.5" />
+                                                                                                {importingPanelId === panelId ? 'Uploading...' : 'Upload Evaluations'}
+                                                                                                <input
+                                                                                                    type="file"
+                                                                                                    accept=".xlsx"
+                                                                                                    className="hidden"
+                                                                                                    disabled={!!importingPanelId}
+                                                                                                    onChange={(e) => {
+                                                                                                        const f = e.target.files?.[0];
+                                                                                                        if (f) { setImportErrors([]); setImportSuccess(null); handleImportTemplate(panelId, f, manualMarksMode ? 'direct' : 'rubric'); }
+                                                                                                        e.target.value = '';
+                                                                                                    }}
+                                                                                                />
+                                                                                            </label>
+                                                                                            <button
+                                                                                                onClick={() => handleExportFinalSheet(panelId)}
+                                                                                                className="flex items-center gap-2 px-4 py-2 bg-white border border-amber-200 text-amber-700 rounded-lg text-xs font-bold hover:bg-amber-50 transition-colors shadow-sm"
+                                                                                            >
+                                                                                                <FileText className="w-3.5 h-3.5" /> Export Final Sheet
+                                                                                            </button>
                                                                                         </div>
                                                                                     </div>
                                                                                     {/* Import result feedback */}
@@ -1673,17 +1663,26 @@ const FacultyDashboard: React.FC = () => {
 
                                                             {/* Right Sidebar for Panel Information */}
                                                             {panelGroupsInBatch.length > 0 && (
-                                                                <div className="w-full xl:w-64 shrink-0 sticky top-24">
-                                                                    <div className="bg-white rounded-3xl border border-neutral-200 shadow-sm overflow-hidden">
-                                                                        <div className="bg-indigo-600 px-6 py-5">
-                                                                            <h4 className="text-white font-bold flex items-center gap-2">
-                                                                                <Users className="w-5 h-5 text-indigo-200" />
-                                                                                Panel Information
-                                                                            </h4>
-                                                                        </div>
-                                                                        <div className="p-6">
-                                                                            {panelGroupsInBatch.map((pData: any, idx: number) => (
-                                                                                <div key={idx} className="mb-6 last:mb-0">
+                                                                <div className="w-full xl:w-64 shrink-0 sticky top-24 space-y-6">
+                                                                    {panelGroupsInBatch.map((pData: any, idx: number) => (
+                                                                        <div key={idx} className="bg-white rounded-3xl border border-neutral-200 shadow-sm overflow-hidden">
+                                                                            <div className="flex bg-indigo-600 px-6 py-5 items-center justify-around">
+                                                                                <h4 className="text-white font-bold flex items-center gap-3">
+                                                                                    <Users className="w-5 h-5 text-indigo-200" />
+                                                                                    Panel {pData.panelNumber || pData.panel?.panelNumber}
+                                                                                    {pData.panel?.room && (
+                                                                                        <div className="flex items-center gap-1.5 px-3 py-1 bg-indigo-50 border border-white-200 text-indigo-700 rounded-lg text-xs font-bold w-fit">
+                                                                                            <span>Room No: {pData.panel.room}</span>
+                                                                                        </div>
+                                                                                    )}
+                                                                                </h4>
+
+
+                                                                            </div>
+
+                                                                            <div className="p-6">
+                                                                                <div className="mb-6 last:mb-0">
+
                                                                                     <h5 className="text-xs font-bold text-neutral-400 uppercase tracking-wider mb-4">Panel Members</h5>
                                                                                     <div className="space-y-4">
                                                                                         {pData.panel.faculty?.map((fac: any, fIdx: number) => (
@@ -1699,14 +1698,22 @@ const FacultyDashboard: React.FC = () => {
                                                                                                     <p className="text-sm font-bold text-neutral-900 break-words line-clamp-2 leading-tight mb-0.5">{fac.name}</p>
                                                                                                     <p className="text-xs text-neutral-500 truncate" title={fac.email}>{fac.email}</p>
                                                                                                 </div>
+
                                                                                             </div>
+
                                                                                         ))}
+
                                                                                     </div>
+
                                                                                 </div>
-                                                                            ))}
+
+                                                                            </div>
+
                                                                         </div>
-                                                                    </div>
+
+                                                                    ))}
                                                                 </div>
+
                                                             )}
                                                         </div>
                                                     );
@@ -1912,7 +1919,7 @@ const FacultyDashboard: React.FC = () => {
                                                     <p className="font-bold text-neutral-900 text-sm truncate mb-0.5">{m.name}</p>
                                                     <div className="flex items-center gap-2">
                                                         <p className="text-[11px] text-neutral-500 font-mono items-center flex gap-1 font-bold">
-                                                            {m.rollNumber} 
+                                                            {m.rollNumber}
                                                         </p>
                                                         {idx === 0 && <span className="text-[9px] bg-neutral-900 text-white px-1.5 py-0.5 rounded-md font-black tracking-tighter shadow-sm shrink-0">LEADER</span>}
                                                     </div>
@@ -1971,7 +1978,7 @@ const FacultyDashboard: React.FC = () => {
                                 {/* Review Area */}
                                 <div className="pt-6 border-t border-neutral-200">
                                     <h4 className="flex items-center gap-2 text-xs font-black text-neutral-400 uppercase tracking-widest mb-4">Project Action</h4>
-                                    
+
                                     {(selectedProject?.status === 'Pending' || (selectedProject?.status as any) === 'Draft' || (selectedProject?.status as any) === 'Rejected') ? (
                                         <div className="flex flex-col gap-4">
                                             <label className="block text-[10px] font-black text-neutral-400 uppercase tracking-[0.2em] px-1">Review & Decision</label>
@@ -2123,7 +2130,7 @@ const FacultyDashboard: React.FC = () => {
                                                             const rowTotal = gTotal + (p2Total > 0 ? (p1Total + p2Total) / 2 : p1Total);
                                                             const upd = (patch: Partial<EvalStudentEntry>) =>
                                                                 setDataMap(prev => ({ ...prev, [m._id]: { ...prev[m._id], ...patch } }));
-                                                            
+
                                                             const gMaxSum = guideFields.reduce((s: number, f: any) => s + f.max, 0);
                                                             const pMaxSum = panelFields.reduce((s: number, f: any) => s + f.max, 0);
 
@@ -2160,7 +2167,7 @@ const FacultyDashboard: React.FC = () => {
                                                                     </td>
                                                                     <td className="px-2 py-1.5 text-center border-r border-neutral-200">
                                                                         <div className="flex justify-center gap-0">
-                                                                            {[1,2,3,4,5].map(s => (
+                                                                            {[1, 2, 3, 4, 5].map(s => (
                                                                                 <button key={s} type="button" onClick={() => upd({ stars: s })}
                                                                                     className={`text-sm leading-none ${s <= sd.stars ? 'text-amber-400' : 'text-neutral-300 hover:text-amber-300'}`}>★</button>
                                                                             ))}
