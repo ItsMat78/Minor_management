@@ -68,7 +68,7 @@ const addCollegeAndPanelHeader = (ws: ExcelJS.Worksheet, panel: any, evalLabel: 
     // Semester string derived from batch year
     const yearDiff = cy - batchYear;
     const semCount = Math.max(1, yearDiff * 2 + (now.getMonth() >= 6 ? 1 : 0));
-    const romanSems = ['I','II','III','IV','V','VI','VII','VIII','IX','X'];
+    const romanSems = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'];
     const semStr = romanSems[semCount - 1] || `${semCount}th`;
 
     ws.addRow(['Dr. SPM International Institute of Information Technology, Naya Raipur']);
@@ -129,17 +129,8 @@ export const exportEvaluations = async (req: any, res: Response) => {
 
         // Formatting columns
         pSheet.columns = [
-            { width: 3 }, // Spacer
-            { width: 10 }, // Group No.
-            { width: 25 }, // Student's name
-            { width: 15 }, // Roll no.
-            { width: 15 }, // Department
-            { width: 40 }, // Title of the Project
-            { width: 25 }, // Supervisor Name
-            { width: 10 }, { width: 10 }, { width: 10 }, { width: 20 }, // Mid term (E1, E2, Guide, Avg)
-            { width: 10 }, { width: 10 }, { width: 10 }, { width: 20 }, // End term (E1, E2, Guide, Avg)
-            { width: 10 }, // Total
-            { width: 10 }  // Grade
+            { width: 4 }, { width: 12 }, { width: 30 }, { width: 16 }, { width: 14 }, { width: 45 }, { width: 26 },
+            { width: 14 }, { width: 14 }, { width: 14 }, { width: 20 }, { width: 14 }, { width: 14 }, { width: 14 }, { width: 20 }, { width: 12 }, { width: 12 },
         ];
 
         // Header titles (Rows 1-4)
@@ -181,18 +172,20 @@ export const exportEvaluations = async (req: any, res: Response) => {
 
         if (evalType === 'full') {
             headerRow1Data.push('END-TERM (35+35)', '', '', 'Average Marks (70) Guide+(E1+E2)/2', 'Total (100)', 'Grade');
-            headerRow2Data.push('E1 (35)', 'E2 (35)', 'Guide (35)', '', '', '');
+            headerRow2Data.push('E1 f(35)', 'E2 (35)', 'Guide (35)', '', '', '');
         }
 
         const headerRow1 = pSheet.addRow(headerRow1Data);
         const headerRow2 = pSheet.addRow(headerRow2Data);
+        headerRow1.height = 38;
+        headerRow2.height = 30;
 
         // Header Merging Logic
         const commonFields = ['B', 'C', 'D', 'E', 'F', 'G', 'K'];
         if (evalType === 'full') {
             commonFields.push('O', 'P', 'Q');
         }
-        
+
         commonFields.forEach(col => {
             pSheet.mergeCells(`${col}6:${col}7`);
         });
@@ -202,15 +195,17 @@ export const exportEvaluations = async (req: any, res: Response) => {
             pSheet.mergeCells('L6:N6');
         }
 
+        const MID = 'FFFCE4D6'; const END = 'FFE2EFDA'; const AVG = 'FFFFF2CC'; const TOT = 'FFDCE6F1'; const HDR = 'FF002060';
+        const colBg: Record<number, string> = { 2: HDR, 3: HDR, 4: HDR, 5: HDR, 6: HDR, 7: HDR, 8: MID, 9: MID, 10: MID, 11: AVG, 12: END, 13: END, 14: END, 15: AVG, 16: TOT, 17: TOT };
+        const colFg: Record<number, string> = { 2: 'FFFFFFFF', 3: 'FFFFFFFF', 4: 'FFFFFFFF', 5: 'FFFFFFFF', 6: 'FFFFFFFF', 7: 'FFFFFFFF', 8: 'FF843C0C', 9: 'FF843C0C', 10: 'FF843C0C', 11: 'FF7F6000', 12: 'FF1F4E3D', 13: 'FF1F4E3D', 14: 'FF1F4E3D', 15: 'FF7F6000', 16: 'FF1F3864', 17: 'FF1F3864' };
+
         [headerRow1, headerRow2].forEach(row => {
-            row.font = { bold: true };
             row.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
             row.eachCell((cell, colNumber) => {
                 if (colNumber > 1) {
                     cell.border = borderStyle;
-                    let bgColor = 'FFED7D31'; // Default Orange
-                    if (colNumber === 11 || colNumber === 15) bgColor = 'FFFFF2CC'; // Pale yellow
-                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bgColor } };
+                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colBg[colNumber] || 'FFFFFFFF' } };
+                    cell.font = { bold: true, size: 9, color: { argb: colFg[colNumber] || 'FF000000' } };
                 }
             });
         });
@@ -232,25 +227,38 @@ export const exportEvaluations = async (req: any, res: Response) => {
             const project = g.project;
             const members = g.members || [];
             const studentEvals: any[] = project?.studentEvaluations || [];
+            
+            const firstMemberRow = pSheet.rowCount + 1;
 
             members.forEach((m: any, mIdx: number) => {
                 const midSE = studentEvals.find((e: any) => String(e.student?._id || e.student) === String(m._id) && e.evalType === 'mid-term');
                 const endSE = studentEvals.find((e: any) => String(e.student?._id || e.student) === String(m._id) && e.evalType === 'end-term');
 
+                const fmtMark = (n: number) => n > 0 ? String(Math.round(n * 100) / 100) : '';
                 let midE1 = '', midE2 = '', midGuide = '', midAvg = '';
                 if (midSE) {
-                    midGuide = String(Object.values(midSE.guide || {}).reduce((s: number, v: any) => s + Number(v || 0), 0));
-                    const midPanel = Object.values(midSE.panel || {}).reduce((s: number, v: any) => s + Number(v || 0), 0);
-                    midE1 = String(midPanel);
-                    midAvg = String(midSE.marks ?? (Number(midGuide) + midPanel));
+                    const midGNum = Object.values(midSE.guide || {}).reduce((s: number, v: any) => s + Number(v || 0), 0);
+                    const midP1 = Object.values(midSE.panel1 || midSE.panel || {}).reduce((s: number, v: any) => s + Number(v || 0), 0);
+                    const midP2 = Object.values(midSE.panel2 || {}).reduce((s: number, v: any) => s + Number(v || 0), 0);
+                    midGuide = fmtMark(midGNum) || String(midGNum);
+                    midE1 = fmtMark(midP1) || String(midP1);
+                    midE2 = fmtMark(midP2);
+                    const pAvg = midP2 > 0 ? (midP1 + midP2) / 2 : midP1;
+                    const finalMarks = midSE.marks ?? (midGNum + pAvg);
+                    midAvg = fmtMark(finalMarks) || String(finalMarks);
                 }
 
                 let endE1 = '', endE2 = '', endGuide = '', endAvg = '';
                 if (endSE && evalType === 'full') {
-                    endGuide = String(Object.values(endSE.guide || {}).reduce((s: number, v: any) => s + Number(v || 0), 0));
-                    const endPanel = Object.values(endSE.panel || {}).reduce((s: number, v: any) => s + Number(v || 0), 0);
-                    endE1 = String(endPanel);
-                    endAvg = String(endSE.marks ?? (Number(endGuide) + endPanel));
+                    const endGNum = Object.values(endSE.guide || {}).reduce((s: number, v: any) => s + Number(v || 0), 0);
+                    const endP1 = Object.values(endSE.panel1 || endSE.panel || {}).reduce((s: number, v: any) => s + Number(v || 0), 0);
+                    const endP2 = Object.values(endSE.panel2 || {}).reduce((s: number, v: any) => s + Number(v || 0), 0);
+                    endGuide = fmtMark(endGNum) || String(endGNum);
+                    endE1 = fmtMark(endP1) || String(endP1);
+                    endE2 = fmtMark(endP2);
+                    const pAvg = endP2 > 0 ? (endP1 + endP2) / 2 : endP1;
+                    const finalMarks = endSE.marks ?? (endGNum + pAvg);
+                    endAvg = fmtMark(finalMarks) || String(finalMarks);
                 }
 
                 const total = evalType === 'full' ? (Number(midAvg || 0) + Number(endAvg || 0)) : 0;
@@ -276,14 +284,15 @@ export const exportEvaluations = async (req: any, res: Response) => {
                 }
 
                 const row = pSheet.addRow(rowData);
-                
+                row.height = 32; // Give more space
+
                 // Color logic: Alternate background for each GROUP (not each row)
                 const fillColor = gIdx % 2 === 0 ? 'FFFFFFFF' : 'FFEAEAEA'; // White vs Light Grey (Darker than before)
 
                 row.eachCell((cell, colNum) => {
                     if (colNum > 1) {
                         cell.border = borderStyle;
-                        cell.alignment = { horizontal: 'center', vertical: 'middle' };
+                        cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
                         cell.fill = {
                             type: 'pattern',
                             pattern: 'solid',
@@ -292,6 +301,16 @@ export const exportEvaluations = async (req: any, res: Response) => {
                     }
                 });
             });
+
+            if (members.length > 1) {
+                const lastMemberRow = pSheet.rowCount;
+                ['B', 'F', 'G'].forEach(col => {
+                    pSheet.mergeCells(`${col}${firstMemberRow}:${col}${lastMemberRow}`);
+                    // Re-apply common alignment for the merged blocks
+                    const mergedCell = pSheet.getCell(`${col}${firstMemberRow}`);
+                    mergedCell.alignment = { horizontal: col === 'B' ? 'center' : 'left', vertical: 'middle', wrapText: true };
+                });
+            }
         });
 
         const buffer = await workbook.xlsx.writeBuffer();
@@ -486,19 +505,19 @@ export const exportPanels = async (req: any, res: Response) => {
             .lean();
 
         // helpers
-        const thin: Partial<ExcelJS.Borders> = { top:{style:'thin'}, left:{style:'thin'}, bottom:{style:'thin'}, right:{style:'thin'} };
-        const medium: Partial<ExcelJS.Borders> = { top:{style:'medium'}, left:{style:'medium'}, bottom:{style:'medium'}, right:{style:'medium'} };
-        const center: Partial<ExcelJS.Alignment> = { horizontal:'center', vertical:'middle', wrapText:true };
-        const leftAlign: Partial<ExcelJS.Alignment> = { horizontal:'left', vertical:'middle', wrapText:true };
-        const fill = (argb: string): ExcelJS.Fill => ({ type:'pattern', pattern:'solid', fgColor:{argb} });
-        const getBranch = (roll: string) => { if (!roll || roll.length < 5) return ''; const c = roll[4]; return c==='1'?'ECE':c==='2'?'DSAI':'CSE'; };
+        const thin: Partial<ExcelJS.Borders> = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+        const medium: Partial<ExcelJS.Borders> = { top: { style: 'medium' }, left: { style: 'medium' }, bottom: { style: 'medium' }, right: { style: 'medium' } };
+        const center: Partial<ExcelJS.Alignment> = { horizontal: 'center', vertical: 'middle', wrapText: true };
+        const leftAlign: Partial<ExcelJS.Alignment> = { horizontal: 'left', vertical: 'middle', wrapText: true };
+        const fill = (argb: string): ExcelJS.Fill => ({ type: 'pattern', pattern: 'solid', fgColor: { argb } });
+        const getBranch = (roll: string) => { if (!roll || roll.length < 5) return ''; const c = roll[4]; return c === '1' ? 'ECE' : c === '2' ? 'DSAI' : 'CSE'; };
 
         // academic context
         const refBatch = panels.length > 0 ? (panels[0] as any).batchYear : (batchYear !== 'All' ? Number(batchYear) : new Date().getFullYear());
         const now = new Date(); const cy = now.getFullYear(); const cm = now.getMonth();
         let semCount = (cy - refBatch) * 2 + (cm >= 6 ? 1 : 0);
         if (semCount < 1) semCount = 1;
-        const romanSems = ['I','II','III','IV','V','VI','VII','VIII','IX','X'];
+        const romanSems = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'];
         const semStr = romanSems[Math.min(semCount - 1, 9)] || `${semCount}th`;
         const acadYear = `${cy}-${String(cy + 1).slice(2)}`;
 
@@ -509,7 +528,7 @@ export const exportPanels = async (req: any, res: Response) => {
                 if (!g.project) return false;
                 const facId = g.project.faculty?._id?.toString() ?? g.project.faculty;
                 if (!facId || !facIds.has(facId)) return false;
-                const gb = g.targetBatch ? String(g.targetBatch) : (g.members?.[0]?.rollNumber ? '20' + g.members[0].rollNumber.substring(0,2) : '');
+                const gb = g.targetBatch ? String(g.targetBatch) : (g.members?.[0]?.rollNumber ? '20' + g.members[0].rollNumber.substring(0, 2) : '');
                 return gb === String(panel.batchYear);
             });
         });
@@ -543,37 +562,31 @@ export const exportPanels = async (req: any, res: Response) => {
             if (totalCols > 1) summary.mergeCells(idx + 1, 1, idx + 1, totalCols);
             const cell = summary.getCell(idx + 1, 1);
             cell.alignment = center; cell.border = thin;
-            if (idx === 0) { cell.font = { bold:true, size:14, color:{argb:'FF0070C0'} }; summary.getRow(1).height = 28; }
-            else if (idx === 3) { cell.font = { bold:true, size:11, underline:true }; cell.fill = fill('FFDCE6F1'); summary.getRow(4).height = 22; }
-            else { cell.font = { size:10, italic:true }; }
+            if (idx === 0) { cell.font = { bold: true, size: 14, color: { argb: 'FF0070C0' } }; summary.getRow(1).height = 38; }
+            else if (idx === 3) { cell.font = { bold: true, size: 11, underline: true }; cell.fill = fill('FFDCE6F1'); summary.getRow(4).height = 38; }
+            else { cell.font = { size: 10, italic: true }; }
         });
 
         const panelHeaderRow = summary.addRow(['', ...(panels as any[]).map((_: any, i: number) => `Panel ${i + 1}`)]);
-        panelHeaderRow.height = 26;
+        panelHeaderRow.height = 38;
         panelHeaderRow.eachCell({ includeEmpty: true }, (cell, col) => {
             cell.border = medium; cell.alignment = center;
-            if (col === 1) { cell.font = { bold:true, size:10, color:{argb:'FF404040'} }; cell.fill = fill('FFD6DCE4'); }
-            else { cell.font = { bold:true, size:12, color:{argb:'FFFFFFFF'} }; cell.fill = fill('FF2E75B6'); }
+            if (col === 1) { cell.font = { bold: true, size: 10, color: { argb: 'FF404040' } }; cell.fill = fill('FFD6DCE4'); }
+            else { cell.font = { bold: true, size: 12, color: { argb: 'FFFFFFFF' } }; cell.fill = fill('FF2E75B6'); }
         });
 
         const facRow = summary.addRow([
             'Faculty (Chair *)',
             ...(panels as any[]).map((p: any, i: number) => p.faculty.map((f: any) => f._id.toString() === panelChairs[i] ? `${f.name} (Chair)` : f.name).join('\n')),
         ]);
-        facRow.height = Math.max(40, (panels as any[]).reduce((mx: number, p: any) => Math.max(mx, p.faculty.length * 16), 40));
+        facRow.height = Math.max(40, (panels as any[]).reduce((mx: number, p: any) => Math.max(mx, p.faculty.length * 32), 40));
         facRow.eachCell({ includeEmpty: true }, (cell, col) => {
             cell.border = thin; cell.alignment = { ...center, wrapText: true };
-            if (col === 1) { cell.font = { bold:true, italic:true, size:9, color:{argb:'FF595959'} }; cell.fill = fill('FFF2F2F2'); }
-            else { cell.font = { bold:true, size:10 }; cell.fill = fill('FFE2EFDA'); }
+            if (col === 1) { cell.font = { bold: true, italic: true, size: 9, color: { argb: 'FF595959' } }; cell.fill = fill('FFF2F2F2'); }
+            else { cell.font = { bold: true, size: 10 }; cell.fill = fill('FFE2EFDA'); }
         });
 
-        const roomRow = summary.addRow(['Venue / Room', ...(panels as any[]).map((p: any, i: number) => p.room || `Room ${300 + i + 4}`)]);
-        roomRow.height = 20;
-        roomRow.eachCell({ includeEmpty: true }, (cell, col) => {
-            cell.border = thin; cell.alignment = center;
-            if (col === 1) { cell.font = { bold:true, size:9, color:{argb:'FF595959'} }; cell.fill = fill('FFF2F2F2'); }
-            else { cell.font = { bold:true, size:10, color:{argb:'FF0070C0'} }; }
-        });
+
 
         const maxGroupCount = Math.max(...panelGroups.map(pg => pg.length), 0);
         if (maxGroupCount > 0) {
@@ -581,25 +594,33 @@ export const exportPanels = async (req: any, res: Response) => {
             for (let gi = 0; gi < maxGroupCount; gi++) {
                 const rowData = [gi === 0 ? 'Group Nos.' : '', ...(panels as any[]).map((_: any, pi: number) => panelGroups[pi][gi]?.name ?? '')];
                 const dataRow = summary.addRow(rowData);
-                dataRow.height = 18;
+                dataRow.height = 38;
                 dataRow.eachCell({ includeEmpty: true }, (cell, col) => {
                     if (col === 1) return;
-                    cell.alignment = center; cell.font = { color:{argb:'FFCC0000'}, bold:true, size:10 }; cell.border = thin;
+                    cell.alignment = center; cell.font = { color: { argb: 'FFCC0000' }, bold: true, size: 10 }; cell.border = thin;
                 });
             }
             const grpEnd = summary.rowCount;
             if (grpEnd > grpStart) summary.mergeCells(grpStart, 1, grpEnd, 1);
             const lc = summary.getCell(grpStart, 1);
-            lc.value = 'Group Nos.'; lc.alignment = center; lc.font = { bold:true, size:10, color:{argb:'FF404040'} }; lc.fill = fill('FFF2F2F2'); lc.border = medium;
+            lc.value = 'Group Nos.'; lc.alignment = center; lc.font = { bold: true, size: 10, color: { argb: 'FF404040' } }; lc.fill = fill('FFF2F2F2'); lc.border = medium;
         }
+
+        const roomRow = summary.addRow(['Venue / Room', ...(panels as any[]).map((p: any, i: number) => p.room || `Room ${300 + i + 4}`)]);
+        roomRow.height = 38;
+        roomRow.eachCell({ includeEmpty: true }, (cell, col) => {
+            cell.border = thin; cell.alignment = center;
+            if (col === 1) { cell.font = { bold: true, size: 9, color: { argb: 'FF595959' } }; cell.fill = fill('FFF2F2F2'); }
+            else { cell.font = { bold: true, size: 10, color: { argb: 'FF0070C0' } }; cell.fill = fill('FFF2F2F2'); }
+        });
 
         // INDIVIDUAL PANEL SHEETS
         (panels as any[]).forEach((panel: any, pi: number) => {
             const pg = panelGroups[pi]; const chairId = panelChairs[pi];
             const ws = workbook.addWorksheet(`Panel ${pi + 1}`);
             ws.columns = [
-                {width:3},{width:9},{width:26},{width:15},{width:10},{width:38},{width:24},
-                {width:9},{width:9},{width:9},{width:18},{width:9},{width:9},{width:9},{width:18},{width:10},{width:9},
+                { width: 4 }, { width: 12 }, { width: 30 }, { width: 16 }, { width: 14 }, { width: 45 }, { width: 26 },
+                { width: 14 }, { width: 14 }, { width: 14 }, { width: 20 }, { width: 14 }, { width: 14 }, { width: 14 }, { width: 20 }, { width: 12 }, { width: 12 },
             ];
             const LAST = 17;
 
@@ -611,38 +632,38 @@ export const exportPanels = async (req: any, res: Response) => {
             ];
             sheetInstRows.forEach((text, idx) => {
                 ws.addRow([null, text]);
-                ws.mergeCells(idx+1, 2, idx+1, LAST);
-                const cell = ws.getCell(idx+1, 2);
+                ws.mergeCells(idx + 1, 2, idx + 1, LAST);
+                const cell = ws.getCell(idx + 1, 2);
                 cell.alignment = center; cell.border = thin;
-                if (idx === 0) { cell.font = { bold:true, size:13, color:{argb:'FF0070C0'} }; ws.getRow(1).height = 28; }
-                else if (idx === 3) { cell.font = { bold:true, size:11, underline:true }; cell.fill = fill('FFDCE6F1'); ws.getRow(4).height = 22; }
-                else { cell.font = { size:10, italic:true }; }
+                if (idx === 0) { cell.font = { bold: true, size: 13, color: { argb: 'FF0070C0' } }; ws.getRow(1).height = 38; }
+                else if (idx === 3) { cell.font = { bold: true, size: 11, underline: true }; cell.fill = fill('FFDCE6F1'); ws.getRow(4).height = 38; }
+                else { cell.font = { size: 10, italic: true }; }
             });
 
             ws.addRow([]);
             const facLabel = `Panel No. ${pi + 1}   |   ` + panel.faculty.map((f: any) => f._id.toString() === chairId ? `${f.name} (Chair)` : f.name).join('  -  ');
             ws.addRow([null, `Panel No. ${pi + 1}`, null, null, facLabel]);
-            ws.mergeCells('B6:D6'); ws.mergeCells('E6:Q6'); ws.getRow(6).height = 22;
+            ws.mergeCells('B6:D6'); ws.mergeCells('E6:Q6'); ws.getRow(6).height = 38;
             for (let col = 2; col <= LAST; col++) {
                 const cell = ws.getCell(6, col);
-                cell.font = { bold:true, size:10, color:{argb:'FF1F3864'} }; cell.fill = fill('FF9BC2E6'); cell.border = thin;
+                cell.font = { bold: true, size: 10, color: { argb: 'FF1F3864' } }; cell.fill = fill('FF9BC2E6'); cell.border = thin;
                 cell.alignment = col <= 4 ? center : leftAlign;
             }
 
             const MID = 'FFFCE4D6'; const END = 'FFE2EFDA'; const AVG = 'FFFFF2CC'; const TOT = 'FFDCE6F1'; const HDR = 'FF002060';
-            const colBg: Record<number,string> = { 2:HDR,3:HDR,4:HDR,5:HDR,6:HDR,7:HDR, 8:MID,9:MID,10:MID,11:AVG, 12:END,13:END,14:END,15:AVG, 16:TOT,17:TOT };
-            const colFg: Record<number,string> = { 2:'FFFFFFFF',3:'FFFFFFFF',4:'FFFFFFFF',5:'FFFFFFFF',6:'FFFFFFFF',7:'FFFFFFFF', 8:'FF843C0C',9:'FF843C0C',10:'FF843C0C',11:'FF7F6000', 12:'FF1F4E3D',13:'FF1F4E3D',14:'FF1F4E3D',15:'FF7F6000', 16:'FF1F3864',17:'FF1F3864' };
+            const colBg: Record<number, string> = { 2: HDR, 3: HDR, 4: HDR, 5: HDR, 6: HDR, 7: HDR, 8: MID, 9: MID, 10: MID, 11: AVG, 12: END, 13: END, 14: END, 15: AVG, 16: TOT, 17: TOT };
+            const colFg: Record<number, string> = { 2: 'FFFFFFFF', 3: 'FFFFFFFF', 4: 'FFFFFFFF', 5: 'FFFFFFFF', 6: 'FFFFFFFF', 7: 'FFFFFFFF', 8: 'FF843C0C', 9: 'FF843C0C', 10: 'FF843C0C', 11: 'FF7F6000', 12: 'FF1F4E3D', 13: 'FF1F4E3D', 14: 'FF1F4E3D', 15: 'FF7F6000', 16: 'FF1F3864', 17: 'FF1F3864' };
 
-            const h1 = ws.addRow([null,'Group\nNo.',"Student's Name",'Roll No.','Dept','Title of the Project','Supervisor','MID-TERM (15+15+15)',null,null,'Avg.\nMid (30)\nGuide+(E1+E2)/2','END-TERM (35+35+35)',null,null,'Avg.\nEnd (70)\nGuide+(E1+E2)/2','Total\n(100)','Grade']);
-            const h2 = ws.addRow([null,null,null,null,null,null,null,'E1\n(15)','E2\n(15)','Guide\n(15)',null,'E1\n(35)','E2\n(35)','Guide\n(35)',null,null,null]);
-            ws.getRow(7).height = 38; ws.getRow(8).height = 28;
-            ['B','C','D','E','F','G','K','O','P','Q'].forEach(col => ws.mergeCells(`${col}7:${col}8`));
+            const h1 = ws.addRow([null, 'Group\nNo.', "Student's Name", 'Roll No.', 'Dept', 'Title of the Project', 'Supervisor', 'MID-TERM (15+15+15)', null, null, 'Avg. Mid (30) Guide+(E1+E2)/2', 'END-TERM (35+35+35)', null, null, 'Avg. End (70) Guide+(E1+E2)/2', 'Total (100)', 'Grade']);
+            const h2 = ws.addRow([null, null, null, null, null, null, null, 'E1 (15)', 'E2 (15)', 'Guide (15)', null, 'E1 (35)', 'E2 (35)', 'Guide (35)', null, null, null]);
+            ws.getRow(7).height = 38; ws.getRow(8).height = 38;
+            ['B', 'C', 'D', 'E', 'F', 'G', 'K', 'O', 'P', 'Q'].forEach(col => ws.mergeCells(`${col}7:${col}8`));
             ws.mergeCells('H7:J7'); ws.mergeCells('L7:N7');
             [h1, h2].forEach(row => {
                 row.eachCell({ includeEmpty: true }, (cell, col) => {
                     if (col < 2) return;
                     cell.border = thin; cell.alignment = center;
-                    cell.font = { bold:true, size:9, color:{argb: colFg[col] || 'FF000000'} };
+                    cell.font = { bold: true, size: 9, color: { argb: colFg[col] || 'FF000000' } };
                     cell.fill = fill(colBg[col] || 'FFFFFFFF');
                 });
             });
@@ -658,28 +679,28 @@ export const exportPanels = async (req: any, res: Response) => {
                 const count = Math.max(members.length, 1);
 
                 if (members.length === 0) {
-                    const row = ws.addRow([null, groupNo, '','','', title, supervisor,'','','','','','','','','','']);
-                    row.height = 18;
-                    row.eachCell({ includeEmpty: true }, (cell, col) => { if (col >= 2) { cell.border = thin; cell.fill = fill(rowFill); cell.font = {size:9.5}; } });
+                    const row = ws.addRow([null, groupNo, '', '', '', title, supervisor, '', '', '', '', '', '', '', '', '', '']);
+                    row.height = 38;
+                    row.eachCell({ includeEmpty: true }, (cell, col) => { if (col >= 2) { cell.border = thin; cell.fill = fill(rowFill); cell.font = { size: 9.5 }; cell.alignment = col <= 2 ? center : (col >= 8 ? center : leftAlign); } });
                     curRow++;
                 } else {
                     members.forEach((m: any, mi: number) => {
                         const dept = m.branch || m.department || getBranch(m.rollNumber || '');
-                        const row = ws.addRow([null, mi===0?groupNo:'', m.name||'', m.rollNumber||'', dept, mi===0?title:'', mi===0?supervisor:'','','','','','','','','','','']);
-                        row.height = 18;
+                        const row = ws.addRow([null, mi === 0 ? groupNo : '', m.name || '', m.rollNumber || '', dept, mi === 0 ? title : '', mi === 0 ? supervisor : '', '', '', '', '', '', '', '', '', '', '']);
+                        row.height = 38;
                         row.eachCell({ includeEmpty: true }, (cell, col) => {
                             if (col < 2) return;
-                            cell.border = thin; cell.fill = fill(rowFill); cell.font = {size:9.5};
+                            cell.border = thin; cell.fill = fill(rowFill); cell.font = { size: 9.5 };
                             cell.alignment = col <= 2 ? center : (col >= 8 ? center : leftAlign);
                         });
                         curRow++;
                     });
                     if (count > 1) {
                         const lastRowNum = firstRowNum + count - 1;
-                        ['B','F','G'].forEach(col => {
+                        ['B', 'F', 'G'].forEach(col => {
                             ws.mergeCells(`${col}${firstRowNum}:${col}${lastRowNum}`);
                             const mc = ws.getCell(`${col}${firstRowNum}`);
-                            mc.alignment = { horizontal: col==='B'?'center':'left', vertical:'middle', wrapText:true };
+                            mc.alignment = { horizontal: col === 'B' ? 'center' : 'left', vertical: 'middle', wrapText: true };
                             mc.border = thin; mc.fill = fill(rowFill);
                         });
                     }
@@ -687,26 +708,26 @@ export const exportPanels = async (req: any, res: Response) => {
             });
 
             ws.addRow([]); ws.addRow([]);
-            const sigHeaderRow = ws.addRow([null,'Evaluation Board Member',null,'Designation / Role',null,'Signature',null,null]);
+            const sigHeaderRow = ws.addRow([null, 'Evaluation Board Member', null, 'Designation / Role', null, 'Signature', null, null]);
             ws.mergeCells(`B${sigHeaderRow.number}:C${sigHeaderRow.number}`);
             ws.mergeCells(`D${sigHeaderRow.number}:E${sigHeaderRow.number}`);
             ws.mergeCells(`F${sigHeaderRow.number}:H${sigHeaderRow.number}`);
             sigHeaderRow.height = 20;
-            ['B','C','D','E','F','G','H'].forEach(col => {
+            ['B', 'C', 'D', 'E', 'F', 'G', 'H'].forEach(col => {
                 const cell = ws.getCell(`${col}${sigHeaderRow.number}`);
-                cell.font = { bold:true, size:10, color:{argb:'FF1F3864'} }; cell.fill = fill('FFDCE6F1'); cell.border = thin; cell.alignment = center;
+                cell.font = { bold: true, size: 10, color: { argb: 'FF1F3864' } }; cell.fill = fill('FFDCE6F1'); cell.border = thin; cell.alignment = center;
             });
 
             panel.faculty.forEach((fac: any) => {
                 const isChair = fac._id.toString() === chairId;
-                const sigRow = ws.addRow([null, isChair?`${fac.name} (Chair)`:fac.name, null, isChair?'Panel Chair':'Panel Member', null, '', null, null]);
+                const sigRow = ws.addRow([null, isChair ? `${fac.name} (Chair)` : fac.name, null, isChair ? 'Panel Chair' : 'Panel Member', null, '', null, null]);
                 ws.mergeCells(`B${sigRow.number}:C${sigRow.number}`);
                 ws.mergeCells(`D${sigRow.number}:E${sigRow.number}`);
                 ws.mergeCells(`F${sigRow.number}:H${sigRow.number}`);
                 sigRow.height = 32;
-                ['B','C','D','E','F','G','H'].forEach(col => {
+                ['B', 'C', 'D', 'E', 'F', 'G', 'H'].forEach(col => {
                     const cell = ws.getCell(`${col}${sigRow.number}`);
-                    cell.border = thin; cell.alignment = col <= 'C' ? leftAlign : center; cell.font = {size:10};
+                    cell.border = thin; cell.alignment = col <= 'C' ? leftAlign : center; cell.font = { size: 10 };
                 });
             });
         });
@@ -763,7 +784,7 @@ const getTemplateRubricCols = (evalType: string, marksMode: string = 'rubric') =
     if (marksMode === 'direct') {
         const midGuideMax = mid.guide.reduce((acc, f) => acc + f.max, 0);
         const midPanelMax = mid.panel.reduce((acc, f) => acc + f.max, 0);
-        
+
         cols.push({ key: 'guide_total', label: 'Guide Total', max: midGuideMax, section: 'guide', evalT: 'mid-term', headerLabel: `Guide (0-${midGuideMax})`, bgArgb: 'FFD6E4F7' });
         cols.push({ key: 'panel1_total', label: 'E1 Total', max: midPanelMax, section: 'panel1', evalT: 'mid-term', headerLabel: `E1 (0-${midPanelMax})`, bgArgb: 'FFD6F5D6' });
         cols.push({ key: 'panel2_total', label: 'E2 Total', max: midPanelMax, section: 'panel2', evalT: 'mid-term', headerLabel: `E2 (0-${midPanelMax})`, bgArgb: 'FFFCE4D6' });
@@ -771,19 +792,19 @@ const getTemplateRubricCols = (evalType: string, marksMode: string = 'rubric') =
         if (evalType === 'end-term') {
             const endGuideMax = end.guide.reduce((acc, f) => acc + f.max, 0);
             const endPanelMax = end.panel.reduce((acc, f) => acc + f.max, 0);
-            
+
             cols.push({ key: 'guide_total', label: 'Guide Total', max: endGuideMax, section: 'guide', evalT: 'end-term', headerLabel: `Guide (0-${endGuideMax})`, bgArgb: 'FFBDD7EE' });
             cols.push({ key: 'panel1_total', label: 'E1 Total', max: endPanelMax, section: 'panel1', evalT: 'end-term', headerLabel: `E1 (0-${endPanelMax})`, bgArgb: 'FFB8F2B8' });
             cols.push({ key: 'panel2_total', label: 'E2 Total', max: endPanelMax, section: 'panel2', evalT: 'end-term', headerLabel: `E2 (0-${endPanelMax})`, bgArgb: 'FFFACDB0' });
         }
     } else {
-        mid.guide.forEach(f => cols.push({ ...f, section: 'guide',  evalT: 'mid-term', headerLabel: `[${pMid}Guide] ${f.label} (0-${f.max})`, bgArgb: 'FFD6E4F7' }));
-        mid.panel.forEach(f => cols.push({ ...f, section: 'panel1', evalT: 'mid-term', headerLabel: `[${pMid}E1] ${f.label} (0-${f.max})`,    bgArgb: 'FFD6F5D6' }));
-        mid.panel.forEach(f => cols.push({ ...f, section: 'panel2', evalT: 'mid-term', headerLabel: `[${pMid}E2] ${f.label} (0-${f.max})`,    bgArgb: 'FFFCE4D6' }));
+        mid.guide.forEach(f => cols.push({ ...f, section: 'guide', evalT: 'mid-term', headerLabel: `[${pMid}Guide] ${f.label} (0-${f.max})`, bgArgb: 'FFD6E4F7' }));
+        mid.panel.forEach(f => cols.push({ ...f, section: 'panel1', evalT: 'mid-term', headerLabel: `[${pMid}E1] ${f.label} (0-${f.max})`, bgArgb: 'FFD6F5D6' }));
+        mid.panel.forEach(f => cols.push({ ...f, section: 'panel2', evalT: 'mid-term', headerLabel: `[${pMid}E2] ${f.label} (0-${f.max})`, bgArgb: 'FFFCE4D6' }));
         if (evalType === 'end-term') {
-            end.guide.forEach(f => cols.push({ ...f, section: 'guide',  evalT: 'end-term', headerLabel: `[End-Guide] ${f.label} (0-${f.max})`, bgArgb: 'FFBDD7EE' }));
-            end.panel.forEach(f => cols.push({ ...f, section: 'panel1', evalT: 'end-term', headerLabel: `[End-E1] ${f.label} (0-${f.max})`,    bgArgb: 'FFB8F2B8' }));
-            end.panel.forEach(f => cols.push({ ...f, section: 'panel2', evalT: 'end-term', headerLabel: `[End-E2] ${f.label} (0-${f.max})`,    bgArgb: 'FFFACDB0' }));
+            end.guide.forEach(f => cols.push({ ...f, section: 'guide', evalT: 'end-term', headerLabel: `[End-Guide] ${f.label} (0-${f.max})`, bgArgb: 'FFBDD7EE' }));
+            end.panel.forEach(f => cols.push({ ...f, section: 'panel1', evalT: 'end-term', headerLabel: `[End-E1] ${f.label} (0-${f.max})`, bgArgb: 'FFB8F2B8' }));
+            end.panel.forEach(f => cols.push({ ...f, section: 'panel2', evalT: 'end-term', headerLabel: `[End-E2] ${f.label} (0-${f.max})`, bgArgb: 'FFFACDB0' }));
         }
     }
     return cols;
@@ -829,7 +850,7 @@ export const downloadEvaluationTemplate = async (req: any, res: Response) => {
         let excelRowNum = headerBlockRows + 1;
 
         if (marksMode === 'direct') {
-            const superLabels = [ '', '', '', '', '', '', '', '' ];
+            const superLabels = ['', '', '', '', '', '', '', ''];
             superLabels.push('MID-TERM EVALUATION', '', '');
             if (evalType === 'end-term') {
                 superLabels.push('END-TERM EVALUATION', '', '');
@@ -1164,10 +1185,10 @@ export const exportPanelFinalSheet = async (req: any, res: Response) => {
 
         const finalEvalLabel = evalType === 'mid-term' ? 'MID-TERM' : evalType === 'end-term' ? 'END-TERM' : 'FULL';
         const headerBlockRows = addCollegeAndPanelHeader(ws, panel, finalEvalLabel, cols.length, panelNumber);
-        
+
         let excelRowNum = headerBlockRows + 1;
 
-        const superLabels = [ '', '', '', '', '' ];
+        const superLabels = ['', '', '', '', ''];
         if (includeMid) superLabels.push('MID-TERM EVALUATION', '', '');
         if (includeEnd) superLabels.push('END-TERM EVALUATION', '', '');
         superLabels.push('OVERALL', '');
@@ -1234,9 +1255,10 @@ export const exportPanelFinalSheet = async (req: any, res: Response) => {
                     } else {
                         rowData.push('', '', '');
                     }
-                    
+
                     midTotal = gSum + (p2Sum > 0 ? (p1Sum + p2Sum) / 2 : p1Sum);
                     if (midSE) midTotal = Number(midSE.marks ?? midTotal) || midTotal;
+                    midTotal = Math.round(midTotal * 100) / 100;
                 }
 
                 let endTotal = 0;
@@ -1255,9 +1277,10 @@ export const exportPanelFinalSheet = async (req: any, res: Response) => {
 
                     endTotal = gSum + (p2Sum > 0 ? (p1Sum + p2Sum) / 2 : p1Sum);
                     if (endSE) endTotal = Number(endSE.marks ?? endTotal) || endTotal;
+                    endTotal = Math.round(endTotal * 100) / 100;
                 }
 
-                const grand = (midSE ? midTotal : 0) + (endSE ? endTotal : 0);
+                const grand = Math.round(((midSE ? midTotal : 0) + (endSE ? endTotal : 0)) * 100) / 100;
                 rowData.push((midSE || endSE) ? grand : '');
                 rowData.push((midSE || endSE) ? calculateGrade(grand) : '');
 
@@ -1309,30 +1332,30 @@ export const exportPanelsAsTemplate = async (req: any, res: Response) => {
         const ws = workbook.addWorksheet('Panel Template');
 
         ws.columns = [
-            { header: 'Panel Number',                    key: 'panelNumber',  width: 15 },
+            { header: 'Panel Number', key: 'panelNumber', width: 15 },
             { header: 'Faculty Emails (comma separated)', key: 'facultyEmails', width: 60 },
-            { header: 'Room Number (Optional)',           key: 'room',          width: 20 },
+            { header: 'Room Number (Optional)', key: 'room', width: 20 },
         ];
 
         // Style header row
         const hdr = ws.getRow(1);
-        hdr.font      = { bold: true, color: { argb: 'FFFFFFFF' } };
-        hdr.height    = 22;
+        hdr.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+        hdr.height = 22;
         hdr.eachCell(cell => {
-            cell.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2E75B6' } };
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2E75B6' } };
             cell.alignment = { horizontal: 'center', vertical: 'middle' };
-            cell.border    = { top:{style:'thin'}, left:{style:'thin'}, bottom:{style:'thin'}, right:{style:'thin'} };
+            cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
         });
 
         // One row per panel with all faculty emails joined by ", "
         panels.forEach((panel: any, idx: number) => {
-            const panelNum   = panel.name || panel.panelNumber || String(idx + 1);
-            const emails     = (panel.faculty || []).map((f: any) => f.email || '').filter(Boolean).join(', ');
-            const room       = panel.room || '';
+            const panelNum = panel.name || panel.panelNumber || String(idx + 1);
+            const emails = (panel.faculty || []).map((f: any) => f.email || '').filter(Boolean).join(', ');
+            const room = panel.room || '';
             const row = ws.addRow({ panelNumber: panelNum, facultyEmails: emails, room });
             row.height = 18;
             row.eachCell({ includeEmpty: true }, (cell, col) => {
-                cell.border    = { top:{style:'thin'}, left:{style:'thin'}, bottom:{style:'thin'}, right:{style:'thin'} };
+                cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
                 cell.alignment = { vertical: 'middle', horizontal: col === 1 ? 'center' : 'left' };
             });
         });
@@ -1380,7 +1403,7 @@ export const previewPanelImport = async (req: any, res: Response) => {
         const worksheet = workbook.worksheets[0];
 
         const panelsMap: Record<string, { id: string, room: string, emails: string[] }> = {};
-        
+
         worksheet.eachRow((row, rowNumber) => {
             if (rowNumber === 1) return; // skip header
             let panelNo = row.getCell(1).text?.trim() || row.getCell(1).value?.toString().trim();
@@ -1397,7 +1420,7 @@ export const previewPanelImport = async (req: any, res: Response) => {
                 }
             }
         });
-        
+
         fs.unlinkSync(req.file.path);
 
         const allFaculty = await User.find({ role: 'Faculty' }).select('_id email name').lean();
@@ -1405,17 +1428,17 @@ export const previewPanelImport = async (req: any, res: Response) => {
         const draftPanels = [];
 
         const groups = await Group.find({ status: { $in: ['Approved', 'Pending'] }, isArchived: { $ne: true } })
-             .populate('project', 'faculty')
-             .populate('members', 'targetBatch rollNumber')
-             .lean();
-             
+            .populate('project', 'faculty')
+            .populate('members', 'targetBatch rollNumber')
+            .lean();
+
         const getGroupBatchYear = (g: any) => {
             if (g.targetBatch) return String(g.targetBatch);
             if (g.batchYear) return String(g.batchYear);
             if (g.members && g.members.length > 0) {
-                 const m = g.members[0];
-                 if (m.targetBatch) return String(m.targetBatch);
-                 if (m.rollNumber) return '20' + String(m.rollNumber).substring(0, 2);
+                const m = g.members[0];
+                if (m.targetBatch) return String(m.targetBatch);
+                if (m.rollNumber) return '20' + String(m.rollNumber).substring(0, 2);
             }
             return '';
         };
@@ -1509,25 +1532,25 @@ export const exportOfficialFormat = async (req: any, res: Response) => {
         // ── Column widths from reference file (bumped up ~20% for readability) ─
         // Col D has no custom width in source (uses Excel default ~8.43)
         ws.columns = [
-            { width: 9    }, // A – K (serial)
-            { width: 28   }, // B – Project Group Members Name
-            { width: 20   }, // C – Roll No
-            { width: 12   }, // D – Department
-            { width: 34   }, // E – Title of the Minor Project
-            { width: 27   }, // F – Area of Project
-            { width: 30   }, // G – Name of the Supervisor
+            { width: 9 }, // A – K (serial)
+            { width: 28 }, // B – Project Group Members Name
+            { width: 20 }, // C – Roll No
+            { width: 12 }, // D – Department
+            { width: 34 }, // E – Title of the Minor Project
+            { width: 27 }, // F – Area of Project
+            { width: 30 }, // G – Name of the Supervisor
         ];
 
         // ── Exact header background: #A4C2F4 ─────────────────────────────────────
-        const HEADER_BG   = 'FFA4C2F4';  // exact color from reference file
-        const GREY_BG     = 'FF999999';  // even group rows
+        const HEADER_BG = 'FFA4C2F4';  // exact color from reference file
+        const GREY_BG = 'FF999999';  // even group rows
         // Odd groups have no fill (patternType: none) = default white
 
         const thinBorder: Partial<ExcelJS.Borders> = {
-            top:    { style: 'thin' },
-            left:   { style: 'thin' },
+            top: { style: 'thin' },
+            left: { style: 'thin' },
             bottom: { style: 'thin' },
-            right:  { style: 'thin' },
+            right: { style: 'thin' },
         };
 
         // ── Header row ────────────────────────────────────────────────────────────
@@ -1542,9 +1565,9 @@ export const exportOfficialFormat = async (req: any, res: Response) => {
         ]);
         headerRow.height = 32;
         headerRow.eachCell(cell => {
-            cell.font      = { bold: true, size: 11 };
-            cell.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: HEADER_BG } };
-            cell.border    = thinBorder;
+            cell.font = { bold: true, size: 11 };
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: HEADER_BG } };
+            cell.border = thinBorder;
             cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
         });
 
@@ -1552,10 +1575,10 @@ export const exportOfficialFormat = async (req: any, res: Response) => {
         let currentExcelRow = 2; // data starts at row 2 (header is row 1)
 
         filteredGroups.forEach((g: any, gIdx: number) => {
-            const project    = g.project;
-            const members    = (g.members || []) as any[];
-            const title      = project?.title || '';
-            const area       = (project?.tags || []).join(', ');
+            const project = g.project;
+            const members = (g.members || []) as any[];
+            const title = project?.title || '';
+            const area = (project?.tags || []).join(', ');
             const supervisor = project?.faculty?.name || '';
             const memberCount = members.length;
 
@@ -1565,16 +1588,16 @@ export const exportOfficialFormat = async (req: any, res: Response) => {
 
             members.forEach((m: any, mIdx: number) => {
                 const isFirst = mIdx === 0;
-                const dept    = m.branch || m.department || '';
+                const dept = m.branch || m.department || '';
 
                 // For non-first members: E, F, G cells are empty (they'll be covered by merge)
                 const rowData: any[] = [
                     isFirst ? (gIdx + 1) : '',   // A – serial only on first row
-                    m.name       || '',            // B – always filled
+                    m.name || '',            // B – always filled
                     m.rollNumber || '',            // C – always filled
                     dept,                          // D – always filled
-                    isFirst ? title      : '',     // E – filled only on first row
-                    isFirst ? area       : '',     // F – filled only on first row
+                    isFirst ? title : '',     // E – filled only on first row
+                    isFirst ? area : '',     // F – filled only on first row
                     isFirst ? supervisor : '',     // G – filled only on first row
                 ];
 
@@ -1587,8 +1610,8 @@ export const exportOfficialFormat = async (req: any, res: Response) => {
                     // Vertical alignment for all, wrap text for Title/Area/Supervisor
                     cell.alignment = {
                         horizontal: colNum === 1 ? 'center' : 'left',
-                        vertical:   colNum >= 5  ? 'top'   : 'middle',
-                        wrapText:   colNum >= 5,
+                        vertical: colNum >= 5 ? 'top' : 'middle',
+                        wrapText: colNum >= 5,
                     };
 
                     // Apply fill: even groups get grey, odd get no fill (white default)
@@ -1605,14 +1628,14 @@ export const exportOfficialFormat = async (req: any, res: Response) => {
             // Columns E (5), F (6), G (7) are merged vertically across all member rows
             if (memberCount > 1) {
                 const firstMemberRow = currentExcelRow - memberCount;
-                const lastMemberRow  = currentExcelRow - 1;
+                const lastMemberRow = currentExcelRow - 1;
 
                 // Merge E, F, G columns
                 ['E', 'F', 'G'].forEach(col => {
                     ws.mergeCells(`${col}${firstMemberRow}:${col}${lastMemberRow}`);
                     // Re-apply styling to the merged cell (top-left cell holds the value)
                     const mergedCell = ws.getCell(`${col}${firstMemberRow}`);
-                    mergedCell.border    = thinBorder;
+                    mergedCell.border = thinBorder;
                     mergedCell.alignment = { horizontal: 'left', vertical: 'top', wrapText: true };
                     if (isEvenGroup) {
                         mergedCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: GREY_BG } };
@@ -1621,8 +1644,8 @@ export const exportOfficialFormat = async (req: any, res: Response) => {
             }
         });
 
-        const buffer   = await workbook.xlsx.writeBuffer();
-        const acadEnd  = Number(batchYear) + 4;
+        const buffer = await workbook.xlsx.writeBuffer();
+        const acadEnd = Number(batchYear) + 4;
         const fileName = `MINOR_Project_Batch_${batchYear}-${acadEnd}.xlsx`;
 
         res.set('Content-Disposition', `attachment; filename="${fileName}"`);
