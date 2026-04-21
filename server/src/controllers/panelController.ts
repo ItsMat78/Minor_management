@@ -972,20 +972,39 @@ async function getPanelWithGroups(panelId: string) {
 // Returns ordered list of rubric columns for the template (and import parser).
 // For end-term: includes mid-term cols first, then end-term cols.
 // section: 'guide' | 'panel1' | 'panel2'
-const getTemplateRubricCols = (evalType: string) => {
+const getTemplateRubricCols = (evalType: string, marksMode: string = 'rubric') => {
     const mid = RUBRIC_FIELDS['mid-term'];
     const end = RUBRIC_FIELDS['end-term'];
     type Col = { key: string; label: string; max: number; section: 'guide' | 'panel1' | 'panel2'; evalT: string; headerLabel: string; bgArgb: string };
     const cols: Col[] = [];
 
     const pMid = evalType === 'end-term' ? 'Mid-' : '';
-    mid.guide.forEach(f => cols.push({ ...f, section: 'guide',  evalT: 'mid-term', headerLabel: `[${pMid}Guide] ${f.label} (0-${f.max})`, bgArgb: 'FFD6E4F7' }));
-    mid.panel.forEach(f => cols.push({ ...f, section: 'panel1', evalT: 'mid-term', headerLabel: `[${pMid}E1] ${f.label} (0-${f.max})`,    bgArgb: 'FFD6F5D6' }));
-    mid.panel.forEach(f => cols.push({ ...f, section: 'panel2', evalT: 'mid-term', headerLabel: `[${pMid}E2] ${f.label} (0-${f.max})`,    bgArgb: 'FFFCE4D6' }));
-    if (evalType === 'end-term') {
-        end.guide.forEach(f => cols.push({ ...f, section: 'guide',  evalT: 'end-term', headerLabel: `[End-Guide] ${f.label} (0-${f.max})`, bgArgb: 'FFBDD7EE' }));
-        end.panel.forEach(f => cols.push({ ...f, section: 'panel1', evalT: 'end-term', headerLabel: `[End-E1] ${f.label} (0-${f.max})`,    bgArgb: 'FFB8F2B8' }));
-        end.panel.forEach(f => cols.push({ ...f, section: 'panel2', evalT: 'end-term', headerLabel: `[End-E2] ${f.label} (0-${f.max})`,    bgArgb: 'FFFACDB0' }));
+
+    if (marksMode === 'direct') {
+        const midGuideMax = mid.guide.reduce((acc, f) => acc + f.max, 0);
+        const midPanelMax = mid.panel.reduce((acc, f) => acc + f.max, 0);
+        
+        cols.push({ key: 'guide_total', label: 'Guide Total', max: midGuideMax, section: 'guide', evalT: 'mid-term', headerLabel: `Guide (0-${midGuideMax})`, bgArgb: 'FFD6E4F7' });
+        cols.push({ key: 'panel1_total', label: 'E1 Total', max: midPanelMax, section: 'panel1', evalT: 'mid-term', headerLabel: `E1 (0-${midPanelMax})`, bgArgb: 'FFD6F5D6' });
+        cols.push({ key: 'panel2_total', label: 'E2 Total', max: midPanelMax, section: 'panel2', evalT: 'mid-term', headerLabel: `E2 (0-${midPanelMax})`, bgArgb: 'FFFCE4D6' });
+
+        if (evalType === 'end-term') {
+            const endGuideMax = end.guide.reduce((acc, f) => acc + f.max, 0);
+            const endPanelMax = end.panel.reduce((acc, f) => acc + f.max, 0);
+            
+            cols.push({ key: 'guide_total', label: 'Guide Total', max: endGuideMax, section: 'guide', evalT: 'end-term', headerLabel: `Guide (0-${endGuideMax})`, bgArgb: 'FFBDD7EE' });
+            cols.push({ key: 'panel1_total', label: 'E1 Total', max: endPanelMax, section: 'panel1', evalT: 'end-term', headerLabel: `E1 (0-${endPanelMax})`, bgArgb: 'FFB8F2B8' });
+            cols.push({ key: 'panel2_total', label: 'E2 Total', max: endPanelMax, section: 'panel2', evalT: 'end-term', headerLabel: `E2 (0-${endPanelMax})`, bgArgb: 'FFFACDB0' });
+        }
+    } else {
+        mid.guide.forEach(f => cols.push({ ...f, section: 'guide',  evalT: 'mid-term', headerLabel: `[${pMid}Guide] ${f.label} (0-${f.max})`, bgArgb: 'FFD6E4F7' }));
+        mid.panel.forEach(f => cols.push({ ...f, section: 'panel1', evalT: 'mid-term', headerLabel: `[${pMid}E1] ${f.label} (0-${f.max})`,    bgArgb: 'FFD6F5D6' }));
+        mid.panel.forEach(f => cols.push({ ...f, section: 'panel2', evalT: 'mid-term', headerLabel: `[${pMid}E2] ${f.label} (0-${f.max})`,    bgArgb: 'FFFCE4D6' }));
+        if (evalType === 'end-term') {
+            end.guide.forEach(f => cols.push({ ...f, section: 'guide',  evalT: 'end-term', headerLabel: `[End-Guide] ${f.label} (0-${f.max})`, bgArgb: 'FFBDD7EE' }));
+            end.panel.forEach(f => cols.push({ ...f, section: 'panel1', evalT: 'end-term', headerLabel: `[End-E1] ${f.label} (0-${f.max})`,    bgArgb: 'FFB8F2B8' }));
+            end.panel.forEach(f => cols.push({ ...f, section: 'panel2', evalT: 'end-term', headerLabel: `[End-E2] ${f.label} (0-${f.max})`,    bgArgb: 'FFFACDB0' }));
+        }
     }
     return cols;
 };
@@ -1002,7 +1021,8 @@ export const downloadEvaluationTemplate = async (req: any, res: Response) => {
         if (!data) return res.status(404).json({ message: 'Panel not found' });
 
         const { panel, groups, panelNumber } = data;
-        const rubricCols = getTemplateRubricCols(evalType);
+        const marksMode = (req.query.marksMode as string) || 'rubric';
+        const rubricCols = getTemplateRubricCols(evalType, marksMode);
         // FIXED_COLS = 8: 2 hidden IDs + Group No + Project Title + Name + Roll + Attendance + Stars
         const FIXED = 8;
         const totalCols = FIXED + rubricCols.length + 1; // +1 for Remarks
@@ -1025,6 +1045,32 @@ export const downloadEvaluationTemplate = async (req: any, res: Response) => {
 
         const evalLabel = evalType === 'mid-term' ? 'MID-TERM' : 'END-TERM';
         const headerBlockRows = addCollegeAndPanelHeader(ws, panel, evalLabel, totalCols, panelNumber);
+
+        let excelRowNum = headerBlockRows + 1;
+
+        if (marksMode === 'direct') {
+            const superLabels = [ '', '', '', '', '', '', '', '' ];
+            superLabels.push('MID-TERM EVALUATION', '', '');
+            if (evalType === 'end-term') {
+                superLabels.push('END-TERM EVALUATION', '', '');
+            }
+            superLabels.push('');
+
+            const sRow = ws.addRow(superLabels);
+            sRow.font = { bold: true, color: { argb: 'FF000000' } };
+            sRow.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+            sRow.eachCell((cell, colNum) => {
+                if (colNum <= 2) return;
+                cell.border = border;
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFED7D31' } };
+            });
+
+            ws.mergeCells(excelRowNum, FIXED + 1, excelRowNum, FIXED + 3);
+            if (evalType === 'end-term') {
+                ws.mergeCells(excelRowNum, FIXED + 4, excelRowNum, FIXED + 6);
+            }
+            excelRowNum++;
+        }
 
         const headerLabels = [
             '__GROUP_ID__', '__STUDENT_ID__',
@@ -1051,7 +1097,7 @@ export const downloadEvaluationTemplate = async (req: any, res: Response) => {
         });
 
         // Data rows
-        let excelRowNum = headerBlockRows + 2;
+        excelRowNum++; // advance past headerLabels
         groups.forEach((g: any, gIdx: number) => {
             const members: any[] = g.members || [];
             const groupStartRow = excelRowNum;
@@ -1123,6 +1169,7 @@ export const importEvaluationTemplate = async (req: any, res: Response) => {
     try {
         const { panelId } = req.params;
         const evalType = (req.query.evalType as string) || 'end-term';
+        const marksMode = (req.query.marksMode as string) || 'rubric';
 
         if (!RUBRIC_FIELDS[evalType]) return res.status(400).json({ message: 'Invalid evalType.' });
         if (!req.file) return res.status(400).json({ message: 'No file uploaded.' });
@@ -1130,7 +1177,7 @@ export const importEvaluationTemplate = async (req: any, res: Response) => {
         const data = await getPanelWithGroups(panelId);
         if (!data) return res.status(404).json({ message: 'Panel not found' });
 
-        const rubricCols = getTemplateRubricCols(evalType);
+        const rubricCols = getTemplateRubricCols(evalType, marksMode);
         const FIXED = 8;
         const remarksColIdx = FIXED + rubricCols.length + 1;
 
@@ -1198,9 +1245,36 @@ export const importEvaluationTemplate = async (req: any, res: Response) => {
         // Write to DB
         const upsert = (project: any, sv: StudentEntry, et: string) => {
             const sections = sv.scores[et] || {};
-            const guide = sections.guide || {};
-            const panel1 = sections.panel1 || {};
-            const panel2 = sections.panel2 || {};
+            let guide = sections.guide || {};
+            let panel1 = sections.panel1 || {};
+            let panel2 = sections.panel2 || {};
+
+            if (marksMode === 'direct') {
+                const fields = RUBRIC_FIELDS[et];
+                const redistribute = (total: number, rubricSec: any[]) => {
+                    const sumMax = rubricSec.reduce((a: number, b: any) => a + b.max, 0);
+                    const res: any = {};
+                    if (sumMax === 0 || total === 0) {
+                        rubricSec.forEach((f: any) => res[f.key] = 0);
+                        return res;
+                    }
+                    let remaining = total;
+                    rubricSec.forEach((f: any, idx: number) => {
+                        if (idx === rubricSec.length - 1) {
+                            res[f.key] = Number(remaining.toFixed(2));
+                        } else {
+                            const val = (total / sumMax) * f.max;
+                            res[f.key] = Number(val.toFixed(2));
+                            remaining -= res[f.key];
+                        }
+                    });
+                    return res;
+                };
+                guide = redistribute(Number(guide.guide_total || 0), fields.guide);
+                panel1 = redistribute(Number(panel1.panel1_total || 0), fields.panel);
+                panel2 = redistribute(Number(panel2.panel2_total || 0), fields.panel);
+            }
+
             const guideTotal = Object.values(guide).reduce((s: number, v: any) => s + Number(v || 0), 0);
             const p1Total = Object.values(panel1).reduce((s: number, v: any) => s + Number(v || 0), 0);
             const p2Total = Object.values(panel2).reduce((s: number, v: any) => s + Number(v || 0), 0);
@@ -1297,15 +1371,15 @@ export const exportPanelFinalSheet = async (req: any, res: Response) => {
             se?.[section]?.[key] ?? (section === 'panel1' ? se?.panel?.[key] : 0) ?? 0;
 
         if (includeMid) {
-            midRubric.guide.forEach(f => cols.push({ header: `[Mid-Guide] ${f.label}`, width: 20 }));
-            midRubric.panel.forEach(f => cols.push({ header: `[Mid-E1] ${f.label}`, width: 20 }));
-            midRubric.panel.forEach(f => cols.push({ header: `[Mid-E2] ${f.label}`, width: 20 }));
+            cols.push({ header: `[Mid] Guide Total`, width: 15 });
+            cols.push({ header: `[Mid] E1 Total`, width: 15 });
+            cols.push({ header: `[Mid] E2 Total`, width: 15 });
             cols.push({ header: 'Mid Total', width: 12 });
         }
         if (includeEnd) {
-            endRubric.guide.forEach(f => cols.push({ header: `[End-Guide] ${f.label}`, width: 20 }));
-            endRubric.panel.forEach(f => cols.push({ header: `[End-E1] ${f.label}`, width: 20 }));
-            endRubric.panel.forEach(f => cols.push({ header: `[End-E2] ${f.label}`, width: 20 }));
+            cols.push({ header: `[End] Guide Total`, width: 15 });
+            cols.push({ header: `[End] E1 Total`, width: 15 });
+            cols.push({ header: `[End] E2 Total`, width: 15 });
             cols.push({ header: 'End Total', width: 12 });
         }
         if (evalType === 'full') {
@@ -1350,10 +1424,19 @@ export const exportPanelFinalSheet = async (req: any, res: Response) => {
 
                 let midTotal = 0;
                 if (includeMid) {
-                    midRubric.guide.forEach(f => { const v = midSE?.guide?.[f.key] || 0; rowData.push(v); midTotal += v; });
-                    midRubric.panel.forEach(f => { const v = getP(midSE, 'panel1', f.key); rowData.push(v); midTotal += v; });
-                    const midP2 = midRubric.panel.reduce((s, f) => s + getP(midSE, 'panel2', f.key), 0);
-                    midRubric.panel.forEach(f => rowData.push(getP(midSE, 'panel2', f.key)));
+                    let gSum = 0; midRubric.guide.forEach(f => gSum += midSE?.guide?.[f.key] || 0);
+                    let p1Sum = 0; midRubric.panel.forEach(f => p1Sum += getP(midSE, 'panel1', f.key));
+                    let p2Sum = 0; midRubric.panel.forEach(f => p2Sum += getP(midSE, 'panel2', f.key));
+
+                    if (midSE) {
+                        rowData.push(Number(gSum.toFixed(2)));
+                        rowData.push(Number(p1Sum.toFixed(2)));
+                        rowData.push(Number(p2Sum.toFixed(2)));
+                    } else {
+                        rowData.push('', '', '');
+                    }
+                    
+                    midTotal = gSum + (p2Sum > 0 ? (p1Sum + p2Sum) / 2 : p1Sum);
                     const midActual = midSE ? (midSE.marks ?? midTotal) : '';
                     rowData.push(midActual);
                     if (midSE) midTotal = Number(midActual) || midTotal;
@@ -1361,10 +1444,19 @@ export const exportPanelFinalSheet = async (req: any, res: Response) => {
 
                 let endTotal = 0;
                 if (includeEnd) {
-                    endRubric.guide.forEach(f => { const v = endSE?.guide?.[f.key] || 0; rowData.push(v); endTotal += v; });
-                    endRubric.panel.forEach(f => { const v = getP(endSE, 'panel1', f.key); rowData.push(v); endTotal += v; });
-                    const endP2 = endRubric.panel.reduce((s, f) => s + getP(endSE, 'panel2', f.key), 0);
-                    endRubric.panel.forEach(f => rowData.push(getP(endSE, 'panel2', f.key)));
+                    let gSum = 0; endRubric.guide.forEach(f => gSum += endSE?.guide?.[f.key] || 0);
+                    let p1Sum = 0; endRubric.panel.forEach(f => p1Sum += getP(endSE, 'panel1', f.key));
+                    let p2Sum = 0; endRubric.panel.forEach(f => p2Sum += getP(endSE, 'panel2', f.key));
+
+                    if (endSE) {
+                        rowData.push(Number(gSum.toFixed(2)));
+                        rowData.push(Number(p1Sum.toFixed(2)));
+                        rowData.push(Number(p2Sum.toFixed(2)));
+                    } else {
+                        rowData.push('', '', '');
+                    }
+
+                    endTotal = gSum + (p2Sum > 0 ? (p1Sum + p2Sum) / 2 : p1Sum);
                     const endActual = endSE ? (endSE.marks ?? endTotal) : '';
                     rowData.push(endActual);
                     if (endSE) endTotal = Number(endActual) || endTotal;

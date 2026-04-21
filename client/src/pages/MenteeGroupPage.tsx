@@ -546,7 +546,7 @@ const MenteeGroupPage: React.FC = () => {
                                                     const fd = new FormData();
                                                     fd.append('photo', file);
                                                     try {
-                                                        const res = await api.post('/users/profile-photo', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+                                                        await api.post('/users/profile-photo', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
                                                         window.location.reload();
                                                     } catch { alert('Photo upload failed'); }
                                                 }}

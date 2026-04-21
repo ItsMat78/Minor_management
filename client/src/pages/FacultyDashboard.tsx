@@ -298,8 +298,6 @@ const getRubricConfig = (activeEvents: any[], activeTab: string) => {
 
 const renderEvalCard = (item: any, activeTab: string, handleOpenEvaluation: any, activeEvents: any[], isPanel: boolean = false, viewMode: 'grid' | 'list' = 'grid') => {
     const projectData = item.project || item;
-    const evalData = activeTab === 'mid-term' ? projectData?.midTermEvaluation :
-        projectData?.endTermEvaluation; // Removed finalReportEvaluation
     const groupData = item.group || item;
     const isDropper = groupData.targetBatch && groupData.targetBatch !== getOriginalGroupBatchYear(groupData);
 
@@ -431,16 +429,12 @@ const FacultyDashboard: React.FC = () => {
     const [loadingStudents, setLoadingStudents] = useState(false);
     const [loadingMentees, setLoadingMentees] = useState(false);
     const [panelGroups, setPanelGroups] = useState<any[]>([]);
-    const [manualMarksMode, setManualMarksMode] = useState(false);
+    const [manualMarksMode, setManualMarksMode] = useState(true);
 
     // Evaluation State
     const [evaluatingProject, setEvaluatingProject] = useState<any>(null);
-    const [evaluationMarks, setEvaluationMarks] = useState<number>(0);
     const [evaluationRemarks, setEvaluationRemarks] = useState<string>('');
-    const [evaluationDetails, setEvaluationDetails] = useState<any>({});
     const [evaluationType, setEvaluationType] = useState<'mid-term' | 'end-term' | null>(null); // Removed 'final-report'
-    const [evaluationFeedback, setEvaluationFeedback] = useState<string>('');
-    const [savingFeedback, setSavingFeedback] = useState(false);
     type EvalStudentEntry = { stars: number; attendance: 'present' | 'absent'; guide: Record<string, number | ''>; panel1: Record<string, number | ''>; panel2: Record<string, number | ''> };
     const [studentEvalData, setStudentEvalData] = useState<Record<string, EvalStudentEntry>>({});
     const [studentMidData, setStudentMidData] = useState<Record<string, EvalStudentEntry> | null>(null);
@@ -457,35 +451,6 @@ const FacultyDashboard: React.FC = () => {
     const [importingPanelId, setImportingPanelId] = useState<string | null>(null);
     const [importErrors, setImportErrors] = useState<{ row: number; message: string }[]>([]);
     const [importSuccess, setImportSuccess] = useState<string | null>(null);
-
-    const projectGuideId = React.useMemo(() => {
-        if (!evaluatingProject) return null;
-        const project = evaluatingProject.project || evaluatingProject;
-        return typeof (project?.faculty) === 'string'
-            ? project?.faculty
-            : project?.faculty?._id;
-    }, [evaluatingProject]);
-
-    const panelMembers = React.useMemo(() => {
-        if (!evaluatingProject) return [];
-        const project = evaluatingProject.project || evaluatingProject;
-        const projectGroupId = evaluatingProject.group?._id || evaluatingProject._id;
-
-        const projectPanel = panelGroups.find((p: any) =>
-            p.groups.some((g: any) =>
-                g._id === projectGroupId ||
-                g.project?._id === project._id
-            )
-        );
-
-        // Ensure the guide is always included if they are not already in the panel members
-        const members = projectPanel?.panel?.faculty || [];
-        const guide = project?.faculty;
-        if (guide && typeof guide !== 'string' && !members.some((m: any) => m._id === guide._id)) {
-            return [...members, guide];
-        }
-        return members;
-    }, [evaluatingProject, panelGroups]);
 
     const [expandedBatches, setExpandedBatches] = useState<Record<string, boolean>>({});
     const toggleBatch = (year: string) => {
@@ -622,7 +587,7 @@ const FacultyDashboard: React.FC = () => {
         const projectData = item.project || item;
         const evalMeta = type === 'mid-term' ? projectData.midTermEvaluation : projectData.endTermEvaluation;
         setEvaluationRemarks(evalMeta?.remarks || '');
-        setEvaluationFeedback(projectData?.feedback || '');
+
 
         const members = item.members || item.group?.members || [];
 
@@ -657,34 +622,15 @@ const FacultyDashboard: React.FC = () => {
             setStudentEvalData(buildData(midEvals, 'mid-term'));
             setStudentMidData(null);
         }
-        setEvaluationDetails({});
-        setEvaluationMarks(0);
     };
 
-    const handleSaveEvaluationFeedback = async () => {
-        if (!evaluatingProject) return;
-        const projectData = evaluatingProject.project || evaluatingProject;
-        const projectId = projectData._id;
-        setSavingFeedback(true);
+    const handleDownloadTemplate = async (panelId: string, mode: string) => {
         try {
-            await api.put(`/projects/${projectId}/feedback`, { feedback: evaluationFeedback });
-            await fetchMentees();
-            await fetchPanelGroups();
-        } catch (error) {
-            console.error('Failed to save feedback', error);
-            alert('Failed to save feedback.');
-        } finally {
-            setSavingFeedback(false);
-        }
-    };
-
-    const handleDownloadTemplate = async (panelId: string) => {
-        try {
-            const res = await api.get(`/panels/${panelId}/evaluation-template?evalType=${activeTab}`, { responseType: 'blob' });
+            const res = await api.get(`/panels/${panelId}/evaluation-template?evalType=${activeTab}&marksMode=${mode}`, { responseType: 'blob' });
             const url = URL.createObjectURL(new Blob([res.data]));
             const a = document.createElement('a');
             a.href = url;
-            a.download = `eval_template_${activeTab}.xlsx`;
+            a.download = `eval_template_${activeTab}_${mode}.xlsx`;
             a.click();
             URL.revokeObjectURL(url);
         } catch {
@@ -692,14 +638,14 @@ const FacultyDashboard: React.FC = () => {
         }
     };
 
-    const handleImportTemplate = async (panelId: string, file: File) => {
+    const handleImportTemplate = async (panelId: string, file: File, mode: string) => {
         setImportingPanelId(panelId);
         setImportErrors([]);
         setImportSuccess(null);
         const formData = new FormData();
         formData.append('file', file);
         try {
-            const res = await api.post(`/panels/${panelId}/evaluation-import?evalType=${activeTab}`, formData, {
+            const res = await api.post(`/panels/${panelId}/evaluation-import?evalType=${activeTab}&marksMode=${mode}`, formData, {
                 headers: { 'Content-Type': 'multipart/form-data' }
             });
             setImportSuccess(`Successfully updated ${res.data.updatedGroups} group(s).`);
@@ -731,15 +677,6 @@ const FacultyDashboard: React.FC = () => {
         }
     };
 
-    const handleDetailChange = (section: string, field: string, value: number | string) => {
-        setEvaluationDetails((prev: any) => ({
-            ...prev,
-            [section]: {
-                ...prev[section],
-                [field]: value
-            }
-        }));
-    };
 
     const handleSubmitEvaluation = async () => {
         if (!evaluatingProject || !evaluationType) return;
@@ -1613,10 +1550,24 @@ const FacultyDashboard: React.FC = () => {
                                                                             return (
                                                                                 <div key={idx} className="border-t border-indigo-100 pt-6 mt-6 first:mt-0 first:border-0 first:pt-0">
                                                                                     {/* Per-panel bulk actions toolbar */}
-                                                                                    <div className="mb-5 flex flex-wrap items-center gap-3 p-4 bg-indigo-50/50 border border-indigo-100 rounded-2xl">
-                                                                                        <span className="text-xs font-bold text-indigo-700 uppercase tracking-wider mr-auto">Bulk Actions</span>
-                                                                                        <button
-                                                                                            onClick={() => handleDownloadTemplate(panelId)}
+                                                                                    <div className="mb-5 flex flex-col xl:flex-row xl:items-center gap-3 p-4 bg-indigo-50/50 border border-indigo-100 rounded-2xl">
+                                                                                        <div className="flex items-center gap-3 mr-auto">
+                                                                                            <span className="text-xs font-bold text-indigo-700 uppercase tracking-wider">Bulk Actions</span>
+                                                                                            <div className="flex items-center gap-2 border-l border-indigo-200 pl-3">
+                                                                                                <button
+                                                                                                    onClick={() => setManualMarksMode(!manualMarksMode)}
+                                                                                                    className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${manualMarksMode ? 'bg-indigo-600' : 'bg-neutral-300'}`}
+                                                                                                >
+                                                                                                    <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${manualMarksMode ? 'translate-x-4.5' : 'translate-x-1'}`} />
+                                                                                                </button>
+                                                                                                <span className="text-[10px] font-bold text-neutral-600 select-none cursor-pointer uppercase tracking-wider" onClick={() => setManualMarksMode(!manualMarksMode)}>
+                                                                                                    {manualMarksMode ? 'Direct Mode' : 'Rubric Mode'}
+                                                                                                </span>
+                                                                                            </div>
+                                                                                        </div>
+                                                                                        <div className="flex flex-wrap items-center gap-3 mt-3 xl:mt-0">
+                                                                                            <button
+                                                                                                onClick={() => handleDownloadTemplate(panelId, manualMarksMode ? 'direct' : 'rubric')}
                                                                                             className="flex items-center gap-2 px-4 py-2 bg-white border border-indigo-200 text-indigo-700 rounded-lg text-xs font-bold hover:bg-indigo-50 transition-colors shadow-sm"
                                                                                         >
                                                                                             <Download className="w-3.5 h-3.5" /> Download Template
@@ -1631,7 +1582,7 @@ const FacultyDashboard: React.FC = () => {
                                                                                                 disabled={!!importingPanelId}
                                                                                                 onChange={(e) => {
                                                                                                     const f = e.target.files?.[0];
-                                                                                                    if (f) { setImportErrors([]); setImportSuccess(null); handleImportTemplate(panelId, f); }
+                                                                                                    if (f) { setImportErrors([]); setImportSuccess(null); handleImportTemplate(panelId, f, manualMarksMode ? 'direct' : 'rubric'); }
                                                                                                     e.target.value = '';
                                                                                                 }}
                                                                                             />
@@ -1642,6 +1593,7 @@ const FacultyDashboard: React.FC = () => {
                                                                                         >
                                                                                             <FileText className="w-3.5 h-3.5" /> Export Final Sheet
                                                                                         </button>
+                                                                                        </div>
                                                                                     </div>
                                                                                     {/* Import result feedback */}
                                                                                     {importSuccess && (
@@ -2045,20 +1997,32 @@ const FacultyDashboard: React.FC = () => {
                     <Dialog.Overlay className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50" />
                     <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[96vw] max-w-[1300px] bg-white rounded-2xl shadow-2xl z-50 flex flex-col focus:outline-none max-h-[92vh]">
                         {/* Header */}
-                        <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-100 shrink-0">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between px-6 py-4 border-b border-neutral-100 shrink-0 gap-4">
                             <div>
-                                <Dialog.Title className="text-lg font-bold text-neutral-900">
+                                <Dialog.Title className="text-lg font-bold text-neutral-900 flex items-center gap-3">
                                     {evaluationType === 'mid-term' ? 'Mid-Term Evaluation' : 'End-Term Evaluation'}
                                     {evaluatingProject && (
-                                        <span className="ml-2 text-sm font-normal text-neutral-500">
+                                        <span className="text-sm font-normal text-neutral-500">
                                             — Group {evaluatingProject.name || evaluatingProject.group?.name} · {evaluatingProject.project?.title || evaluatingProject.title}
                                         </span>
                                     )}
                                 </Dialog.Title>
                             </div>
-                            <Dialog.Close className="p-1.5 rounded-lg hover:bg-neutral-100 transition-colors">
-                                <X className="w-5 h-5 text-neutral-500" />
-                            </Dialog.Close>
+                            <div className="flex items-center gap-4">
+                                <button
+                                    onClick={() => setManualMarksMode(!manualMarksMode)}
+                                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${manualMarksMode ? 'bg-indigo-600' : 'bg-neutral-300'}`}
+                                >
+                                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${manualMarksMode ? 'translate-x-6' : 'translate-x-1'}`} />
+                                </button>
+                                <span className="text-sm font-medium text-neutral-600 select-none cursor-pointer" onClick={() => setManualMarksMode(!manualMarksMode)}>
+                                    {manualMarksMode ? 'Direct Marks Entry' : 'Rubric Mode'}
+                                </span>
+                                <div className="h-6 w-px bg-neutral-200"></div>
+                                <Dialog.Close className="p-1.5 rounded-lg hover:bg-neutral-100 transition-colors">
+                                    <X className="w-5 h-5 text-neutral-500" />
+                                </Dialog.Close>
+                            </div>
                         </div>
 
                         {/* Table area */}
@@ -2087,25 +2051,37 @@ const FacultyDashboard: React.FC = () => {
                                                 <table className="w-full text-sm border-collapse">
                                                     <thead className="sticky top-0 z-10 bg-white">
                                                         <tr className="border-b border-neutral-200">
-                                                            <th rowSpan={2} className="px-3 py-2 text-left text-[11px] font-bold text-neutral-700 border-r border-neutral-200 w-32 align-middle">Student</th>
-                                                            <th rowSpan={2} className="px-2 py-2 text-center text-[11px] font-bold text-neutral-600 border-r border-neutral-200 w-24 align-middle">Attendance</th>
-                                                            <th rowSpan={2} className="px-2 py-2 text-center text-[11px] font-bold text-neutral-600 border-r border-neutral-200 w-20 align-middle">Stars</th>
-                                                            {guideFields.length > 0 && <th colSpan={guideFields.length} className="px-2 py-1 text-center text-[11px] font-black text-indigo-700 bg-indigo-50 border-r border-indigo-200">Guide</th>}
-                                                            {panelFields.length > 0 && <th colSpan={panelFields.length} className="px-2 py-1 text-center text-[11px] font-black text-amber-700 bg-amber-50 border-r border-amber-200">Panel (E1 / E2)</th>}
-                                                            <th rowSpan={2} className="px-2 py-2 text-center text-[11px] font-bold text-neutral-500 border-l border-neutral-200 w-14 align-middle">Total</th>
+                                                            <th rowSpan={manualMarksMode ? 1 : 2} className="px-3 py-2 text-left text-[11px] font-bold text-neutral-700 border-r border-neutral-200 w-32 align-middle">Student</th>
+                                                            <th rowSpan={manualMarksMode ? 1 : 2} className="px-2 py-2 text-center text-[11px] font-bold text-neutral-600 border-r border-neutral-200 w-24 align-middle">Attendance</th>
+                                                            <th rowSpan={manualMarksMode ? 1 : 2} className="px-2 py-2 text-center text-[11px] font-bold text-neutral-600 border-r border-neutral-200 w-20 align-middle">Stars</th>
+                                                            {manualMarksMode ? (
+                                                                <>
+                                                                    <th className="px-2 py-2 text-center text-[11px] font-black text-indigo-700 bg-indigo-50 border-r border-indigo-200 w-24">Guide Score</th>
+                                                                    <th className="px-2 py-2 text-center text-[11px] font-black text-emerald-700 bg-emerald-50 border-r border-emerald-200 w-24">E1 Score</th>
+                                                                    <th className="px-2 py-2 text-center text-[11px] font-black text-amber-700 bg-amber-50 border-r border-amber-200 w-24">E2 Score</th>
+                                                                </>
+                                                            ) : (
+                                                                <>
+                                                                    {guideFields.length > 0 && <th colSpan={guideFields.length} className="px-2 py-1 text-center text-[11px] font-black text-indigo-700 bg-indigo-50 border-r border-indigo-200">Guide</th>}
+                                                                    {panelFields.length > 0 && <th colSpan={panelFields.length} className="px-2 py-1 text-center text-[11px] font-black text-amber-700 bg-amber-50 border-r border-amber-200">Panel (E1 / E2)</th>}
+                                                                </>
+                                                            )}
+                                                            <th rowSpan={manualMarksMode ? 1 : 2} className="px-2 py-2 text-center text-[11px] font-bold text-neutral-500 border-l border-neutral-200 w-14 align-middle">Total</th>
                                                         </tr>
-                                                        <tr className="border-b border-neutral-200">
-                                                            {guideFields.map((f: any) => (
-                                                                <th key={f.key} className="px-1 py-1 text-center text-[10px] font-bold text-indigo-600 bg-indigo-50/60 border-r border-indigo-100 max-w-[80px]">
-                                                                    <div>{f.label}</div><div className="font-normal text-indigo-400">/{f.max}</div>
-                                                                </th>
-                                                            ))}
-                                                            {panelFields.map((f: any) => (
-                                                                <th key={f.key} className="px-1 py-1 text-center text-[10px] font-bold text-amber-600 bg-amber-50/60 border-r border-amber-100 max-w-[80px]">
-                                                                    <div>{f.label}</div><div className="font-normal text-amber-400">/{f.max}</div>
-                                                                </th>
-                                                            ))}
-                                                        </tr>
+                                                        {!manualMarksMode && (
+                                                            <tr className="border-b border-neutral-200">
+                                                                {guideFields.map((f: any) => (
+                                                                    <th key={f.key} className="px-1 py-1 text-center text-[10px] font-bold text-indigo-600 bg-indigo-50/60 border-r border-indigo-100 max-w-[80px]">
+                                                                        <div>{f.label}</div><div className="font-normal text-indigo-400">/{f.max}</div>
+                                                                    </th>
+                                                                ))}
+                                                                {panelFields.map((f: any) => (
+                                                                    <th key={f.key} className="px-1 py-1 text-center text-[10px] font-bold text-amber-600 bg-amber-50/60 border-r border-amber-100 max-w-[80px]">
+                                                                        <div>{f.label}</div><div className="font-normal text-amber-400">/{f.max}</div>
+                                                                    </th>
+                                                                ))}
+                                                            </tr>
+                                                        )}
                                                     </thead>
                                                     <tbody>
                                                         {members.map((m: any, mi: number) => {
@@ -2116,6 +2092,29 @@ const FacultyDashboard: React.FC = () => {
                                                             const rowTotal = gTotal + (p2Total > 0 ? (p1Total + p2Total) / 2 : p1Total);
                                                             const upd = (patch: Partial<EvalStudentEntry>) =>
                                                                 setDataMap(prev => ({ ...prev, [m._id]: { ...prev[m._id], ...patch } }));
+                                                            
+                                                            const gMaxSum = guideFields.reduce((s: number, f: any) => s + f.max, 0);
+                                                            const pMaxSum = panelFields.reduce((s: number, f: any) => s + f.max, 0);
+
+                                                            const handleDirectDistribute = (val: number, fields: any[], targetKey: 'guide' | 'panel1' | 'panel2', maxSum: number) => {
+                                                                const newSubMap: Record<string, number> = {};
+                                                                if (val === 0 || maxSum === 0) {
+                                                                    fields.forEach((f: any) => newSubMap[f.key] = 0);
+                                                                } else {
+                                                                    let remaining = val;
+                                                                    fields.forEach((f: any, idx: number) => {
+                                                                        if (idx === fields.length - 1) {
+                                                                            newSubMap[f.key] = Number(remaining.toFixed(2));
+                                                                        } else {
+                                                                            const fieldVal = (val / maxSum) * f.max;
+                                                                            newSubMap[f.key] = Number(fieldVal.toFixed(2));
+                                                                            remaining -= newSubMap[f.key];
+                                                                        }
+                                                                    });
+                                                                }
+                                                                upd({ [targetKey]: { ...sd[targetKey], ...newSubMap } });
+                                                            };
+
                                                             return (
                                                                 <tr key={m._id} className={`border-b border-neutral-100 ${mi % 2 === 0 ? 'bg-white' : 'bg-neutral-50/40'} hover:bg-indigo-50/10`}>
                                                                     <td className="px-3 py-2 border-r border-neutral-200">
@@ -2136,32 +2135,56 @@ const FacultyDashboard: React.FC = () => {
                                                                             ))}
                                                                         </div>
                                                                     </td>
-                                                                    {guideFields.map((f: any) => (
-                                                                        <td key={f.key} className="px-1 py-1 border-r border-indigo-100 text-center">
-                                                                            <input type="number" min={0} max={f.max} value={sd.guide?.[f.key] ?? ''}
-                                                                                onChange={e => { const v = e.target.value === '' ? '' : Math.min(Number(e.target.value), f.max); upd({ guide: { ...sd.guide, [f.key]: v } }); }}
-                                                                                className="w-12 px-1 py-0.5 text-center text-sm font-bold border border-neutral-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-400 bg-white" placeholder="—" />
-                                                                        </td>
-                                                                    ))}
-                                                                    {/* Panel fields: E1 and E2 stacked in one column each */}
-                                                                    {panelFields.map((f: any) => (
-                                                                        <td key={f.key} className="px-1 py-1 border-r border-amber-100 text-center">
-                                                                            <div className="flex flex-col gap-0.5 items-center">
-                                                                                <div className="flex items-center gap-0.5">
-                                                                                    <span className="text-[9px] font-bold text-emerald-500 w-4">E1</span>
-                                                                                    <input type="number" min={0} max={f.max} value={sd.panel1?.[f.key] ?? ''}
-                                                                                        onChange={e => { const v = e.target.value === '' ? '' : Math.min(Number(e.target.value), f.max); upd({ panel1: { ...sd.panel1, [f.key]: v } }); }}
-                                                                                        className="w-10 px-1 py-0.5 text-center text-xs font-bold border border-neutral-200 rounded focus:outline-none focus:ring-1 focus:ring-emerald-400 bg-white" placeholder="—" />
-                                                                                </div>
-                                                                                <div className="flex items-center gap-0.5">
-                                                                                    <span className="text-[9px] font-bold text-amber-500 w-4">E2</span>
-                                                                                    <input type="number" min={0} max={f.max} value={sd.panel2?.[f.key] ?? ''}
-                                                                                        onChange={e => { const v = e.target.value === '' ? '' : Math.min(Number(e.target.value), f.max); upd({ panel2: { ...sd.panel2, [f.key]: v } }); }}
-                                                                                        className="w-10 px-1 py-0.5 text-center text-xs font-bold border border-neutral-200 rounded focus:outline-none focus:ring-1 focus:ring-amber-400 bg-white" placeholder="—" />
-                                                                                </div>
-                                                                            </div>
-                                                                        </td>
-                                                                    ))}
+                                                                    {manualMarksMode ? (
+                                                                        <>
+                                                                            <td className="px-2 py-1 border-r border-indigo-100 text-center relative">
+                                                                                <input type="number" min={0} max={gMaxSum} value={gTotal > 0 ? Number(gTotal.toFixed(1)) : ''}
+                                                                                    onChange={e => { const v = e.target.value === '' ? 0 : Math.min(Number(e.target.value), gMaxSum); handleDirectDistribute(v, guideFields, 'guide', gMaxSum); }}
+                                                                                    className="w-16 px-1 py-1 text-center text-sm font-bold border border-neutral-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-400 bg-white" placeholder="—" />
+                                                                                <div className="text-[9px] text-indigo-400 font-bold mt-1">/{gMaxSum}</div>
+                                                                            </td>
+                                                                            <td className="px-2 py-1 border-r border-emerald-100 text-center relative">
+                                                                                <input type="number" min={0} max={pMaxSum} value={p1Total > 0 ? Number(p1Total.toFixed(1)) : ''}
+                                                                                    onChange={e => { const v = e.target.value === '' ? 0 : Math.min(Number(e.target.value), pMaxSum); handleDirectDistribute(v, panelFields, 'panel1', pMaxSum); }}
+                                                                                    className="w-16 px-1 py-1 text-center text-sm font-bold border border-neutral-200 rounded focus:outline-none focus:ring-1 focus:ring-emerald-400 bg-white" placeholder="—" />
+                                                                                <div className="text-[9px] text-emerald-400 font-bold mt-1">/{pMaxSum}</div>
+                                                                            </td>
+                                                                            <td className="px-2 py-1 border-r border-amber-100 text-center relative">
+                                                                                <input type="number" min={0} max={pMaxSum} value={p2Total > 0 ? Number(p2Total.toFixed(1)) : ''}
+                                                                                    onChange={e => { const v = e.target.value === '' ? 0 : Math.min(Number(e.target.value), pMaxSum); handleDirectDistribute(v, panelFields, 'panel2', pMaxSum); }}
+                                                                                    className="w-16 px-1 py-1 text-center text-sm font-bold border border-neutral-200 rounded focus:outline-none focus:ring-1 focus:ring-amber-400 bg-white" placeholder="—" />
+                                                                                <div className="text-[9px] text-amber-400 font-bold mt-1">/{pMaxSum}</div>
+                                                                            </td>
+                                                                        </>
+                                                                    ) : (
+                                                                        <>
+                                                                            {guideFields.map((f: any) => (
+                                                                                <td key={f.key} className="px-1 py-1 border-r border-indigo-100 text-center">
+                                                                                    <input type="number" min={0} max={f.max} value={sd.guide?.[f.key] ?? ''}
+                                                                                        onChange={e => { const v = e.target.value === '' ? '' : Math.min(Number(e.target.value), f.max); upd({ guide: { ...sd.guide, [f.key]: v } }); }}
+                                                                                        className="w-12 px-1 py-0.5 text-center text-sm font-bold border border-neutral-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-400 bg-white" placeholder="—" />
+                                                                                </td>
+                                                                            ))}
+                                                                            {panelFields.map((f: any) => (
+                                                                                <td key={f.key} className="px-1 py-1 border-r border-amber-100 text-center">
+                                                                                    <div className="flex flex-col gap-0.5 items-center">
+                                                                                        <div className="flex items-center gap-0.5">
+                                                                                            <span className="text-[9px] font-bold text-emerald-500 w-4">E1</span>
+                                                                                            <input type="number" min={0} max={f.max} value={sd.panel1?.[f.key] ?? ''}
+                                                                                                onChange={e => { const v = e.target.value === '' ? '' : Math.min(Number(e.target.value), f.max); upd({ panel1: { ...sd.panel1, [f.key]: v } }); }}
+                                                                                                className="w-10 px-1 py-0.5 text-center text-xs font-bold border border-neutral-200 rounded focus:outline-none focus:ring-1 focus:ring-emerald-400 bg-white" placeholder="—" />
+                                                                                        </div>
+                                                                                        <div className="flex items-center gap-0.5">
+                                                                                            <span className="text-[9px] font-bold text-amber-500 w-4">E2</span>
+                                                                                            <input type="number" min={0} max={f.max} value={sd.panel2?.[f.key] ?? ''}
+                                                                                                onChange={e => { const v = e.target.value === '' ? '' : Math.min(Number(e.target.value), f.max); upd({ panel2: { ...sd.panel2, [f.key]: v } }); }}
+                                                                                                className="w-10 px-1 py-0.5 text-center text-xs font-bold border border-neutral-200 rounded focus:outline-none focus:ring-1 focus:ring-amber-400 bg-white" placeholder="—" />
+                                                                                        </div>
+                                                                                    </div>
+                                                                                </td>
+                                                                            ))}
+                                                                        </>
+                                                                    )}
                                                                     <td className="px-2 py-2 text-center border-l border-neutral-200">
                                                                         <span className={`text-sm font-black ${rowTotal > 0 ? 'text-indigo-700' : 'text-neutral-300'}`}>{rowTotal > 0 ? Math.round(rowTotal * 10) / 10 : '—'}</span>
                                                                     </td>
@@ -2174,7 +2197,6 @@ const FacultyDashboard: React.FC = () => {
                                         </div>
                                     );
                                 };
-
                                 return (
                                     <>
                                         {studentMidData && renderEvalTable('Mid-Term Scores (editing existing)', 'mid-term', studentMidData, fn => setStudentMidData(p => fn(p!)))}
