@@ -445,9 +445,13 @@ const Dashboard: React.FC = () => {
                 </nav>
                 <div className="p-4 border-t border-neutral-100">
                     <div className="flex items-center gap-3 mb-4">
-                        <div className="h-8 w-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold">
-                            {user?.name.charAt(0)}
-                        </div>
+                        {user?.photoUrl ? (
+                            <img src={user.photoUrl} alt={user?.name} className="h-8 w-8 rounded-full object-cover shrink-0 border border-neutral-200" />
+                        ) : (
+                            <div className="h-8 w-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold shrink-0">
+                                {user?.name.charAt(0)}
+                            </div>
+                        )}
                         <div className="overflow-hidden">
                             <p className="text-sm font-medium truncate">{user?.name}</p>
                             <p className="text-xs text-neutral-500 truncate">{user?.email}</p>
@@ -1238,9 +1242,13 @@ const Dashboard: React.FC = () => {
                                                     <div className="space-y-3">
                                                         {group.members.map((m: any) => (
                                                             <div key={m._id} className="flex items-center gap-3 p-2 hover:bg-neutral-50 rounded-lg transition-colors cursor-default">
-                                                                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center text-xs font-bold shadow-sm shrink-0">
-                                                                    {m.name.charAt(0)}
-                                                                </div>
+                                                                {m.photoUrl ? (
+                                                                    <img src={m.photoUrl} alt={m.name} className="w-8 h-8 rounded-full object-cover shadow-sm shrink-0 border border-neutral-200" />
+                                                                ) : (
+                                                                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center text-xs font-bold shadow-sm shrink-0">
+                                                                        {m.name.charAt(0)}
+                                                                    </div>
+                                                                )}
                                                                 <div className="overflow-hidden flex-1">
                                                                     <p className="text-sm font-medium text-neutral-900 truncate">{m.name}</p>
                                                                     <p className="text-xs text-neutral-500 truncate">{m.email}</p>
@@ -1366,9 +1374,13 @@ const Dashboard: React.FC = () => {
                                                 {group.members.map((m: any) => (
                                                     <div key={m._id} className="group relative bg-white p-5 rounded-3xl border border-neutral-200 hover:border-indigo-500 hover:shadow-xl hover:shadow-indigo-500/10 transition-all duration-300">
                                                         <div className="flex items-center gap-4">
-                                                            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center text-xl font-black shadow-lg shadow-indigo-200 transition-transform group-hover:scale-110">
-                                                                {m.name.charAt(0)}
-                                                            </div>
+                                                            {m.photoUrl ? (
+                                                                <img src={m.photoUrl} alt={m.name} className="w-14 h-14 rounded-2xl object-cover shadow-lg shadow-indigo-200 transition-transform group-hover:scale-110 border border-neutral-200" />
+                                                            ) : (
+                                                                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center text-xl font-black shadow-lg shadow-indigo-200 transition-transform group-hover:scale-110">
+                                                                    {m.name.charAt(0)}
+                                                                </div>
+                                                            )}
                                                             <div className="flex-1 min-w-0">
                                                                 <div className="flex items-center gap-2 mb-1">
                                                                     <p className="font-black text-neutral-900 truncate">{m.name}</p>

@@ -96,10 +96,10 @@ export const exportEvaluations = async (req: any, res: Response) => {
 
         // Get all groups and filter by batch
         const allGroups = await Group.find({ status: { $in: ['Approved', 'Pending'] }, isArchived: { $ne: true } })
-            .populate('members', 'name rollNumber branch department')
+            .populate('members', 'name rollNumber photoUrl branch department')
             .populate({
                 path: 'project',
-                populate: { path: 'faculty', select: 'name email _id' }
+                populate: { path: 'faculty', select: 'name email photoUrl _id' }
             })
             .lean();
 
@@ -340,7 +340,7 @@ export const updatePanel = async (req: any, res: Response) => {
             panelId,
             { faculty, batchYear, room: room || undefined },
             { new: true }
-        ).populate('faculty', 'name email department maxGroups currentGroups');
+        ).populate('faculty', 'name email photoUrl department maxGroups currentGroups');
 
         if (!updatedPanel) {
             return res.status(404).json({ message: 'Panel not found' });
@@ -358,14 +358,14 @@ export const getPanels = async (req: any, res: Response) => {
         let query: any = {};
         if (batchYear && batchYear !== 'All') query.batchYear = Number(batchYear);
         if (includeArchived !== 'true') query.isArchived = { $ne: true };
-        const panels = await Panel.find(query).populate('faculty', 'name email department maxGroups currentGroups').lean();
+        const panels = await Panel.find(query).populate('faculty', 'name email photoUrl department maxGroups currentGroups').lean();
 
         // Populate groups for each panel based on faculty
         const panelsWithGroups = await Promise.all(panels.map(async (panel: any) => {
             const panelFacultyIds = panel.faculty.map((f: any) => f._id.toString());
             const groups = await Group.find({ status: { $in: ['Approved', 'Forming', 'Pending'] }, isArchived: { $ne: true } })
-                .populate('members', 'name rollNumber email branch')
-                .populate({ path: 'project', populate: { path: 'faculty', select: 'name email' } })
+                .populate('members', 'name rollNumber photoUrl email branch')
+                .populate({ path: 'project', populate: { path: 'faculty', select: 'name email photoUrl' } })
                 .lean();
 
             const panelGroups = groups.filter((g: any) => {
@@ -414,7 +414,7 @@ export const getMyPanelEvaluationGroups = async (req: any, res: Response) => {
         let panelQuery: any = { faculty: facultyId, isArchived: { $ne: true } };
         if (batchYear && batchYear !== 'All') panelQuery.batchYear = Number(batchYear);
 
-        const panels = await Panel.find(panelQuery).populate('faculty', 'name email');
+        const panels = await Panel.find(panelQuery).populate('faculty', 'name email photoUrl');
 
         const result = [];
         for (const panel of panels) {
@@ -424,10 +424,10 @@ export const getMyPanelEvaluationGroups = async (req: any, res: Response) => {
             const groups = await Group.find({
                 status: { $in: ['Approved', 'Forming', 'Pending'] },
                 isArchived: { $ne: true }
-            }).populate('members', 'name rollNumber email branch')
+            }).populate('members', 'name rollNumber photoUrl email branch')
                 .populate({
                     path: 'project',
-                    populate: { path: 'faculty', select: 'name email' }
+                    populate: { path: 'faculty', select: 'name email photoUrl' }
                 });
 
             // Filter groups:
@@ -481,14 +481,14 @@ export const exportPanels = async (req: any, res: Response) => {
         }
         if (includeArchived !== 'true') query.isArchived = { $ne: true };
 
-        const panels = await Panel.find(query).populate('faculty', 'name email').lean();
+        const panels = await Panel.find(query).populate('faculty', 'name email photoUrl').lean();
 
         // Get groups similarly, but cache groups
         const groups = await Group.find({ status: { $in: ['Approved', 'Pending'] }, isArchived: { $ne: true } })
-            .populate('members', 'name rollNumber')
+            .populate('members', 'name rollNumber photoUrl')
             .populate({
                 path: 'project',
-                populate: { path: 'faculty', select: 'name email _id' }
+                populate: { path: 'faculty', select: 'name email photoUrl _id' }
             })
             .lean();
 
@@ -948,7 +948,7 @@ export const exportPanels = async (req: any, res: Response) => {
 
 // ─── Helper: fetch panel + its groups (shared by template/import/export-final) ────
 async function getPanelWithGroups(panelId: string) {
-    const panel = await Panel.findById(panelId).populate('faculty', 'name email').lean() as any;
+    const panel = await Panel.findById(panelId).populate('faculty', 'name email photoUrl').lean() as any;
     if (!panel) return null;
 
     // Compute panel number: 1-based index among panels for the same batchYear sorted by createdAt
@@ -957,8 +957,8 @@ async function getPanelWithGroups(panelId: string) {
 
     const panelFacultyIds = panel.faculty.map((f: any) => f._id.toString());
     const groups = await Group.find({ status: { $in: ['Approved', 'Forming', 'Pending'] }, isArchived: { $ne: true } })
-        .populate('members', 'name rollNumber email branch department')
-        .populate({ path: 'project', populate: { path: 'faculty', select: 'name email _id' } })
+        .populate('members', 'name rollNumber photoUrl email branch department')
+        .populate({ path: 'project', populate: { path: 'faculty', select: 'name email photoUrl _id' } })
         .lean();
 
     const panelGroups = groups.filter((g: any) => {

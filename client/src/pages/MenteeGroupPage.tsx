@@ -229,9 +229,13 @@ const MenteeGroupPage: React.FC = () => {
                 </nav>
                 <div className="p-4 border-t border-neutral-100">
                     <div className="flex items-center gap-3 mb-4">
-                        <div className="h-9 w-9 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold border-2 border-white shadow-sm">
-                            {user?.name.charAt(0)}
-                        </div>
+                        {user?.photoUrl ? (
+                            <img src={user.photoUrl} alt={user?.name} className="h-9 w-9 rounded-full object-cover shrink-0 border-2 border-white shadow-sm" />
+                        ) : (
+                            <div className="h-9 w-9 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold border-2 border-white shadow-sm shrink-0">
+                                {user?.name.charAt(0)}
+                            </div>
+                        )}
                         <div className="overflow-hidden">
                             <p className="text-sm font-bold text-gray-900 truncate">{user?.name}</p>
                             <p className="text-xs text-gray-500 truncate">{user?.email}</p>

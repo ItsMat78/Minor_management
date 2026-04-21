@@ -898,9 +898,13 @@ const FacultyDashboard: React.FC = () => {
                 </nav>
                 <div className="p-4 border-t border-neutral-100">
                     <div className="flex items-center gap-3 mb-4">
-                        <div className="h-9 w-9 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold border-2 border-white shadow-sm">
-                            {user?.name.charAt(0)}
-                        </div>
+                        {user?.photoUrl ? (
+                            <img src={user.photoUrl} alt={user?.name} className="h-9 w-9 rounded-full object-cover border-2 border-white shadow-sm shrink-0" />
+                        ) : (
+                            <div className="h-9 w-9 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold border-2 border-white shadow-sm shrink-0">
+                                {user?.name.charAt(0)}
+                            </div>
+                        )}
                         <div className="overflow-hidden">
                             <p className="text-sm font-bold text-neutral-900 truncate">{user?.name}</p>
                             <p className="text-xs text-neutral-500 truncate">{user?.email}</p>
@@ -1631,9 +1635,13 @@ const FacultyDashboard: React.FC = () => {
                                                                                                     onClick={() => setCollapsedEvalFaculties(prev => ({ ...prev, [sectionKey]: !prev[sectionKey] }))}
                                                                                                 >
                                                                                                     <h5 className="font-black text-neutral-800 flex items-center gap-3 text-lg group-hover:text-indigo-700 transition-colors">
-                                                                                                        <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-sm">
-                                                                                                            {facInfo.name.charAt(0)}
-                                                                                                        </div>
+                                                                                                        {facInfo.photoUrl ? (
+                                                                                                            <img src={facInfo.photoUrl} alt={facInfo.name} className="w-8 h-8 rounded-full object-cover border border-indigo-200 shrink-0" />
+                                                                                                        ) : (
+                                                                                                            <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-sm shrink-0">
+                                                                                                                {facInfo.name.charAt(0)}
+                                                                                                            </div>
+                                                                                                        )}
                                                                                                         {facInfo.name}'s Group
                                                                                                         {isCollapsed ? <ChevronDown className="w-4 h-4 text-neutral-400" /> : <ChevronUp className="w-4 h-4 text-neutral-400" />}
                                                                                                     </h5>
@@ -1671,9 +1679,13 @@ const FacultyDashboard: React.FC = () => {
                                                                                     <div className="space-y-4">
                                                                                         {pData.panel.faculty?.map((fac: any, fIdx: number) => (
                                                                                             <div key={fIdx} className="flex items-center gap-3">
-                                                                                                <div className="w-10 h-10 rounded-full bg-indigo-50 text-indigo-700 flex items-center justify-center font-bold text-sm border-2 border-white shadow-sm ring-1 ring-indigo-100">
-                                                                                                    {fac.name?.charAt(0) || '?'}
-                                                                                                </div>
+                                                                                                {fac.photoUrl ? (
+                                                                                                    <img src={fac.photoUrl} alt={fac.name} className="w-10 h-10 rounded-full object-cover border-2 border-white shadow-sm ring-1 ring-indigo-100 shrink-0" />
+                                                                                                ) : (
+                                                                                                    <div className="w-10 h-10 rounded-full bg-indigo-50 text-indigo-700 flex items-center justify-center font-bold text-sm border-2 border-white shadow-sm ring-1 ring-indigo-100 shrink-0">
+                                                                                                        {fac.name?.charAt(0) || '?'}
+                                                                                                    </div>
+                                                                                                )}
                                                                                                 <div className="flex-1 min-w-0">
                                                                                                     <p className="text-sm font-bold text-neutral-900 break-words line-clamp-2 leading-tight mb-0.5">{fac.name}</p>
                                                                                                     <p className="text-xs text-neutral-500 truncate" title={fac.email}>{fac.email}</p>
@@ -1880,9 +1892,13 @@ const FacultyDashboard: React.FC = () => {
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                         {selectedProject?.group?.members?.map((m: any, idx: number) => (
                                             <div key={m._id} className="flex items-center gap-4 p-4 bg-neutral-50 border border-neutral-100 rounded-[24px] hover:bg-white hover:border-indigo-200 transition-all cursor-default shadow-sm hover:shadow-md">
-                                                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center font-bold text-lg shadow-lg shadow-indigo-100 shrink-0">
-                                                    {m.name.charAt(0)}
-                                                </div>
+                                                {m.photoUrl ? (
+                                                    <img src={m.photoUrl} alt={m.name} className="w-12 h-12 rounded-2xl object-cover shadow-lg shadow-indigo-100 shrink-0 border border-neutral-200" />
+                                                ) : (
+                                                    <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center font-bold text-lg shadow-lg shadow-indigo-100 shrink-0">
+                                                        {m.name.charAt(0)}
+                                                    </div>
+                                                )}
                                                 <div className="overflow-hidden">
                                                     <p className="font-bold text-neutral-900 text-sm truncate mb-0.5">{m.name}</p>
                                                     <div className="flex items-center gap-2">

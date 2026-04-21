@@ -1012,9 +1012,13 @@ const AdminDashboard: React.FC = () => {
                 </nav>
                 <div className="p-4 border-t border-neutral-100">
                     <div className="flex items-center gap-3 mb-4">
-                        <div className="h-9 w-9 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold border-2 border-white shadow-sm">
-                            {user?.name.charAt(0)}
-                        </div>
+                        {user?.photoUrl ? (
+                            <img src={user.photoUrl} alt={user?.name} className="h-9 w-9 rounded-full object-cover shrink-0 border-2 border-white shadow-sm" />
+                        ) : (
+                            <div className="h-9 w-9 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold border-2 border-white shadow-sm shrink-0">
+                                {user?.name.charAt(0)}
+                            </div>
+                        )}
                         <div className="overflow-hidden">
                             <p className="text-sm font-bold text-neutral-900 truncate">{user?.name}</p>
                             <p className="text-xs text-neutral-500 truncate">{user?.email}</p>
@@ -1571,10 +1575,6 @@ const AdminDashboard: React.FC = () => {
                                                             )}
 
                                                             {(() => {
-                                                                const hasMidEval = events.some(e => e.type === 'mid_term_evaluation' && e.isActive);
-                                                                const hasEndEval = events.some(e => e.type === 'end_term_evaluation' && e.isActive);
-                                                                const showMid = hasMidEval || hasEndEval;
-                                                                const showEnd = hasEndEval;
                                                                 return (
                                                                     <div className="bg-white rounded-2xl border border-neutral-200 shadow-sm overflow-visible">
                                                                         <table className="w-full text-left">
@@ -1583,17 +1583,11 @@ const AdminDashboard: React.FC = () => {
                                                                                     <th className="px-6 py-4 text-xs font-bold text-neutral-400 uppercase tracking-wider">Group / Project</th>
                                                                                     <th className="px-6 py-4 text-xs font-bold text-neutral-400 uppercase tracking-wider">Faculty</th>
                                                                                     <th className="px-6 py-4 text-xs font-bold text-neutral-400 uppercase tracking-wider">Status</th>
-                                                                                    {showMid && <th className="px-4 py-4 text-xs font-bold text-indigo-400 uppercase tracking-wider text-center">Mid</th>}
-                                                                                    {showEnd && <th className="px-4 py-4 text-xs font-bold text-purple-400 uppercase tracking-wider text-center">End</th>}
-                                                                                    {showEnd && <th className="px-4 py-4 text-xs font-bold text-emerald-500 uppercase tracking-wider text-center">Total</th>}
                                                                                     <th className="px-6 py-4 text-xs font-bold text-neutral-400 uppercase tracking-wider text-right">Action</th>
                                                                                 </tr>
                                                                             </thead>
                                                                             <tbody className="divide-y divide-neutral-100">
                                                                                 {batchGroups.map((item: any) => {
-                                                                                    const midMarks = item.project?.midTermEvaluation?.marks;
-                                                                                    const endMarks = item.project?.endTermEvaluation?.marks;
-                                                                                    const total = (midMarks ?? 0) + (endMarks ?? 0);
                                                                                     return (
                                                                                         <tr key={item._id} onClick={() => setViewGroup(item)} className={`cursor-pointer transition-colors group ${item.targetBatch && (item.members?.some((m: any) => getBatch(m.rollNumber) !== item.targetBatch)) ? 'bg-red-50 hover:bg-red-100 border-l-4 border-l-red-500' : 'hover:bg-neutral-50'}`}>
                                                                                             <td className="px-6 py-4">
@@ -1613,9 +1607,13 @@ const AdminDashboard: React.FC = () => {
                                                                                             </td>
                                                                                             <td className="px-6 py-4">
                                                                                                 <div className="flex items-center gap-2">
-                                                                                                    <div className="h-6 w-6 rounded-full bg-orange-100 flex items-center justify-center text-xs font-bold text-orange-600">
-                                                                                                        {item.project?.faculty?.name?.charAt(0) || '?'}
-                                                                                                    </div>
+                                                                                                    {item.project?.faculty?.photoUrl ? (
+                                                                                                        <img src={item.project.faculty.photoUrl} alt={item.project.faculty.name} className="h-6 w-6 rounded-full object-cover border border-orange-200 shrink-0" />
+                                                                                                    ) : (
+                                                                                                        <div className="h-6 w-6 rounded-full bg-orange-100 flex items-center justify-center text-xs font-bold text-orange-600 shrink-0">
+                                                                                                            {item.project?.faculty?.name?.charAt(0) || '?'}
+                                                                                                        </div>
+                                                                                                    )}
                                                                                                     <span className="text-sm font-medium text-neutral-700">
                                                                                                         {item.project?.faculty?.name || 'Unassigned'}
                                                                                                     </span>
@@ -1633,27 +1631,6 @@ const AdminDashboard: React.FC = () => {
                                                                                                     {item.status || item.project?.status || 'Active'}
                                                                                                 </span>
                                                                                             </td>
-                                                                                            {showMid && (
-                                                                                                <td className="px-4 py-4 text-center">
-                                                                                                    {midMarks != null
-                                                                                                        ? <span className="inline-block px-2 py-0.5 rounded-lg bg-indigo-50 text-indigo-700 text-sm font-bold">{midMarks}</span>
-                                                                                                        : <span className="text-neutral-300 text-sm">—</span>}
-                                                                                                </td>
-                                                                                            )}
-                                                                                            {showEnd && (
-                                                                                                <td className="px-4 py-4 text-center">
-                                                                                                    {endMarks != null
-                                                                                                        ? <span className="inline-block px-2 py-0.5 rounded-lg bg-purple-50 text-purple-700 text-sm font-bold">{endMarks}</span>
-                                                                                                        : <span className="text-neutral-300 text-sm">—</span>}
-                                                                                                </td>
-                                                                                            )}
-                                                                                            {showEnd && (
-                                                                                                <td className="px-4 py-4 text-center">
-                                                                                                    {(midMarks != null || endMarks != null)
-                                                                                                        ? <span className="inline-block px-2 py-0.5 rounded-lg bg-emerald-50 text-emerald-700 text-sm font-bold">{total}</span>
-                                                                                                        : <span className="text-neutral-300 text-sm">—</span>}
-                                                                                                </td>
-                                                                                            )}
                                                                                             <td className="px-6 py-4 text-right">
                                                                                                 <div className="flex flex-col items-end gap-2">
                                                                                                     <div className="relative">
@@ -1902,6 +1879,13 @@ const AdminDashboard: React.FC = () => {
                                                                             <h5 className="text-xs font-bold text-neutral-400 uppercase mb-2">Faculty Members</h5>
                                                                             {panelFacultyWithLoad.map((f: any) => (
                                                                                 <div key={f._id} className={`flex items-center gap-3 bg-white p-3 rounded-xl border ${f.isChair ? 'border-amber-300 ring-1 ring-amber-100' : 'border-neutral-200'} shadow-sm`}>
+                                                                                    {f.photoUrl ? (
+                                                                                        <img src={f.photoUrl} alt={f.name} className="w-8 h-8 rounded-full object-cover shrink-0 border border-neutral-200" />
+                                                                                    ) : (
+                                                                                        <div className="w-8 h-8 rounded-full bg-neutral-100 text-neutral-600 flex items-center justify-center text-xs font-bold shrink-0">
+                                                                                            {f.name?.charAt(0) || 'F'}
+                                                                                        </div>
+                                                                                    )}
                                                                                     <div className="flex-1 min-w-0">
                                                                                         <h5 className="text-sm font-bold text-neutral-900 truncate flex items-center gap-1.5">
                                                                                             {f.name}

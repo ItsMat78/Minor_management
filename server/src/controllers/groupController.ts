@@ -113,7 +113,7 @@ export const getMyGroup = async (req: Request, res: Response) => {
         const userId = (req as any).user.id;
         const group = await Group.findOne({ members: userId })
             .sort({ isArchived: 1, createdAt: -1 })
-            .populate('members', 'name email role branch rollNumber')
+            .populate('members', 'name email role branch rollNumber photoUrl')
             .populate({
                 path: 'project',
                 populate: { path: 'faculty', select: 'name department email photoUrl' }
@@ -140,9 +140,9 @@ export const getMyPendingInvites = async (req: Request, res: Response) => {
     try {
         const userId = (req as any).user.id;
         const invites = await Group.find({ pendingMembers: userId, isArchived: { $ne: true } })
-            .populate('members', 'name email rollNumber branch')
-            .populate('pendingMembers', 'name email rollNumber branch')
-            .populate('createdBy', 'name email rollNumber');
+            .populate('members', 'name email rollNumber photoUrl branch')
+            .populate('pendingMembers', 'name email rollNumber photoUrl branch')
+            .populate('createdBy', 'name email rollNumber photoUrl');
         res.json(invites);
     } catch (error) {
         res.status(500).json({ message: 'Server error', error });
@@ -259,7 +259,7 @@ export const getMyMentees = async (req: Request, res: Response) => {
             .populate('updates.createdBy', 'name role')
             .populate({
                 path: 'group',
-                populate: { path: 'members', select: 'name email rollNumber branch' }
+                populate: { path: 'members', select: 'name email rollNumber photoUrl branch' }
             });
 
         const groups = projects.filter((p: any) => p.group).map((p: any) => ({
@@ -331,8 +331,8 @@ export const getAllGroups = async (req: Request, res: Response) => {
         }
 
         let baseQuery = Group.find(filter)
-            .populate('members', 'name email rollNumber branch')
-            .populate('pendingMembers', 'name email rollNumber branch')
+            .populate('members', 'name email rollNumber photoUrl branch')
+            .populate('pendingMembers', 'name email rollNumber photoUrl branch')
             .populate({
                 path: 'project',
                 populate: { path: 'faculty', select: 'name email department photoUrl' },
