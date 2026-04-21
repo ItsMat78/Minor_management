@@ -455,9 +455,13 @@ export const getMyPanelEvaluationGroups = async (req: any, res: Response) => {
                 return true;
             });
 
+            const batchPanels = await Panel.find({ batchYear: panel.batchYear }).sort({ createdAt: 1 }).select('_id').lean();
+            const panelNumber = batchPanels.findIndex((p: any) => String(p._id) === String(panel._id)) + 1;
+
             result.push({
                 panel,
-                groups: panelGroups
+                groups: panelGroups,
+                panelNumber
             });
         }
         res.status(200).json(result);
@@ -1205,7 +1209,7 @@ export const importEvaluationTemplate = async (req: any, res: Response) => {
 
             const groupId = getCell(1);
             const studentId = getCell(2);
-            if (!groupId || !studentId) continue;
+            if (!groupId || !studentId || groupId.length !== 24 || studentId.length !== 24) continue;
 
             const groupName = getCell(3);
             const attendance = getCell(7);
@@ -1357,13 +1361,10 @@ export const exportPanelFinalSheet = async (req: any, res: Response) => {
         // Column definitions
         const cols: any[] = [
             { header: 'Group No.', width: 10 },
+            { header: 'Project Title', width: 35 },
             { header: 'Student Name', width: 25 },
             { header: 'Roll No.', width: 15 },
-            { header: 'Branch', width: 12 },
-            { header: 'Project Title', width: 35 },
-            { header: 'Guide', width: 20 },
-            { header: 'Attendance', width: 12 },
-            { header: 'Stars', width: 8 },
+            { header: 'Attendance', width: 12 }
         ];
 
         // Helper: read rubric field from panel1 (with fallback to legacy panel) or panel2
@@ -1371,26 +1372,51 @@ export const exportPanelFinalSheet = async (req: any, res: Response) => {
             se?.[section]?.[key] ?? (section === 'panel1' ? se?.panel?.[key] : 0) ?? 0;
 
         if (includeMid) {
-            cols.push({ header: `[Mid] Guide Total`, width: 15 });
-            cols.push({ header: `[Mid] E1 Total`, width: 15 });
-            cols.push({ header: `[Mid] E2 Total`, width: 15 });
-            cols.push({ header: 'Mid Total', width: 12 });
+            cols.push({ header: `Guide (0-15)`, width: 15 });
+            cols.push({ header: `E1 (0-15)`, width: 15 });
+            cols.push({ header: `E2 (0-15)`, width: 15 });
         }
         if (includeEnd) {
-            cols.push({ header: `[End] Guide Total`, width: 15 });
-            cols.push({ header: `[End] E1 Total`, width: 15 });
-            cols.push({ header: `[End] E2 Total`, width: 15 });
-            cols.push({ header: 'End Total', width: 12 });
+            cols.push({ header: `Guide (0-35)`, width: 15 });
+            cols.push({ header: `E1 (0-35)`, width: 15 });
+            cols.push({ header: `E2 (0-35)`, width: 15 });
         }
-        if (evalType === 'full') {
-            cols.push({ header: 'Grand Total', width: 13 });
-            cols.push({ header: 'Grade', width: 10 });
-        }
+        cols.push({ header: 'Total (100)', width: 13 });
+        cols.push({ header: 'Grade', width: 10 });
 
         ws.columns = cols.map(c => ({ width: c.width }));
 
         const finalEvalLabel = evalType === 'mid-term' ? 'MID-TERM' : evalType === 'end-term' ? 'END-TERM' : 'FULL';
-        addCollegeAndPanelHeader(ws, panel, finalEvalLabel, cols.length, panelNumber);
+        const headerBlockRows = addCollegeAndPanelHeader(ws, panel, finalEvalLabel, cols.length, panelNumber);
+        
+        let excelRowNum = headerBlockRows + 1;
+
+        const superLabels = [ '', '', '', '', '' ];
+        if (includeMid) superLabels.push('MID-TERM EVALUATION', '', '');
+        if (includeEnd) superLabels.push('END-TERM EVALUATION', '', '');
+        superLabels.push('OVERALL', '');
+
+        const sRow = ws.addRow(superLabels);
+        sRow.font = { bold: true, color: { argb: 'FF000000' } };
+        sRow.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+        sRow.eachCell((cell, colNum) => {
+            if (colNum <= 5) return;
+            cell.border = border;
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFED7D31' } };
+        });
+
+        if (includeMid && !includeEnd) {
+            ws.mergeCells(excelRowNum, 6, excelRowNum, 8);
+            ws.mergeCells(excelRowNum, 9, excelRowNum, 10);
+        } else if (!includeMid && includeEnd) {
+            ws.mergeCells(excelRowNum, 6, excelRowNum, 8);
+            ws.mergeCells(excelRowNum, 9, excelRowNum, 10);
+        } else if (includeMid && includeEnd) {
+            ws.mergeCells(excelRowNum, 6, excelRowNum, 8);
+            ws.mergeCells(excelRowNum, 9, excelRowNum, 11);
+            ws.mergeCells(excelRowNum, 12, excelRowNum, 13);
+        }
+        excelRowNum++;
 
         const hRow = ws.addRow(cols.map(c => c.header));
         hRow.font = { bold: true };
@@ -1413,13 +1439,10 @@ export const exportPanelFinalSheet = async (req: any, res: Response) => {
 
                 const rowData: any[] = [
                     mIdx === 0 ? g.name : '',
+                    mIdx === 0 ? g.project?.title || '' : '',
                     m.name || '',
                     m.rollNumber || '',
-                    m.branch || m.department || '',
-                    mIdx === 0 ? g.project?.title || '' : '',
-                    mIdx === 0 ? (typeof g.project?.faculty === 'string' ? '' : g.project?.faculty?.name || '') : '',
                     primarySE ? (primarySE.attendance === 'present' ? 'Present' : 'Absent') : '',
-                    primarySE?.stars || '',
                 ];
 
                 let midTotal = 0;
@@ -1437,9 +1460,7 @@ export const exportPanelFinalSheet = async (req: any, res: Response) => {
                     }
                     
                     midTotal = gSum + (p2Sum > 0 ? (p1Sum + p2Sum) / 2 : p1Sum);
-                    const midActual = midSE ? (midSE.marks ?? midTotal) : '';
-                    rowData.push(midActual);
-                    if (midSE) midTotal = Number(midActual) || midTotal;
+                    if (midSE) midTotal = Number(midSE.marks ?? midTotal) || midTotal;
                 }
 
                 let endTotal = 0;
@@ -1457,16 +1478,12 @@ export const exportPanelFinalSheet = async (req: any, res: Response) => {
                     }
 
                     endTotal = gSum + (p2Sum > 0 ? (p1Sum + p2Sum) / 2 : p1Sum);
-                    const endActual = endSE ? (endSE.marks ?? endTotal) : '';
-                    rowData.push(endActual);
-                    if (endSE) endTotal = Number(endActual) || endTotal;
+                    if (endSE) endTotal = Number(endSE.marks ?? endTotal) || endTotal;
                 }
 
-                if (evalType === 'full') {
-                    const grand = (midSE ? midTotal : 0) + (endSE ? endTotal : 0);
-                    rowData.push((midSE || endSE) ? grand : '');
-                    rowData.push((midSE || endSE) ? calculateGrade(grand) : '');
-                }
+                const grand = (midSE ? midTotal : 0) + (endSE ? endTotal : 0);
+                rowData.push((midSE || endSE) ? grand : '');
+                rowData.push((midSE || endSE) ? calculateGrade(grand) : '');
 
                 const row = ws.addRow(rowData);
                 row.eachCell((cell) => {

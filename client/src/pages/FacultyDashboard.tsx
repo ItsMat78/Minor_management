@@ -626,11 +626,16 @@ const FacultyDashboard: React.FC = () => {
 
     const handleDownloadTemplate = async (panelId: string, mode: string) => {
         try {
+            const panelData = panelGroups.find((p: any) => p.panel._id === panelId);
+            const panelNum = panelData?.panelNumber || 'Unknown';
+            const batchYr = panelData?.panel?.batchYear || 'Unknown';
+            const dateStr = new Date().toISOString().split('T')[0];
+
             const res = await api.get(`/panels/${panelId}/evaluation-template?evalType=${activeTab}&marksMode=${mode}`, { responseType: 'blob' });
             const url = URL.createObjectURL(new Blob([res.data]));
             const a = document.createElement('a');
             a.href = url;
-            a.download = `eval_template_${activeTab}_${mode}.xlsx`;
+            a.download = `Panel_${panelNum}_Batch_${batchYr}_${activeTab}_Template_${dateStr}.xlsx`;
             a.click();
             URL.revokeObjectURL(url);
         } catch {
@@ -665,11 +670,16 @@ const FacultyDashboard: React.FC = () => {
 
     const handleExportFinalSheet = async (panelId: string) => {
         try {
-            const res = await api.get(`/panels/${panelId}/export-final?evalType=${activeTab === 'mid-term' ? 'mid-term' : activeTab === 'end-term' ? 'end-term' : 'full'}`, { responseType: 'blob' });
+            const panelData = panelGroups.find((p: any) => p.panel._id === panelId);
+            const panelNum = panelData?.panelNumber || 'Unknown';
+            const batchYr = panelData?.panel?.batchYear || 'Unknown';
+            const dateStr = new Date().toISOString().split('T')[0];
+
+            const res = await api.get(`/panels/${panelId}/export-final?evalType=full`, { responseType: 'blob' });
             const url = URL.createObjectURL(new Blob([res.data]));
             const a = document.createElement('a');
             a.href = url;
-            a.download = `final_sheet_${activeTab}.xlsx`;
+            a.download = `Panel_${panelNum}_Batch_${batchYr}_Full_FinalMarks_${dateStr}.xlsx`;
             a.click();
             URL.revokeObjectURL(url);
         } catch {
@@ -1382,11 +1392,11 @@ const FacultyDashboard: React.FC = () => {
                                                                             <table className="w-full text-left">
                                                                                 <thead className="bg-neutral-50 border-b border-neutral-100">
                                                                                     <tr>
-                                                                                        <th className="px-6 py-4 text-xs font-bold text-neutral-400 uppercase tracking-wider w-1/3">Project Details</th>
-                                                                                        <th className="px-6 py-4 text-xs font-bold text-neutral-400 uppercase tracking-wider">Members</th>
-                                                                                        <th className="px-6 py-4 text-xs font-bold text-neutral-400 uppercase tracking-wider">Status</th>
-                                                                                        <th className="px-6 py-4 text-xs font-bold text-neutral-400 uppercase tracking-wider">Last Update</th>
-                                                                                        <th className="px-6 py-4 text-xs font-bold text-neutral-400 uppercase tracking-wider text-right">Action</th>
+                                                                                        <th className="px-4 py-3 text-xs font-bold text-neutral-400 uppercase tracking-wider w-1/3">Project Details</th>
+                                                                                        <th className="px-4 py-3 text-xs font-bold text-neutral-400 uppercase tracking-wider">Members</th>
+                                                                                        <th className="px-4 py-3 text-xs font-bold text-neutral-400 uppercase tracking-wider">Status</th>
+                                                                                        <th className="px-4 py-3 text-xs font-bold text-neutral-400 uppercase tracking-wider">Last Update</th>
+                                                                                        <th className="px-4 py-3 text-xs font-bold text-neutral-400 uppercase tracking-wider text-right">Action</th>
                                                                                     </tr>
                                                                                 </thead>
                                                                                 <tbody className="divide-y divide-neutral-100">
@@ -1406,7 +1416,7 @@ const FacultyDashboard: React.FC = () => {
                                                                                                 ) : isDropper ? (
                                                                                                     <td className="absolute left-0 top-0 bottom-0 w-1 bg-red-500"></td>
                                                                                                 ) : null}
-                                                                                                <td className="px-6 py-4">
+                                                                                                <td className="px-4 py-3">
                                                                                                     <div className="flex flex-col gap-1">
                                                                                                         <div className="flex items-start justify-between gap-2">
                                                                                                             <span className="font-bold text-neutral-900 group-hover:text-indigo-600 transition-colors line-clamp-1 text-base">
@@ -1436,22 +1446,18 @@ const FacultyDashboard: React.FC = () => {
                                                                                                         )}
                                                                                                     </div>
                                                                                                 </td>
-                                                                                                <td className="px-6 py-4">
-                                                                                                    <div className="flex -space-x-2">
-                                                                                                        {(item.members || item.group?.members || []).slice(0, 3).map((m: any, idx: number) => (
-                                                                                                            <div key={idx} className="h-8 w-8 rounded-full bg-indigo-100 border-2 border-white flex items-center justify-center text-xs font-bold text-indigo-600 hover:z-10 transition-transform hover:scale-110" title={m.name}>
-                                                                                                                {m.name ? m.name.charAt(0) : '?'}
+                                                                                                <td className="px-4 py-3">
+                                                                                                    <div className="flex flex-col space-y-1">
+                                                                                                        {(item.members || item.group?.members || []).map((m: any, idx: number) => (
+                                                                                                            <div key={idx} className="flex items-center gap-2">
+                                                                                                                <span className="text-sm font-medium text-neutral-700">{m.name || 'Unknown'}</span>
+                                                                                                                {m.rollNumber && <span className="text-[11px] text-neutral-400 font-mono">({m.rollNumber})</span>}
                                                                                                             </div>
                                                                                                         ))}
-                                                                                                        {(item.members || item.group?.members || []).length > 3 && (
-                                                                                                            <div className="h-8 w-8 rounded-full bg-neutral-100 border-2 border-white flex items-center justify-center text-xs font-bold text-neutral-500">
-                                                                                                                +{(item.members || item.group?.members || []).length - 3}
-                                                                                                            </div>
-                                                                                                        )}
                                                                                                     </div>
                                                                                                 </td>
-                                                                                                <td className="px-6 py-4">
-                                                                                                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${(item.status || item.project?.status) === 'Approved' ? 'bg-green-100 text-green-700' :
+                                                                                                <td className="px-4 py-3">
+                                                                                                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${(item.status || item.project?.status) === 'Approved' ? 'bg-green-100 text-green-700' :
                                                                                                         (item.status || item.project?.status) === 'Rejected' ? 'bg-red-100 text-red-700' :
                                                                                                             'bg-indigo-100 text-indigo-700'
                                                                                                         }`}>
@@ -1462,10 +1468,10 @@ const FacultyDashboard: React.FC = () => {
                                                                                                         {item.status || item.project?.status || 'Active'}
                                                                                                     </span>
                                                                                                 </td>
-                                                                                                <td className="px-6 py-4 text-sm text-neutral-500 font-mono text-xs">
+                                                                                                <td className="px-4 py-3 text-sm text-neutral-500 font-mono text-xs">
                                                                                                     {new Date(item.project?.updatedAt || item.createdAt).toLocaleDateString()}
                                                                                                 </td>
-                                                                                                <td className="px-6 py-4 text-right">
+                                                                                                <td className="px-4 py-3 text-right">
                                                                                                     <div className="inline-flex items-center gap-1 text-indigo-600 font-bold text-xs opacity-0 group-hover:opacity-100 transition-opacity">
                                                                                                         View <ChevronRight className="w-3 h-3" />
                                                                                                     </div>

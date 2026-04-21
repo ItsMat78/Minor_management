@@ -719,7 +719,8 @@ const AdminDashboard: React.FC = () => {
             const url = window.URL.createObjectURL(new Blob([response.data]));
             const link = document.createElement('a');
             link.href = url;
-            link.setAttribute('download', `panels_export_${exportBatch}.xlsx`);
+            const dateStr = new Date().toISOString().split('T')[0];
+            link.setAttribute('download', `Panels_Batch_${exportBatch}_${dateStr}.xlsx`);
             document.body.appendChild(link);
             link.click();
             link.remove();
@@ -738,7 +739,8 @@ const AdminDashboard: React.FC = () => {
             const url = window.URL.createObjectURL(new Blob([response.data]));
             const link = document.createElement('a');
             link.href = url;
-            link.setAttribute('download', `evaluation_export_${exportBatch}_${type}.xlsx`);
+            const dateStr = new Date().toISOString().split('T')[0];
+            link.setAttribute('download', `Evaluations_${type}_Batch_${exportBatch}_${dateStr}.xlsx`);
             document.body.appendChild(link);
             link.click();
             link.remove();
@@ -757,7 +759,8 @@ const AdminDashboard: React.FC = () => {
             const url = window.URL.createObjectURL(new Blob([response.data]));
             const link = document.createElement('a');
             link.href = url;
-            link.setAttribute('download', `students_export_${exportBatch}.xlsx`);
+            const dateStr = new Date().toISOString().split('T')[0];
+            link.setAttribute('download', `Students_Batch_${exportBatch}_${dateStr}.xlsx`);
             document.body.appendChild(link);
             link.click();
             link.remove();
@@ -773,7 +776,8 @@ const AdminDashboard: React.FC = () => {
             const url = window.URL.createObjectURL(new Blob([response.data]));
             const link = document.createElement('a');
             link.href = url;
-            link.setAttribute('download', 'faculty_export.xlsx');
+            const dateStr = new Date().toISOString().split('T')[0];
+            link.setAttribute('download', `Faculty_${dateStr}.xlsx`);
             document.body.appendChild(link);
             link.click();
             link.remove();
