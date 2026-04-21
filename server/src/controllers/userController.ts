@@ -6,6 +6,29 @@ import * as XLSX from 'xlsx';
 import fs from 'fs';
 import bcrypt from 'bcryptjs';
 import { publicUrlFor } from '../middleware/uploadMiddleware';
+import Event, { EventType } from '../models/Event';
+
+/** Returns the participatingBatches of the current active GF event, or [] if none. */
+async function getActiveParticipatingBatches(): Promise<string[]> {
+    const now = new Date();
+    const event = await Event.findOne({
+        type: EventType.GROUP_FORMATION_AND_PROJECT_PROPOSAL,
+        isActive: true,
+        startDate: { $lte: now },
+        $or: [
+            { extensionDate: { $exists: true, $ne: null, $gte: now } },
+            { extensionDate: { $exists: false }, endDate: { $gte: now } },
+            { extensionDate: null, endDate: { $gte: now } }
+        ]
+    }).lean();
+    return event?.participatingBatches ?? [];
+}
+
+function studentBatchParticipates(rollNumber: string | undefined, batches: string[]): boolean {
+    if (!batches.length || !rollNumber) return false;
+    const prefixes = batches.map(b => b.slice(-2));
+    return prefixes.some(p => rollNumber.startsWith(p));
+}
 
 export const getFaculty = async (req: Request, res: Response) => {
     try {
@@ -426,15 +449,23 @@ export const commitImport = async (req: Request, res: Response) => {
 
         const defaultPassword = await bcrypt.hash('changeme', 10);
 
+        // Determine participating batches once for this import run
+        const activeBatches = await getActiveParticipatingBatches();
+
         let created = 0;
         const errors: { email: string; name: string; reason: string }[] = [];
 
         for (const row of validRows) {
             try {
+                // Students: mark participating if their roll number batch matches an active GF event
+                const isParticipating = row.role === 'Faculty'
+                    ? true
+                    : studentBatchParticipates(row.rollNumber, activeBatches);
+
                 await User.create({
                     ...row,
                     password: defaultPassword,
-                    isParticipating: row.role === 'Faculty',
+                    isParticipating,
                     isVerified: false,
                     mustChangePassword: true
                 });

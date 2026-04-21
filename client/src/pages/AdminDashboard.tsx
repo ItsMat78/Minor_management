@@ -8,6 +8,7 @@ import MenteeGroupDetails from '../components/MenteeGroupDetails';
 import AutoCreatePanelsModal from '../components/AutoCreatePanelsModal';
 import { GlobalEventBanner } from '../components/GlobalEventBanner';
 import * as Dialog from '@radix-ui/react-dialog';
+import JSZip from 'jszip';
 
 export const getGroupBatchYear = (group: any) => {
     if (group.targetBatch) return group.targetBatch.toString();
@@ -268,6 +269,118 @@ const AdminDashboard: React.FC = () => {
             initStudentData[m._id] = { stars: ev?.stars || 0, attendance: ev?.attendance || 'present' };
         });
         setStudentEvalData(initStudentData);
+    };
+
+    const [isCompleteExporting, setIsCompleteExporting] = useState(false);
+
+    const handleCompleteExport = async () => {
+        setIsCompleteExporting(true);
+        try {
+            const zip = new JSZip();
+
+            // Step 1: Try to get participating batches from the active Group Formation event
+            let activeBatches: string[] = [];
+            try {
+                const eventsRes = await api.get('/events');
+                const events = Array.isArray(eventsRes.data) ? eventsRes.data : [];
+                const now = new Date();
+                const activeGF = events.find((ev: any) => {
+                    if (ev.type !== 'group_formation_project_proposal') return false;
+                    if (!ev.isActive) return false;
+                    const effectiveEnd = ev.extensionDate ? new Date(ev.extensionDate) : new Date(ev.endDate);
+                    return now <= effectiveEnd;
+                });
+                if (activeGF && Array.isArray(activeGF.participatingBatches) && activeGF.participatingBatches.length > 0) {
+                    activeBatches = activeGF.participatingBatches.map(String).filter((b: string) => /^\d{4}$/.test(b));
+                }
+            } catch { /* ignore, fall through to rollNumber scan */ }
+
+            // Step 2: If no GF event, fall back to scanning student roll numbers
+            if (activeBatches.length === 0) {
+                try {
+                    const studentsRes = await api.get('/users/students');
+                    const studentsList = Array.isArray(studentsRes.data) ? studentsRes.data : (studentsRes.data?.data ?? []);
+                    const uniqueBatches = new Set<string>();
+                    studentsList.forEach((s: any) => {
+                        if (s.targetBatch && /^\d{4}$/.test(s.targetBatch)) {
+                            uniqueBatches.add(s.targetBatch);
+                        } else if (s.rollNumber && s.rollNumber.length >= 2) {
+                            const year = '20' + s.rollNumber.substring(0, 2);
+                            if (/^\d{4}$/.test(year)) uniqueBatches.add(year);
+                        }
+                    });
+                    activeBatches = Array.from(uniqueBatches);
+                } catch { /* ignore */ }
+            }
+
+            // Absolute fallback — current year only
+            if (activeBatches.length === 0) {
+                activeBatches = [new Date().getFullYear().toString()];
+            }
+
+            // a) Student export, each batch separate.
+            for (const batch of activeBatches) {
+                try {
+                    const res = await api.get(`/users/students/export?batch=${batch}`, { responseType: 'blob' });
+                    if (res.data.type !== 'application/json' && res.data.size > 0) {
+                        zip.file(`Students/Students_Batch_${batch}.xlsx`, res.data);
+                    }
+                } catch (e) { console.error('Failed student export for batch', batch); }
+            }
+
+            // b) Faculty export once
+            try {
+                const res = await api.get('/users/faculty/export', { responseType: 'blob' });
+                if (res.data.type !== 'application/json' && res.data.size > 0) {
+                    zip.file('Faculty/Faculty_Directory.xlsx', res.data);
+                }
+            } catch (e) { console.error('Failed faculty export'); }
+
+            // c) Full IIITNR Excel sheet, for each batch separate
+            for (const batch of activeBatches) {
+                try {
+                    const res = await api.get(`/panels/export-official?batchYear=${batch}`, { responseType: 'blob' });
+                    if (res.data.type !== 'application/json' && res.data.size > 0) {
+                        const acadEnd = Number(batch) + 4;
+                        zip.file(`Official_Format/MINOR_Project_Batch_${batch}-${acadEnd}.xlsx`, res.data);
+                    }
+                } catch (e) { console.error('Failed official export for batch', batch); }
+            }
+
+            // d) One snapshot
+            try {
+                const res = await api.get('/import/snapshot/export', { responseType: 'blob' });
+                if (res.data.size > 0) {
+                    zip.file('Snapshot/projects_snapshot.json', res.data);
+                }
+            } catch (e) { console.error('Failed snapshot export'); }
+
+            // e) Each panel distribution export, for each batch separate
+            for (const batch of activeBatches) {
+                try {
+                    const res = await api.get(`/panels/export?batchYear=${batch}`, { responseType: 'blob' });
+                    if (res.data.type !== 'application/json' && res.data.size > 0) {
+                        zip.file(`Panels/Panels_Batch_${batch}.xlsx`, res.data);
+                    }
+                } catch (e) { console.error('Failed panels export for batch', batch); }
+            }
+
+            const blob = await zip.generateAsync({ type: 'blob' });
+            const dateStr = new Date().toISOString().split('T')[0];
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `Complete_MINOR_Project_Database_${dateStr}.zip`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+        } catch (error) {
+            console.error('Complete export failed', error);
+            alert('Failed to generate complete export.');
+        } finally {
+            setIsCompleteExporting(false);
+        }
     };
 
     const handleAdminDetailChange = (section: string, field: string, value: number | string) => {
@@ -1835,7 +1948,7 @@ const AdminDashboard: React.FC = () => {
                                             >
                                                 {exportingPanelsFromTab
                                                     ? <><span className="animate-spin inline-block w-4 h-4 border-2 border-emerald-500 border-t-transparent rounded-full" /> Exporting…</>
-                                                    : <><Download className="w-4 h-4" /> Export for Re-import</>}
+                                                    : <><Download className="w-4 h-4" /> Export Panel Distribution</>}
                                             </button>
                                             <button onClick={() => {
                                                 setPanelExcelBatch(filterBatch !== 'All' ? filterBatch : new Date().getFullYear().toString());
@@ -2281,7 +2394,7 @@ const AdminDashboard: React.FC = () => {
                                     <div className="max-w-3xl mx-auto space-y-6">
 
                                         {/* ── Evaluation Exports Divider ──────────────────────── */}
-                                        <div className="flex items-center gap-4 py-2">
+                                        <div className="flex items-center gap-4">
                                             <div className="flex-1 h-px bg-neutral-200" />
                                             <span className="text-xs font-bold text-neutral-400 uppercase tracking-widest">Evaluation Exports</span>
                                             <div className="flex-1 h-px bg-neutral-200" />
@@ -2486,6 +2599,34 @@ const AdminDashboard: React.FC = () => {
                                                 className="px-6 py-2 bg-violet-600 text-white rounded-lg font-medium hover:bg-violet-700 transition-colors flex items-center gap-2"
                                             >
                                                 <Download className="w-4 h-4" /> Export Snapshot
+                                            </button>
+                                        </div>
+
+                                        {/* ── Complete Export ──────────────────────────────────────── */}
+                                        <div className="bg-white rounded-2xl border-2 border-indigo-200 p-6 flex flex-col md:flex-row items-center justify-between shadow-md relative overflow-hidden">
+                                            <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
+                                                <Download className="w-24 h-24 text-indigo-900" />
+                                            </div>
+                                            <div className="flex items-center gap-4 relative z-10 w-full mb-4 md:mb-0">
+                                                <div className="h-14 w-14 bg-indigo-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-indigo-200 shrink-0">
+                                                    <Download className="w-7 h-7" />
+                                                </div>
+                                                <div className="flex-1">
+                                                    <h3 className="text-xl font-black text-indigo-950">Complete Database Export</h3>
+                                                    <p className="text-sm text-indigo-700 font-medium">Download everything in one ZIP file.</p>
+                                                    <p className="text-xs text-neutral-500 mt-1">Includes Students, Faculty, Official Formats, Snapshots, and Panel Distributions for all active batches.</p>
+                                                </div>
+                                            </div>
+                                            <button
+                                                onClick={handleCompleteExport}
+                                                disabled={isCompleteExporting}
+                                                className="w-full md:w-auto px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 flex items-center justify-center gap-2 relative z-10 shrink-0 whitespace-nowrap disabled:opacity-75 disabled:cursor-not-allowed"
+                                            >
+                                                {isCompleteExporting ? (
+                                                    <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Compiling ZIP...</>
+                                                ) : (
+                                                    <><Download className="w-5 h-5" /> Download ZIP</>
+                                                )}
                                             </button>
                                         </div>
 

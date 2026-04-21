@@ -3,7 +3,34 @@ import User, { UserRole } from '../models/User';
 import Group from '../models/Group';
 import Project from '../models/Project';
 import Panel from '../models/Panel';
+import Event, { EventType } from '../models/Event';
 import bcrypt from 'bcryptjs';
+
+/** Returns the participatingBatches of the current active GF event, or [] if none. */
+async function getParticipatingBatches(): Promise<string[]> {
+    const now = new Date();
+    const event = await Event.findOne({
+        type: EventType.GROUP_FORMATION_AND_PROJECT_PROPOSAL,
+        isActive: true,
+        startDate: { $lte: now },
+        $or: [
+            { extensionDate: { $exists: true, $ne: null, $gte: now } },
+            { extensionDate: { $exists: false }, endDate: { $gte: now } },
+            { extensionDate: null, endDate: { $gte: now } }
+        ]
+    }).lean();
+    return event?.participatingBatches ?? [];
+}
+
+function batchParticipates(rollNumber: string | undefined, targetBatch: string | undefined, batches: string[]): boolean {
+    if (!batches.length) return false;
+    if (targetBatch && batches.includes(String(targetBatch))) return true;
+    if (rollNumber) {
+        const prefixes = batches.map(b => b.slice(-2));
+        return prefixes.some(p => rollNumber.startsWith(p));
+    }
+    return false;
+}
 
 export const getStats = async (req: Request, res: Response) => {
     try {
@@ -71,6 +98,13 @@ export const createUser = async (req: Request, res: Response) => {
 
         const defaultPassword = await bcrypt.hash('changeme', 10);
 
+        // For students: check if a GF event is active and their batch is participating
+        let isParticipating = role === 'Faculty'; // faculty always participate
+        if (role === 'Student') {
+            const activeBatches = await getParticipatingBatches();
+            isParticipating = batchParticipates(rollNumber, undefined, activeBatches);
+        }
+
         const newUser = new User({
             name,
             email,
@@ -82,7 +116,7 @@ export const createUser = async (req: Request, res: Response) => {
             department:  role === 'Faculty' ? (department || 'CSE') : undefined,
             expertise:   role === 'Faculty' ? expertise : undefined,
             isVerified:  role === 'Faculty',   // faculty active immediately
-            isParticipating: role === 'Faculty', // faculty always participate; students flipped on by GF event
+            isParticipating,
             mustChangePassword: true,
         });
 
