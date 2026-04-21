@@ -165,6 +165,12 @@ const AdminDashboard: React.FC = () => {
     const [excelImportResultTab, setExcelImportResultTab] = useState<'students' | 'faculty' | 'groups' | 'errors'>('students');
     const [snapshotImportResult, setSnapshotImportResult] = useState<{ result: any; errors: { type: string; key: string; reason: string }[] } | null>(null);
 
+    // Panel Import State
+    const [showPanelExcelImportModal, setShowPanelExcelImportModal] = useState(false);
+    const [panelExcelImportFile, setPanelExcelImportFile] = useState<File | null>(null);
+    const [panelExcelBatch, setPanelExcelBatch] = useState<string>('');
+    const [panelExcelImportLoading, setPanelExcelImportLoading] = useState(false);
+
     // === Admin Evaluation State ===
     const [evaluatingProject, setEvaluatingProject] = useState<any>(null);
     const [evaluationMarks, setEvaluationMarks] = useState<number>(0);
@@ -520,6 +526,65 @@ const AdminDashboard: React.FC = () => {
             alert("Error saving panels: " + (e.response?.data?.message || e.message));
             console.error("Panel save error:", e.response?.data || e);
             throw e;
+        }
+    };
+
+    const handleDownloadPanelTemplate = async () => {
+        if (!panelExcelBatch) { alert('Please select a batch first'); return; }
+        try {
+            const response = await api.get(`/panels/upload/template?batchYear=${panelExcelBatch}`, { responseType: 'blob' });
+            const url = window.URL.createObjectURL(new Blob([response.data]));
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', `Panel_Import_Template_Batch_${panelExcelBatch}.xlsx`);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+        } catch(error) {
+            alert('Failed to download template');
+        }
+    };
+
+    const handlePanelExcelImport = async () => {
+        if (!panelExcelImportFile || !panelExcelBatch) return;
+        setPanelExcelImportLoading(true);
+        const formData = new FormData();
+        formData.append('file', panelExcelImportFile);
+        formData.append('batchYear', panelExcelBatch);
+        try {
+            const res = await api.post('/panels/upload/preview', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
+            const draftPanels = res.data.draftPanels;
+            if (!draftPanels || draftPanels.length === 0) {
+                 alert('No panels found or emails did not match any active faculty');
+                 setPanelExcelImportLoading(false);
+                 return;
+            }
+            setAutoCreateBatchYear(panelExcelBatch); // because AutoCreatePanelsModal uses it
+            setDndEditInitialPanels(draftPanels);
+            setIsEditingPanelsDnd(true);
+            setShowPanelExcelImportModal(false);
+            setPanelExcelImportFile(null);
+            
+            // set autoCreateFaculties to all active faculties so they can be in reserve
+            const facRes = await api.get('/users/faculty');
+            const allFaculties = Array.isArray(facRes.data) ? facRes.data : [];
+            const groupsRes = await api.get('/groups');
+            const allGroups = Array.isArray(groupsRes.data) ? groupsRes.data : [];
+            const getGroupCount = (facId: string) => allGroups.filter((g: any) => g.project && (g.project.faculty === facId || (g.project.faculty && g.project.faculty._id === facId))).length;
+            
+            const facultiesWithWorkload = allFaculties.map(f => ({
+                _id: f._id, name: f.name, email: f.email, groupCount: getGroupCount(f._id)
+            }));
+            setAutoCreateFaculties(facultiesWithWorkload);
+            
+            setShowAutoCreateModal(true);
+        } catch(e: any) {
+            console.error(e);
+            alert('Failed to process excel file: ' + (e.response?.data?.message || e.message));
+        } finally {
+            setPanelExcelImportLoading(false);
         }
     };
 
@@ -1702,6 +1767,12 @@ const AdminDashboard: React.FC = () => {
                                 {activeTab === 'panels' && (
                                     <div className="space-y-6">
                                         <div className="flex justify-end gap-3">
+                                            <button onClick={() => {
+                                                setPanelExcelBatch(filterBatch !== 'All' ? filterBatch : new Date().getFullYear().toString());
+                                                setShowPanelExcelImportModal(true);
+                                            }} className="px-4 py-2 bg-indigo-50 text-indigo-600 border border-indigo-200 rounded-lg font-bold hover:bg-indigo-100 transition flex items-center gap-2">
+                                                <Upload className="w-4 h-4" /> Upload Excel
+                                            </button>
                                             <button onClick={handleAutoCreateClick} className="px-4 py-2 bg-indigo-50 text-indigo-600 border border-indigo-200 rounded-lg font-bold hover:bg-indigo-100 transition">
                                                 Auto Create Panels
                                             </button>
@@ -2973,6 +3044,63 @@ const AdminDashboard: React.FC = () => {
                         isEditingMode={isEditingPanelsDnd}
                         initialPanels={dndEditInitialPanels}
                     />
+                )}
+                {showPanelExcelImportModal && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm">
+                        <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden flex flex-col">
+                            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+                                <h3 className="text-lg font-bold text-gray-900">Upload Panels Excel</h3>
+                                <button onClick={() => { setShowPanelExcelImportModal(false); setPanelExcelImportFile(null); }} className="text-gray-400 hover:text-gray-600">
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+                            <div className="p-6 space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Select Batch</label>
+                                    <select
+                                        value={panelExcelBatch}
+                                        onChange={(e) => setPanelExcelBatch(e.target.value)}
+                                        className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+                                    >
+                                        <option value="" disabled>Select Batch</option>
+                                        {Array.from({ length: 6 }, (_, i) => new Date().getFullYear() - 2 + i).map(year => (
+                                            <option key={year} value={year}>{year}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div className="pt-2 border-t border-gray-100 flex justify-end">
+                                    <button onClick={handleDownloadPanelTemplate} disabled={!panelExcelBatch} className="text-sm font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 disabled:opacity-50">
+                                        <Download className="w-4 h-4" /> Download Template
+                                    </button>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Select Excel File</label>
+                                    <input
+                                        type="file"
+                                        accept=".xlsx"
+                                        onChange={(e) => setPanelExcelImportFile(e.target.files?.[0] || null)}
+                                        className="w-full block text-sm text-gray-500
+                                          file:mr-4 file:py-2 file:px-4
+                                          file:rounded-lg file:border-0
+                                          file:text-sm file:font-bold
+                                          file:bg-indigo-50 file:text-indigo-700
+                                          hover:file:bg-indigo-100 cursor-pointer"
+                                    />
+                                </div>
+                            </div>
+                            <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-3">
+                                <button onClick={() => { setShowPanelExcelImportModal(false); setPanelExcelImportFile(null); }} className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition">Cancel</button>
+                                <button
+                                    onClick={handlePanelExcelImport}
+                                    disabled={!panelExcelBatch || !panelExcelImportFile || panelExcelImportLoading}
+                                    className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition flex items-center gap-2"
+                                >
+                                    {panelExcelImportLoading ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Upload className="w-4 h-4" />}
+                                    Proceed
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 )}
                 {configBatchGroup && (
                     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm">

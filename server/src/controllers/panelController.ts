@@ -1504,3 +1504,98 @@ export const exportPanelFinalSheet = async (req: any, res: Response) => {
         res.status(500).json({ message: 'Error exporting final sheet', error: error.message });
     }
 };
+
+export const downloadPanelTemplate = async (req: any, res: Response) => {
+    try {
+        const { batchYear } = req.query;
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet('Panel Template');
+        worksheet.columns = [
+            { header: 'Panel Number', key: 'panelNumber', width: 15 },
+            { header: 'Faculty Emails (comma separated)', key: 'facultyEmails', width: 50 },
+            { header: 'Room Number (Optional)', key: 'room', width: 25 },
+        ];
+        worksheet.addRow({ panelNumber: '1', facultyEmails: 'faculty1@iiitnr.edu.in, faculty2@iiitnr.edu.in', room: '304' });
+        worksheet.addRow({ panelNumber: '2', facultyEmails: 'faculty3@iiitnr.edu.in' });
+        worksheet.getRow(1).font = { bold: true };
+        const buffer = await workbook.xlsx.writeBuffer();
+        res.set('Content-Disposition', `attachment; filename=panel_import_template_${batchYear || 'All'}.xlsx`);
+        res.set('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.send(buffer);
+    } catch (error: any) {
+        console.error('Error downloading panel template:', error);
+        res.status(500).json({ message: 'Error downloading panel template' });
+    }
+};
+
+export const previewPanelImport = async (req: any, res: Response) => {
+    try {
+        if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
+
+        const workbook = new ExcelJS.Workbook();
+        await workbook.xlsx.readFile(req.file.path);
+        const worksheet = workbook.worksheets[0];
+
+        const panelsMap: Record<string, { id: string, room: string, emails: string[] }> = {};
+        
+        worksheet.eachRow((row, rowNumber) => {
+            if (rowNumber === 1) return; // skip header
+            let panelNo = row.getCell(1).value?.toString().trim();
+            const emailsRaw = row.getCell(2).value?.toString().trim() || "";
+            let room = row.getCell(3).value?.toString().trim() || "";
+            if (panelNo) {
+                if (!panelsMap[panelNo]) {
+                    panelsMap[panelNo] = { id: `panel-imported-${panelNo}`, room, emails: [] };
+                }
+                const emails = emailsRaw.split(',').map((e: string) => e.trim()).filter((e: string) => e !== "");
+                panelsMap[panelNo].emails.push(...emails);
+                if (room && !panelsMap[panelNo].room) {
+                    panelsMap[panelNo].room = room;
+                }
+            }
+        });
+        
+        fs.unlinkSync(req.file.path);
+
+        const allFaculty = await User.find({ role: 'Faculty' }).select('_id email name').lean();
+        const facultyByEmail = new Map(allFaculty.map(f => [(f.email || '').toLowerCase(), f]));
+        const draftPanels = [];
+
+        const groups = await Group.find({ status: { $in: ['Approved', 'Pending'] }, isArchived: { $ne: true } })
+             .populate('project', 'faculty')
+             .lean();
+             
+        const getGroupCount = (facId: string) => {
+            return groups.filter((g: any) => g.project && (String(g.project.faculty) === facId || (g.project.faculty && String(g.project.faculty._id) === facId))).length;
+        };
+
+        for (const [panelNo, panelData] of Object.entries(panelsMap)) {
+            const faculties: any[] = [];
+            for (const email of panelData.emails) {
+                const fac = facultyByEmail.get(email.toLowerCase());
+                if (fac) {
+                    // Check if already added to this panel (handles duplicate emails in the same row)
+                    if (!faculties.find(f => f._id === String(fac._id))) {
+                        faculties.push({
+                            _id: String(fac._id),
+                            name: fac.name,
+                            email: fac.email,
+                            groupCount: getGroupCount(String(fac._id))
+                        });
+                    }
+                }
+            }
+            if (faculties.length > 0) {
+                draftPanels.push({
+                    id: panelData.id,
+                    faculties,
+                    room: panelData.room
+                });
+            }
+        }
+        res.json({ draftPanels });
+    } catch (error: any) {
+        console.error('Error previewing panel import:', error);
+        res.status(500).json({ message: 'Error parsing Excel file', error: error.message });
+    }
+};
