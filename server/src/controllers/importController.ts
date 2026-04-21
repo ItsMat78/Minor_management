@@ -450,6 +450,9 @@ export const exportSnapshot = async (_req: Request, res: Response) => {
                 archivedGroupName:     p.archivedGroupName || grp?.name,
                 archivedBatch:         p.archivedBatch || grp?.targetBatch,
                 archivedMembers:       (p.archivedMembers && p.archivedMembers.length) ? p.archivedMembers : fallbackMembers,
+                // New per-student evaluation array (primary source of eval data)
+                studentEvaluations:    p.studentEvaluations || [],
+                // Legacy aggregate fields kept for backward compat
                 midTermEvaluation:     p.midTermEvaluation     || null,
                 endTermEvaluation:     p.endTermEvaluation     || null,
                 finalReportEvaluation: p.finalReportEvaluation || null
@@ -457,9 +460,9 @@ export const exportSnapshot = async (_req: Request, res: Response) => {
         });
 
         const snapshot = {
-            __version:     '3.0',
+            __version:     '3.1',
             __exportedAt:  new Date().toISOString(),
-            __description: 'IIITNR Minor Management Portal - Projects Archive Snapshot',
+            __description: 'IIITNR Minor Management Portal - Evaluations & Projects Archive Snapshot',
             projects: snapshotProjects
         };
 
@@ -564,6 +567,7 @@ export const previewSnapshotImport = async (req: Request, res: Response) => {
             archivedGroupName:  p.archivedGroupName || null,
             archivedBatch:      p.archivedBatch || null,
             memberCount:        (p.archivedMembers || []).length,
+            studentEvalCount:   (p.studentEvaluations || []).length,
             hasMidTerm:         !!p.midTermEvaluation,
             hasEndTerm:         !!p.endTermEvaluation,
             hasFinal:           !!p.finalReportEvaluation,
@@ -631,6 +635,9 @@ export const commitSnapshotImport = async (req: Request, res: Response) => {
                     archivedBatch:         p.archivedBatch,
                     archivedMembers:       members,
                     feedback:              p.feedback,
+                    // Restore per-student evaluations (new system)
+                    studentEvaluations:    Array.isArray(p.studentEvaluations) ? p.studentEvaluations : [],
+                    // Legacy aggregate fields
                     midTermEvaluation:     p.midTermEvaluation     || undefined,
                     endTermEvaluation:     p.endTermEvaluation     || undefined,
                     finalReportEvaluation: p.finalReportEvaluation || undefined

@@ -819,6 +819,26 @@ const AdminDashboard: React.FC = () => {
         }
     };
 
+    const handleExportOfficial = async () => {
+        if (!exportBatch || exportBatch === 'All') { alert('Please select a specific batch first.'); return; }
+        try {
+            const response = await api.get(`/panels/export-official?batchYear=${exportBatch}`, {
+                responseType: 'blob',
+            });
+            const url = window.URL.createObjectURL(new Blob([response.data]));
+            const link = document.createElement('a');
+            link.href = url;
+            const acadEnd = Number(exportBatch) + 4;
+            link.setAttribute('download', `MINOR_Project_Batch_${exportBatch}-${acadEnd}.xlsx`);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+        } catch (error) {
+            console.error('Official export failed', error);
+            alert('Failed to export official format');
+        }
+    };
+
     const handleExportStudents = async () => {
         if (!exportBatch || exportBatch === 'All') { alert('Please select a specific batch first.'); return; }
         try {
@@ -2202,6 +2222,15 @@ const AdminDashboard: React.FC = () => {
 
                                 {activeTab === 'exports' && (
                                     <div className="max-w-3xl mx-auto space-y-6">
+
+                                        {/* ── Evaluation Exports Divider ──────────────────────── */}
+                                        <div className="flex items-center gap-4 py-2">
+                                            <div className="flex-1 h-px bg-neutral-200" />
+                                            <span className="text-xs font-bold text-neutral-400 uppercase tracking-widest">Evaluation Exports</span>
+                                            <div className="flex-1 h-px bg-neutral-200" />
+                                        </div>
+
+                                        {/* Evaluation Panels Export */}
                                         <div className="bg-white rounded-2xl border border-neutral-200 p-6 flex items-center justify-between shadow-sm">
                                             <div className="flex items-center gap-4">
                                                 <div className="h-12 w-12 bg-orange-50 rounded-xl flex items-center justify-center text-orange-600">
@@ -2232,6 +2261,7 @@ const AdminDashboard: React.FC = () => {
                                             </div>
                                         </div>
 
+                                        {/* Evaluation Data Export */}
                                         <div className="bg-white rounded-2xl border border-neutral-200 p-6 flex flex-col gap-6 shadow-sm">
                                             <div className="flex items-center justify-between">
                                                 <div className="flex items-center gap-4">
@@ -2282,6 +2312,13 @@ const AdminDashboard: React.FC = () => {
                                                     </div>
                                                 </button>
                                             </div>
+                                        </div>
+
+                                        {/* ── General Exports Divider ─────────────────────────── */}
+                                        <div className="flex items-center gap-4 py-2">
+                                            <div className="flex-1 h-px bg-neutral-200" />
+                                            <span className="text-xs font-bold text-neutral-400 uppercase tracking-widest">General Exports</span>
+                                            <div className="flex-1 h-px bg-neutral-200" />
                                         </div>
 
 
@@ -2335,14 +2372,46 @@ const AdminDashboard: React.FC = () => {
                                         </div>
 
                                         {/* ── Snapshot Export ──────────────────────────────────── */}
+                                        {/* Official IIITNR Format Export — 5th position */}
+                                        <div className="bg-white rounded-2xl border border-emerald-200 p-6 flex items-center justify-between shadow-sm">
+                                            <div className="flex items-center gap-4">
+                                                <div className="h-12 w-12 bg-emerald-50 rounded-xl flex items-center justify-center text-emerald-600">
+                                                    <FileText className="w-6 h-6" />
+                                                </div>
+                                                <div>
+                                                    <h3 className="text-lg font-bold text-neutral-900">Official IIITNR Format Export</h3>
+                                                    <p className="text-sm text-neutral-500">Export in the exact format of the official MINOR Project Excel sheet (K, Name, Roll No, Dept, Title, Area, Supervisor).</p>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-3">
+                                                <select
+                                                    value={exportBatch}
+                                                    onChange={(e) => setExportBatch(e.target.value)}
+                                                    className="px-3 py-2 bg-neutral-50 rounded-lg border border-neutral-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                                                >
+                                                    <option value="">Select Batch</option>
+                                                    {Array.from({ length: 7 }, (_, i) => (new Date().getFullYear() - 7) + i).map(year => (
+                                                        <option key={year} value={year.toString()}>{year}-{year + 4}</option>
+                                                    ))}
+                                                </select>
+                                                <button
+                                                    onClick={handleExportOfficial}
+                                                    className="px-6 py-2 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 transition-colors flex items-center gap-2"
+                                                >
+                                                    <Download className="w-4 h-4" /> Export Excel
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {/* ── Snapshot Export ──────────────────────────────────── */}
                                         <div className="bg-white rounded-2xl border border-neutral-200 p-6 flex items-center justify-between shadow-sm">
                                             <div className="flex items-center gap-4">
                                                 <div className="h-12 w-12 bg-violet-50 rounded-xl flex items-center justify-center text-violet-600">
                                                     <Download className="w-6 h-6" />
                                                 </div>
                                                 <div>
-                                                    <h3 className="text-lg font-bold text-neutral-900">Full Database Snapshot</h3>
-                                                    <p className="text-sm text-neutral-500">Export all users, groups, projects, and evaluations as a portable JSON file.</p>
+                                                    <h3 className="text-lg font-bold text-neutral-900">Evaluations &amp; Projects Snapshot</h3>
+                                                    <p className="text-sm text-neutral-500">Archives only <strong>evaluations and project data</strong> from completed semesters as a portable JSON file. Does not include users, groups, or panels.</p>
                                                 </div>
                                             </div>
                                             <button
@@ -2448,7 +2517,7 @@ const AdminDashboard: React.FC = () => {
                                                     </div>
                                                     <div>
                                                         <h3 className="text-lg font-bold text-neutral-900">Snapshot Import</h3>
-                                                        <p className="text-sm text-neutral-500">Restore a full database state from a previously exported snapshot JSON file.</p>
+                                                <p className="text-sm text-neutral-500">Restore archived evaluations and project data from a previously exported snapshot JSON.</p>
                                                     </div>
                                                 </div>
                                                 <button onClick={() => setShowSnapshotImportModal(true)}
@@ -4516,11 +4585,12 @@ const AdminDashboard: React.FC = () => {
                                                                         </td>
                                                                         <td className="px-4 py-2 text-center text-xs text-neutral-600">{p.memberCount}</td>
                                                                         <td className="px-4 py-2 text-center text-xs">
-                                                                            <div className="flex items-center justify-center gap-1">
+                                                                            <div className="flex items-center justify-center gap-1 flex-wrap">
+                                                                                {(p.studentEvalCount > 0) && <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 text-[9px] font-bold">{p.studentEvalCount} evals</span>}
                                                                                 {p.hasMidTerm && <span className="px-1 py-0.5 rounded bg-blue-100 text-blue-700 text-[9px] font-bold">M</span>}
                                                                                 {p.hasEndTerm && <span className="px-1 py-0.5 rounded bg-indigo-100 text-indigo-700 text-[9px] font-bold">E</span>}
                                                                                 {p.hasFinal && <span className="px-1 py-0.5 rounded bg-violet-100 text-violet-700 text-[9px] font-bold">F</span>}
-                                                                                {!p.hasMidTerm && !p.hasEndTerm && !p.hasFinal && <span className="text-neutral-300">—</span>}
+                                                                                {!p.studentEvalCount && !p.hasMidTerm && !p.hasEndTerm && !p.hasFinal && <span className="text-neutral-300">—</span>}
                                                                             </div>
                                                                         </td>
                                                                     </tr>

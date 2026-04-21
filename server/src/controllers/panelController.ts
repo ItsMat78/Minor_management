@@ -1613,3 +1613,181 @@ export const previewPanelImport = async (req: any, res: Response) => {
         res.status(500).json({ message: 'Error parsing Excel file', error: error.message });
     }
 };
+
+/**
+ * Export all groups in the EXACT official IIITNR format matching:
+ * MINOR Project-II (IV Semester)_2025-2026.xlsx
+ *
+ * Reverse-engineered format:
+ *  - Row 1  : Header | bg #A4C2F4 (cornflower blue) | bold | centered | wrap
+ *  - Odd  group rows : no background fill (default white)
+ *  - Even group rows : solid fill #999999 (grey)
+ *  - Multi-member groups: columns E, F, G are merged vertically across all member rows
+ *  - Column A (K): serial number on first member row only — NOT merged
+ *  - Columns B, C, D: one row per member — NOT merged
+ *  - Column widths: A=7.38, B=21.88, C=16.75, D≈8.43(default), E=25.88, F=21, G=23.38
+ */
+export const exportOfficialFormat = async (req: any, res: Response) => {
+    try {
+        const { batchYear } = req.query;
+
+        if (!batchYear || batchYear === 'All') {
+            return res.status(400).json({ message: 'Please specify a batch year.' });
+        }
+
+        const allGroups = await Group.find({ status: { $in: ['Approved', 'Pending'] }, isArchived: { $ne: true } })
+            .populate('members', 'name rollNumber branch department')
+            .populate({
+                path: 'project',
+                populate: { path: 'faculty', select: 'name' }
+            })
+            .lean();
+
+        // Filter by batch year
+        const filteredGroups = allGroups.filter((g: any) => {
+            const gBatch = g.targetBatch
+                ? String(g.targetBatch)
+                : (g.members && g.members.length > 0 && g.members[0].rollNumber
+                    ? '20' + String(g.members[0].rollNumber).substring(0, 2)
+                    : 'Unknown');
+            return gBatch === String(batchYear);
+        });
+
+        // Sort by group name (numeric)
+        filteredGroups.sort((a: any, b: any) => {
+            const numA = parseInt(a.name) || 0;
+            const numB = parseInt(b.name) || 0;
+            return numA - numB;
+        });
+
+        const workbook = new ExcelJS.Workbook();
+        const ws = workbook.addWorksheet('Sheet1');
+
+        // ── Column widths from reference file (bumped up ~20% for readability) ─
+        // Col D has no custom width in source (uses Excel default ~8.43)
+        ws.columns = [
+            { width: 9    }, // A – K (serial)
+            { width: 28   }, // B – Project Group Members Name
+            { width: 20   }, // C – Roll No
+            { width: 12   }, // D – Department
+            { width: 34   }, // E – Title of the Minor Project
+            { width: 27   }, // F – Area of Project
+            { width: 30   }, // G – Name of the Supervisor
+        ];
+
+        // ── Exact header background: #A4C2F4 ─────────────────────────────────────
+        const HEADER_BG   = 'FFA4C2F4';  // exact color from reference file
+        const GREY_BG     = 'FF999999';  // even group rows
+        // Odd groups have no fill (patternType: none) = default white
+
+        const thinBorder: Partial<ExcelJS.Borders> = {
+            top:    { style: 'thin' },
+            left:   { style: 'thin' },
+            bottom: { style: 'thin' },
+            right:  { style: 'thin' },
+        };
+
+        // ── Header row ────────────────────────────────────────────────────────────
+        const headerRow = ws.addRow([
+            'K',
+            'Project Group Members Name',
+            'Roll No',
+            'Department',
+            'Title of the Minor Project',
+            'Area of Project',
+            'Name of the  Supervisor',   // <-- double space as in the original
+        ]);
+        headerRow.height = 32;
+        headerRow.eachCell(cell => {
+            cell.font      = { bold: true, size: 11 };
+            cell.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: HEADER_BG } };
+            cell.border    = thinBorder;
+            cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+        });
+
+        // ── Data rows ─────────────────────────────────────────────────────────────
+        let currentExcelRow = 2; // data starts at row 2 (header is row 1)
+
+        filteredGroups.forEach((g: any, gIdx: number) => {
+            const project    = g.project;
+            const members    = (g.members || []) as any[];
+            const title      = project?.title || '';
+            const area       = (project?.tags || []).join(', ');
+            const supervisor = project?.faculty?.name || '';
+            const memberCount = members.length;
+
+            // Even groups (gIdx 1, 3, 5... i.e. 2nd, 4th, 6th group) get grey bg
+            // Odd groups (gIdx 0, 2, 4... i.e. 1st, 3rd, 5th) get no fill
+            const isEvenGroup = (gIdx + 1) % 2 === 0; // gIdx is 0-based
+
+            members.forEach((m: any, mIdx: number) => {
+                const isFirst = mIdx === 0;
+                const dept    = m.branch || m.department || '';
+
+                // For non-first members: E, F, G cells are empty (they'll be covered by merge)
+                const rowData: any[] = [
+                    isFirst ? (gIdx + 1) : '',   // A – serial only on first row
+                    m.name       || '',            // B – always filled
+                    m.rollNumber || '',            // C – always filled
+                    dept,                          // D – always filled
+                    isFirst ? title      : '',     // E – filled only on first row
+                    isFirst ? area       : '',     // F – filled only on first row
+                    isFirst ? supervisor : '',     // G – filled only on first row
+                ];
+
+                const dataRow = ws.addRow(rowData);
+                dataRow.height = 24;
+
+                dataRow.eachCell({ includeEmpty: true }, (cell, colNum) => {
+                    cell.border = thinBorder;
+
+                    // Vertical alignment for all, wrap text for Title/Area/Supervisor
+                    cell.alignment = {
+                        horizontal: colNum === 1 ? 'center' : 'left',
+                        vertical:   colNum >= 5  ? 'top'   : 'middle',
+                        wrapText:   colNum >= 5,
+                    };
+
+                    // Apply fill: even groups get grey, odd get no fill (white default)
+                    if (isEvenGroup) {
+                        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: GREY_BG } };
+                    }
+                    // Odd groups: no fill needed (default white)
+                });
+
+                currentExcelRow++;
+            });
+
+            // ── Vertical merges for multi-member groups ───────────────────────────
+            // Columns E (5), F (6), G (7) are merged vertically across all member rows
+            if (memberCount > 1) {
+                const firstMemberRow = currentExcelRow - memberCount;
+                const lastMemberRow  = currentExcelRow - 1;
+
+                // Merge E, F, G columns
+                ['E', 'F', 'G'].forEach(col => {
+                    ws.mergeCells(`${col}${firstMemberRow}:${col}${lastMemberRow}`);
+                    // Re-apply styling to the merged cell (top-left cell holds the value)
+                    const mergedCell = ws.getCell(`${col}${firstMemberRow}`);
+                    mergedCell.border    = thinBorder;
+                    mergedCell.alignment = { horizontal: 'left', vertical: 'top', wrapText: true };
+                    if (isEvenGroup) {
+                        mergedCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: GREY_BG } };
+                    }
+                });
+            }
+        });
+
+        const buffer   = await workbook.xlsx.writeBuffer();
+        const acadEnd  = Number(batchYear) + 4;
+        const fileName = `MINOR_Project_Batch_${batchYear}-${acadEnd}.xlsx`;
+
+        res.set('Content-Disposition', `attachment; filename="${fileName}"`);
+        res.set('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.send(buffer);
+
+    } catch (error: any) {
+        console.error('Official format export failed:', error);
+        res.status(500).json({ message: 'Error exporting official format', error: error.message });
+    }
+};
