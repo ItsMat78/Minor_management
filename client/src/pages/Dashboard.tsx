@@ -10,6 +10,7 @@ import Chat from '../components/Chat';
 import { motion } from 'framer-motion';
 import * as Dialog from '@radix-ui/react-dialog';
 import { GlobalEventBanner } from '../components/GlobalEventBanner';
+import { useParticipatingBatches } from '../hooks/useParticipatingBatches';
 
 interface Group {
     _id: string;
@@ -47,6 +48,8 @@ const Dashboard: React.FC = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
     const [activeTab, setActiveTab] = useState<'directory' | 'project' | 'group' | 'archive'>(initialStudentTab || 'directory');
+
+    const { batches: participatingBatchYears } = useParticipatingBatches();
 
     useEffect(() => {
         const current = searchParams.get('tab');
@@ -692,8 +695,8 @@ const Dashboard: React.FC = () => {
                                                                         disabled={isFetchingGroupNo}
                                                                     >
                                                                         <option value="">Select Batch Year</option>
-                                                                        {Array.from({ length: 7 }, (_, i) => (new Date().getFullYear() - 7) + i).reverse().map(year => (
-                                                                            <option key={year} value={year.toString()}>Batch {year}</option>
+                                                                        {participatingBatchYears.map(year => (
+                                                                            <option key={year} value={year}>Batch {year}</option>
                                                                         ))}
                                                                     </select>
                                                                     <p className="mt-1.5 text-[10px] text-neutral-400 leading-relaxed ml-1">

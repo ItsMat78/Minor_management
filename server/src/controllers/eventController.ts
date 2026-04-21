@@ -15,6 +15,28 @@ const verifyAdminPassword = async (userId: string, passwordToVerify: string) => 
     return isMatch;
 };
 
+// Return the participating batches of the currently active Group Formation event.
+// Accessible to all authenticated users so dropdowns can filter correctly.
+export const getParticipatingBatchesHandler = async (req: Request, res: Response) => {
+    try {
+        const now = new Date();
+        const event = await Event.findOne({
+            type: EventType.GROUP_FORMATION_AND_PROJECT_PROPOSAL,
+            isActive: true,
+            startDate: { $lte: now },
+            $or: [
+                { extensionDate: { $exists: true, $ne: null, $gte: now } },
+                { extensionDate: { $exists: false }, endDate: { $gte: now } },
+                { extensionDate: null, endDate: { $gte: now } }
+            ]
+        }).lean();
+        res.json({ participatingBatches: event?.participatingBatches ?? [] });
+    } catch (error) {
+        res.status(500).json({ message: 'Server error', error });
+    }
+};
+
+
 // Get all events (optionally filter by batchYear)
 export const getEvents = async (req: Request, res: Response) => {
     try {

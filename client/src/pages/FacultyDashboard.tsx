@@ -8,6 +8,7 @@ import { motion } from 'framer-motion';
 import * as Dialog from '@radix-ui/react-dialog';
 import MenteeGroupDetails from '../components/MenteeGroupDetails';
 import CustomBatchDropdown from '../components/CustomBatchDropdown';
+import { useParticipatingBatches } from '../hooks/useParticipatingBatches';
 
 interface Project {
     _id: string;
@@ -401,7 +402,10 @@ const FacultyDashboard: React.FC = () => {
     const { user, logout, activeEvents } = useAuth();
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
-    const initialTab = searchParams.get('tab') as 'proposals' | 'mentees' | 'profile' | 'directory' | 'mid-term' | 'end-term' | 'archive' | null;
+    const initialTab = searchParams.get('tab') as 'directory' | 'proposals' | 'mentees' | 'profile' | 'mid-term' | 'end-term' | 'archive' | null;
+    const [activeTab, setActiveTab] = useState<'directory' | 'proposals' | 'mentees' | 'profile' | 'mid-term' | 'end-term' | 'archive'>(initialTab || 'mentees');
+
+    const { batches: participatingBatchYears } = useParticipatingBatches();
     const [projects, setProjects] = useState<Project[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedProject, setSelectedProject] = useState<Project | null>(null);
@@ -409,7 +413,7 @@ const FacultyDashboard: React.FC = () => {
     const [feedback, setFeedback] = useState('');
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-    const [activeTab, setActiveTab] = useState<'proposals' | 'mentees' | 'profile' | 'directory' | 'mid-term' | 'end-term' | 'archive'>(initialTab || 'mentees'); // Removed 'final-report'
+
     const [archivedProjects, setArchivedProjects] = useState<any[]>([]);
     const [loadingArchive, setLoadingArchive] = useState(false);
 
@@ -758,9 +762,8 @@ const FacultyDashboard: React.FC = () => {
             if (!matchesSearch) matches = false;
 
             if (filterBatch !== 'All') {
-                const batchSuffix = filterBatch.slice(2);
-                const hasMemberInBatch = p.group?.members?.some((m: any) => m.rollNumber && m.rollNumber.startsWith(batchSuffix));
-                if (!hasMemberInBatch) matches = false;
+                const gBatch = p.group?.targetBatch ? String(p.group.targetBatch) : (p.group?.members?.[0]?.rollNumber ? '20' + String(p.group.members[0].rollNumber).substring(0, 2) : 'Unknown');
+                if (gBatch !== filterBatch) matches = false;
             }
 
             if (activeTab === 'proposals') {
@@ -783,8 +786,8 @@ const FacultyDashboard: React.FC = () => {
                 (g.members || []).some((m: any) => (m.name || '').toString().toLowerCase().includes(searchTerm.toLowerCase()));
 
             const matchesBatch = filterBatch === 'All' || (() => {
-                const batchSuffix = filterBatch.slice(2);
-                return g.members?.some((m: any) => m.rollNumber && m.rollNumber.startsWith(batchSuffix));
+                const gBatch = g.targetBatch ? String(g.targetBatch) : (g.members?.[0]?.rollNumber ? '20' + String(g.members[0].rollNumber).substring(0, 2) : 'Unknown');
+                return gBatch === filterBatch;
             })();
 
             return matchesSearch && matchesBatch;
@@ -810,9 +813,8 @@ const FacultyDashboard: React.FC = () => {
 
         let matchesBatch = true;
         if (filterBatch !== 'All') {
-            const batchSuffix = filterBatch.slice(2);
-            const hasMemberInBatch = p.group?.members?.some((m: any) => m.rollNumber && m.rollNumber.startsWith(batchSuffix));
-            matchesBatch = hasMemberInBatch || false;
+            const gBatch = p.group?.targetBatch ? String(p.group.targetBatch) : (p.group?.members?.[0]?.rollNumber ? '20' + String(p.group.members[0].rollNumber).substring(0, 2) : 'Unknown');
+            matchesBatch = gBatch === filterBatch;
         }
 
         return isApproved && matchesBatch;
@@ -1127,8 +1129,8 @@ const FacultyDashboard: React.FC = () => {
                                                         onChange={(e) => setFilterDirectoryYear(e.target.value)}
                                                     >
                                                         <option value="All">Batch: All</option>
-                                                        {Array.from({ length: 10 }, (_, i) => 2020 + i).map(y => (
-                                                            <option key={y} value={y.toString()}>{y}</option>
+                                                        {participatingBatchYears.map(y => (
+                                                            <option key={y} value={y}>{y}</option>
                                                         ))}
                                                     </select>
                                                 </>
@@ -1160,8 +1162,8 @@ const FacultyDashboard: React.FC = () => {
                                                             onChange={(e) => setFilterBatch(e.target.value)}
                                                         >
                                                             <option value="All">Batch: All</option>
-                                                            {Array.from({ length: 7 }, (_, i) => (new Date().getFullYear() - 7) + i).map(year => (
-                                                                <option key={year} value={year.toString()}>{year}-{year + 4}</option>
+                                                            {participatingBatchYears.map(year => (
+                                                                <option key={year} value={year}>{year}-{parseInt(year) + 4}</option>
                                                             ))}
                                                         </select>
                                                     )}

@@ -9,6 +9,7 @@ import AutoCreatePanelsModal from '../components/AutoCreatePanelsModal';
 import { GlobalEventBanner } from '../components/GlobalEventBanner';
 import * as Dialog from '@radix-ui/react-dialog';
 import JSZip from 'jszip';
+import { useParticipatingBatches } from '../hooks/useParticipatingBatches';
 
 export const getGroupBatchYear = (group: any) => {
     if (group.targetBatch) return group.targetBatch.toString();
@@ -36,6 +37,9 @@ const AdminDashboard: React.FC = () => {
     const initialAdminTab = searchParams.get('tab') as 'overview' | 'students' | 'groups' | 'faculty' | 'events' | 'exports' | 'panels' | 'archive' | null;
     const [activeTab, setActiveTab] = useState<'overview' | 'students' | 'groups' | 'faculty' | 'events' | 'exports' | 'panels' | 'archive'>(initialAdminTab || 'overview');
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+
+    // Participating batches from server (active GF event), used for all batch dropdowns
+    const { batches: participatingBatchYears } = useParticipatingBatches();
 
     useEffect(() => {
         const current = searchParams.get('tab');
@@ -338,6 +342,9 @@ const AdminDashboard: React.FC = () => {
 
             // c) Full IIITNR Excel sheet, for each batch separate
             for (const batch of activeBatches) {
+                const hasGroups = groups.some((g: any) => getGroupBatchYear(g) === batch);
+                if (!hasGroups) continue;
+
                 try {
                     const res = await api.get(`/panels/export-official?batchYear=${batch}`, { responseType: 'blob' });
                     if (res.data.type !== 'application/json' && res.data.size > 0) {
@@ -357,6 +364,9 @@ const AdminDashboard: React.FC = () => {
 
             // e) Each panel distribution export, for each batch separate
             for (const batch of activeBatches) {
+                const hasPanels = panels.some((p: any) => String(p.batchYear) === String(batch)) || groups.some((g: any) => getGroupBatchYear(g) === String(batch));
+                if (!hasPanels) continue;
+
                 try {
                     const res = await api.get(`/panels/export?batchYear=${batch}`, { responseType: 'blob' });
                     if (res.data.type !== 'application/json' && res.data.size > 0) {
@@ -741,11 +751,9 @@ const AdminDashboard: React.FC = () => {
         setGlobalMaxGroups(faculty.maxGroups || 7);
 
         const initialBatchLimits: any = {};
-        // Initialize defaults for recent batches
-        const currentYear = new Date().getFullYear();
-        // Generate batches from currentYear - 7 to currentYear - 1
-        const batches = Array.from({ length: 7 }, (_, i) => (currentYear - 7) + i);
-        batches.forEach(year => {
+        // Generate default slots for currently participating batches
+        participatingBatchYears.forEach(yearStr => {
+            const year = parseInt(yearStr);
             const config = (faculty.batchConfigs || []).find((c: any) => c.batchYear === year);
             if (config) {
                 initialBatchLimits[year] = { maxStudents: config.maxStudents, maxGroups: config.maxGroups };
@@ -1313,8 +1321,8 @@ const AdminDashboard: React.FC = () => {
                                             onChange={(e) => setFilterBatch(e.target.value)}
                                         >
                                             <option value="All">Batch: All</option>
-                                            {Array.from({ length: 7 }, (_, i) => (new Date().getFullYear() - 7) + i).map(year => (
-                                                <option key={year} value={year.toString()}>{year}-{year + 4}</option>
+                                            {participatingBatchYears.map(year => (
+                                                <option key={year} value={year}>{year}-{parseInt(year) + 4}</option>
                                             ))}
                                         </select>
                                     )}
@@ -1787,7 +1795,7 @@ const AdminDashboard: React.FC = () => {
                                             />
                                         ) : (
                                             <div className="pb-20">
-                                                {(filterBatch === 'All' ? Array.from({ length: 7 }, (_, i) => (new Date().getFullYear() - 7) + i).reverse() : [parseInt(filterBatch)]).map(batchYear => {
+                                                {(filterBatch === 'All' ? [...participatingBatchYears].reverse() : [filterBatch]).map(batchYear => {
                                                     const batchGroups = displayGroups.filter((g: any) => {
                                                         if (filterBatch !== 'All') return true; // Already filtered
                                                         return getGroupBatchYear(g) === batchYear.toString();
@@ -2418,8 +2426,8 @@ const AdminDashboard: React.FC = () => {
                                                     className="px-3 py-2 bg-neutral-50 rounded-lg border border-neutral-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-orange-500/20"
                                                 >
                                                     <option value="">Select Batch</option>
-                                                    {Array.from({ length: 7 }, (_, i) => (new Date().getFullYear() - 7) + i).map(year => (
-                                                        <option key={year} value={year.toString()}>{year}-{year + 4}</option>
+                                                    {participatingBatchYears.map(year => (
+                                                        <option key={year} value={year}>{year}-{parseInt(year) + 4}</option>
                                                     ))}
                                                 </select>
                                                 <button
@@ -2449,8 +2457,8 @@ const AdminDashboard: React.FC = () => {
                                                     className="px-3 py-1.5 bg-neutral-50 rounded-lg border border-neutral-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                                                 >
                                                     <option value="">Select Batch</option>
-                                                    {Array.from({ length: 7 }, (_, i) => (new Date().getFullYear() - 7) + i).map(year => (
-                                                        <option key={year} value={year.toString()}>{year}-{year + 4}</option>
+                                                    {participatingBatchYears.map(year => (
+                                                        <option key={year} value={year}>{year}-{parseInt(year) + 4}</option>
                                                     ))}
                                                 </select>
                                             </div>
@@ -2509,8 +2517,8 @@ const AdminDashboard: React.FC = () => {
                                                     className="px-3 py-2 bg-neutral-50 rounded-lg border border-neutral-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
                                                 >
                                                     <option value="">Select Batch</option>
-                                                    {Array.from({ length: 7 }, (_, i) => (new Date().getFullYear() - 7) + i).map(year => (
-                                                        <option key={year} value={year.toString()}>{year}-{year + 4}</option>
+                                                    {participatingBatchYears.map(year => (
+                                                        <option key={year} value={year}>{year}-{parseInt(year) + 4}</option>
                                                     ))}
                                                 </select>
                                                 <button
@@ -2560,8 +2568,8 @@ const AdminDashboard: React.FC = () => {
                                                     className="px-3 py-2 bg-neutral-50 rounded-lg border border-neutral-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
                                                 >
                                                     <option value="">Select Batch</option>
-                                                    {Array.from({ length: 7 }, (_, i) => (new Date().getFullYear() - 7) + i).map(year => (
-                                                        <option key={year} value={year.toString()}>{year}-{year + 4}</option>
+                                                    {participatingBatchYears.map(year => (
+                                                        <option key={year} value={year}>{year}-{parseInt(year) + 4}</option>
                                                     ))}
                                                 </select>
                                                 <button
@@ -2932,8 +2940,8 @@ const AdminDashboard: React.FC = () => {
                                     <label className="block text-sm font-medium text-gray-700 mb-1">Batch Year (Start Year)</label>
                                     <select value={newPanelBatch} onChange={(e) => setNewPanelBatch(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg">
                                         <option value="">Select Batch</option>
-                                        {Array.from({ length: 7 }, (_, i) => (new Date().getFullYear() - 7) + i).map(year => (
-                                            <option key={year} value={year.toString()}>{year}</option>
+                                        {participatingBatchYears.map(year => (
+                                            <option key={year} value={year}>{year}</option>
                                         ))}
                                     </select>
                                 </div>
@@ -3277,8 +3285,8 @@ const AdminDashboard: React.FC = () => {
                                     <label className="block text-sm font-medium text-gray-700 mb-1">Batch Year (Start Year)</label>
                                     <select value={autoCreateBatchYear} onChange={(e) => setAutoCreateBatchYear(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg">
                                         <option value="">Select Batch</option>
-                                        {Array.from({ length: 8 }, (_, i) => 2026 - i).map(year => (
-                                            <option key={year} value={year.toString()}>{year}</option>
+                                        {participatingBatchYears.map(year => (
+                                            <option key={year} value={year}>{year}</option>
                                         ))}
                                     </select>
                                 </div>
@@ -3334,7 +3342,7 @@ const AdminDashboard: React.FC = () => {
                                         className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
                                     >
                                         <option value="" disabled>Select Batch</option>
-                                        {Array.from({ length: 8 }, (_, i) => 2026 - i).map(year => (
+                                        {participatingBatchYears.map(year => (
                                             <option key={year} value={year}>{year}</option>
                                         ))}
                                     </select>
@@ -3404,8 +3412,8 @@ const AdminDashboard: React.FC = () => {
                                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
                                     >
                                         <option value="">Select Batch</option>
-                                        {Array.from({ length: 7 }, (_, i) => (new Date().getFullYear() - 7) + i).reverse().map(year => (
-                                            <option key={year} value={year.toString()}>Batch {year}</option>
+                                        {[...participatingBatchYears].reverse().map(year => (
+                                            <option key={year} value={year}>Batch {year}</option>
                                         ))}
                                     </select>
                                     <p className="mt-2 text-xs text-neutral-500">
@@ -3531,8 +3539,8 @@ const AdminDashboard: React.FC = () => {
                                         className="w-full px-4 py-3 bg-white border-2 border-neutral-100 rounded-xl font-bold text-sm focus:border-indigo-500 transition-all outline-none"
                                     >
                                         <option value="">Select Target Batch</option>
-                                        {Array.from({ length: 7 }, (_, i) => (new Date().getFullYear() - 7) + i).reverse().map(year => (
-                                            <option key={year} value={year.toString()}>Batch {year}</option>
+                                        {[...participatingBatchYears].reverse().map(year => (
+                                            <option key={year} value={year}>Batch {year}</option>
                                         ))}
                                     </select>
                                 </div>

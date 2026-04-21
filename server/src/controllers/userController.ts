@@ -292,7 +292,7 @@ export const exportStudents = async (req: Request, res: Response) => {
         let query: any = { role: UserRole.STUDENT };
 
         if (batch && typeof batch === 'string' && batch !== 'All') {
-            const batchSuffix = batch.slice(2); // e.g., "2024" -> "24"
+            const batchSuffix = batch.slice(-2);
             query.rollNumber = { $regex: `^${batchSuffix}` };
         }
 

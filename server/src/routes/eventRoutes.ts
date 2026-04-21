@@ -1,5 +1,5 @@
 import express from 'express';
-import { getEvents, getActiveEvents, createEvent, updateEvent, toggleEvent, deleteEvent } from '../controllers/eventController';
+import { getEvents, getActiveEvents, createEvent, updateEvent, toggleEvent, deleteEvent, getParticipatingBatchesHandler } from '../controllers/eventController';
 import { auth } from '../middleware/authMiddleware';
 import { UserRole } from '../models/User';
 
@@ -15,6 +15,7 @@ const adminAuth = (req: any, res: any, next: any) => {
 
 // Public (authenticated) routes
 router.get('/active', auth, getActiveEvents);
+router.get('/participating-batches', auth, getParticipatingBatchesHandler);
 
 // Admin-only routes
 router.use(auth);
