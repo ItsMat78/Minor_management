@@ -187,34 +187,42 @@ const AdminDashboard: React.FC = () => {
         'mid-term': {
             maxMarks: 30,
             sections: [
-                { title: 'Guide Evaluation', maxMarks: 15, fields: [
-                    { key: 'dataElicitation', label: 'Data Elicitation', max: 5, description: 'Identifies topic, explores basic trends' },
-                    { key: 'problemDefinition', label: 'Problem Definition', max: 5, description: 'Simple and well-scoped' },
-                    { key: 'planning', label: 'Planning', max: 5, description: 'Basic timeline, effort distribution' },
-                ], key: 'guide' },
-                { title: 'Panel Evaluation', maxMarks: 15, fields: [
-                    { key: 'literatureSurvey', label: 'Literature Survey', max: 5, description: '4-6 generic online sources' },
-                    { key: 'presentationSkills', label: 'Presentation Skills', max: 5, description: 'Basic slide design, clarity in speech' },
-                    { key: 'technicalUnderstanding', label: 'Technical Understanding', max: 5, description: 'Working knowledge of tools' },
-                ], key: 'panel' }
+                {
+                    title: 'Guide Evaluation', maxMarks: 15, fields: [
+                        { key: 'dataElicitation', label: 'Data Elicitation', max: 5, description: 'Identifies topic, explores basic trends' },
+                        { key: 'problemDefinition', label: 'Problem Definition', max: 5, description: 'Simple and well-scoped' },
+                        { key: 'planning', label: 'Planning', max: 5, description: 'Basic timeline, effort distribution' },
+                    ], key: 'guide'
+                },
+                {
+                    title: 'Panel Evaluation', maxMarks: 15, fields: [
+                        { key: 'literatureSurvey', label: 'Literature Survey', max: 5, description: '4-6 generic online sources' },
+                        { key: 'presentationSkills', label: 'Presentation Skills', max: 5, description: 'Basic slide design, clarity in speech' },
+                        { key: 'technicalUnderstanding', label: 'Technical Understanding', max: 5, description: 'Working knowledge of tools' },
+                    ], key: 'panel'
+                }
             ]
         },
         'end-term': {
             maxMarks: 70,
             sections: [
-                { title: 'Guide Evaluation', maxMarks: 35, fields: [
-                    { key: 'requirementSpecification', label: 'Requirement Specification', max: 7, description: 'Functional needs outlined' },
-                    { key: 'systemDesign', label: 'System Design', max: 7, description: 'Block diagram or flowchart' },
-                    { key: 'implementation', label: 'Implementation', max: 7, description: 'Working model with basic coding' },
-                    { key: 'projectManagement', label: 'Project Management', max: 7, description: 'Manual task tracking, logbook' },
-                    { key: 'planningVsExecution', label: 'Planning vs Execution', max: 7, description: 'Deviations noted casually' },
-                ], key: 'guide' },
-                { title: 'Panel Evaluation', maxMarks: 35, fields: [
-                    { key: 'testingAndResults', label: 'Testing & Results', max: 10, description: 'Functional testing with screenshots' },
-                    { key: 'innovationAndRelevance', label: 'Innovation & Relevance', max: 5, description: 'Minor creative aspect' },
-                    { key: 'presentationAndViva', label: 'Presentation & Viva', max: 10, description: 'Clear explanation, guided answers' },
-                    { key: 'conceptualDepth', label: 'Conceptual Depth', max: 10, description: 'Understanding basic tools and outcomes' },
-                ], key: 'panel' }
+                {
+                    title: 'Guide Evaluation', maxMarks: 35, fields: [
+                        { key: 'requirementSpecification', label: 'Requirement Specification', max: 7, description: 'Functional needs outlined' },
+                        { key: 'systemDesign', label: 'System Design', max: 7, description: 'Block diagram or flowchart' },
+                        { key: 'implementation', label: 'Implementation', max: 7, description: 'Working model with basic coding' },
+                        { key: 'projectManagement', label: 'Project Management', max: 7, description: 'Manual task tracking, logbook' },
+                        { key: 'planningVsExecution', label: 'Planning vs Execution', max: 7, description: 'Deviations noted casually' },
+                    ], key: 'guide'
+                },
+                {
+                    title: 'Panel Evaluation', maxMarks: 35, fields: [
+                        { key: 'testingAndResults', label: 'Testing & Results', max: 10, description: 'Functional testing with screenshots' },
+                        { key: 'innovationAndRelevance', label: 'Innovation & Relevance', max: 5, description: 'Minor creative aspect' },
+                        { key: 'presentationAndViva', label: 'Presentation & Viva', max: 10, description: 'Clear explanation, guided answers' },
+                        { key: 'conceptualDepth', label: 'Conceptual Depth', max: 10, description: 'Understanding basic tools and outcomes' },
+                    ], key: 'panel'
+                }
             ]
         }
     };
@@ -541,7 +549,7 @@ const AdminDashboard: React.FC = () => {
             document.body.appendChild(link);
             link.click();
             link.remove();
-        } catch(error) {
+        } catch (error) {
             alert('Failed to download template');
         }
     };
@@ -559,16 +567,16 @@ const AdminDashboard: React.FC = () => {
             });
             const draftPanels = res.data.draftPanels;
             if (!draftPanels || draftPanels.length === 0) {
-                 setPanelExcelImportError('No valid panel mappings found. Please ensure the emails match active faculty members.');
-                 setPanelExcelImportLoading(false);
-                 return;
+                setPanelExcelImportError('No valid panel mappings found. Please ensure the emails match active faculty members.');
+                setPanelExcelImportLoading(false);
+                return;
             }
             setAutoCreateBatchYear(panelExcelBatch); // because AutoCreatePanelsModal uses it
             setDndEditInitialPanels(draftPanels);
             setIsEditingPanelsDnd(true);
             setShowPanelExcelImportModal(false);
             setPanelExcelImportFile(null);
-            
+
             // set autoCreateFaculties to all active faculties so they can be in reserve
             const facRes = await api.get('/users/faculty');
             const allFaculties = Array.isArray(facRes.data) ? facRes.data : [];
@@ -576,15 +584,15 @@ const AdminDashboard: React.FC = () => {
             const allGroups = Array.isArray(groupsRes.data) ? groupsRes.data : [];
             const batchGroups = allGroups.filter((g: any) => getGroupBatchYear(g) === panelExcelBatch);
             const getGroupCount = (facId: string) => batchGroups.filter((g: any) => g.project && (g.project.faculty === facId || (g.project.faculty && g.project.faculty._id === facId))).length;
-            
+
             const facultiesWithWorkload = allFaculties.map(f => ({
                 _id: f._id, name: f.name, email: f.email, groupCount: getGroupCount(f._id)
             }));
             setAutoCreateFaculties(facultiesWithWorkload);
-            
+
             setShowAutoCreateModal(true);
             setPanelExcelImportError(null);
-        } catch(e: any) {
+        } catch (e: any) {
             console.error(e);
             setPanelExcelImportError(e.response?.data?.message || e.message || 'Failed to process excel file');
         } finally {
@@ -796,6 +804,29 @@ const AdminDashboard: React.FC = () => {
         } catch (error) {
             console.error('Export failed', error);
             alert('Failed to export panels');
+        }
+    };
+
+    // Export current panels as a re-importable template (Panel Number | Faculty Emails | Room)
+    const [exportingPanelsFromTab, setExportingPanelsFromTab] = React.useState(false);
+    const handleExportPanelsFromTab = async () => {
+        const batch = filterBatch !== 'All' ? filterBatch : '';
+        if (!batch) { alert('Please select a specific batch in the filter first.'); return; }
+        setExportingPanelsFromTab(true);
+        try {
+            const response = await api.get(`/panels/export-template?batchYear=${batch}`, { responseType: 'blob' });
+            const url = window.URL.createObjectURL(new Blob([response.data]));
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', `panels_reimport_Batch${batch}.xlsx`);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+        } catch (error) {
+            console.error('Panel template export failed', error);
+            alert('Failed to export panels. Please try again.');
+        } finally {
+            setExportingPanelsFromTab(false);
         }
     };
 
@@ -1791,6 +1822,21 @@ const AdminDashboard: React.FC = () => {
                                 {activeTab === 'panels' && (
                                     <div className="space-y-6">
                                         <div className="flex justify-end gap-3">
+                                            {/* Export button — uses the active filterBatch */}
+                                            <button
+                                                onClick={handleExportPanelsFromTab}
+                                                disabled={exportingPanelsFromTab || filterBatch === 'All'}
+                                                title={filterBatch === 'All' ? 'Select a specific batch to export' : `Download panels as re-importable Excel for Batch ${filterBatch}`}
+                                                className={`px-4 py-2 rounded-lg font-bold border transition flex items-center gap-2 text-sm
+                                                    ${filterBatch !== 'All'
+                                                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                                                        : 'bg-neutral-50 text-neutral-400 border-neutral-200 cursor-not-allowed'
+                                                    }`}
+                                            >
+                                                {exportingPanelsFromTab
+                                                    ? <><span className="animate-spin inline-block w-4 h-4 border-2 border-emerald-500 border-t-transparent rounded-full" /> Exporting…</>
+                                                    : <><Download className="w-4 h-4" /> Export for Re-import</>}
+                                            </button>
                                             <button onClick={() => {
                                                 setPanelExcelBatch(filterBatch !== 'All' ? filterBatch : new Date().getFullYear().toString());
                                                 setShowPanelExcelImportModal(true);
@@ -1890,6 +1936,7 @@ const AdminDashboard: React.FC = () => {
                                                                         initialDraftPanels.push({
                                                                             id: `panel-${idx}`,
                                                                             _tempPanelId: panel._id,
+                                                                            room: panel.room || '',
                                                                             faculties: mappedFaculties
                                                                         });
                                                                     });
@@ -1957,18 +2004,28 @@ const AdminDashboard: React.FC = () => {
                                                                 });
 
                                                                 return (
-                                                                    <div key={panel._id} className="bg-neutral-50 rounded-2xl p-5 border-2 border-neutral-200">
+                                                                    <div key={panel._id} className={`bg-neutral-50 rounded-2xl p-5 border-2 transition-colors ${panel.room ? 'border-amber-200 ring-1 ring-amber-100' : 'border-neutral-200'}`}>
                                                                         <div className="flex justify-between items-start mb-4">
-                                                                            <div className="flex items-center gap-2">
-                                                                                <div className="h-8 w-8 bg-indigo-100 text-indigo-600 rounded-lg flex items-center justify-center font-bold">
+                                                                            <div className="flex items-center gap-2.5 flex-wrap">
+                                                                                <div className="h-8 w-8 bg-indigo-100 text-indigo-600 rounded-lg flex items-center justify-center font-bold shrink-0">
                                                                                     {index + 1}
                                                                                 </div>
                                                                                 <div>
                                                                                     <h4 className="text-sm font-bold text-neutral-900">Panel {index + 1}</h4>
                                                                                     <p className="text-xs text-neutral-500">{panel.faculty.length} members • {panelGroupsCount} groups</p>
-                                                                                    {panel.room && <p className="text-xs text-indigo-600 font-medium mt-0.5">{panel.room}</p>}
                                                                                 </div>
+
                                                                             </div>
+                                                                            {panel.room ? (
+                                                                                <div className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 border border-amber-300 text-blue-800 rounded-xl text-xs font-black shadow-sm">
+                                                                                    <span>Room No.</span>
+                                                                                    <span>{panel.room}</span>
+                                                                                </div>
+                                                                            ) : (
+                                                                                <div className="flex items-center gap-1 px-2.5 py-1 bg-neutral-100 border border-dashed border-neutral-300 text-neutral-400 rounded-xl text-xs font-medium cursor-default select-none">
+                                                                                    No Room
+                                                                                </div>
+                                                                            )}
                                                                         </div>
                                                                         <div className="space-y-2 min-h-[60px] mb-4">
                                                                             <h5 className="text-xs font-bold text-neutral-400 uppercase mb-2">Faculty Members</h5>
@@ -2517,7 +2574,7 @@ const AdminDashboard: React.FC = () => {
                                                     </div>
                                                     <div>
                                                         <h3 className="text-lg font-bold text-neutral-900">Snapshot Import</h3>
-                                                <p className="text-sm text-neutral-500">Restore archived evaluations and project data from a previously exported snapshot JSON.</p>
+                                                        <p className="text-sm text-neutral-500">Restore archived evaluations and project data from a previously exported snapshot JSON.</p>
                                                     </div>
                                                 </div>
                                                 <button onClick={() => setShowSnapshotImportModal(true)}
@@ -4111,36 +4168,36 @@ const AdminDashboard: React.FC = () => {
                                                     {excelImportPreview.groups.map((g: any, idx: number) => {
                                                         const hasDropper = g.students.some((s: any) => s.isDropper);
                                                         return (
-                                                        <div key={idx} className={hasDropper ? 'bg-red-50/60' : ''}>
-                                                            <button onClick={() => setExcelImportExpanded(prev => { const next = new Set(prev); next.has(idx) ? next.delete(idx) : next.add(idx); return next; })}
-                                                                className={`w-full flex items-center justify-between px-4 py-2.5 transition-colors text-left ${hasDropper ? 'hover:bg-red-100/60' : 'hover:bg-neutral-50'}`}>
-                                                                <div className="flex items-center gap-3">
-                                                                    <span className={`text-xs font-bold w-8 ${hasDropper ? 'text-red-500' : 'text-neutral-500'}`}>#{g.groupNumber}</span>
-                                                                    <span className="text-sm font-medium text-neutral-800 truncate max-w-xs">{g.projectTitle}</span>
-                                                                    <span className="text-xs text-neutral-400">{g.students.length} students</span>
-                                                                    {hasDropper && <span className="px-2 py-0.5 bg-red-100 text-red-700 rounded-full text-xs font-bold">Dropper</span>}
-                                                                    {g.faculty.status === 'new' && <span className="px-2 py-0.5 bg-violet-100 text-violet-700 rounded-full text-xs font-medium">New Faculty</span>}
-                                                                </div>
-                                                                <ChevronDown className={`w-4 h-4 transition-transform ${hasDropper ? 'text-red-400' : 'text-neutral-400'} ${excelImportExpanded.has(idx) ? 'rotate-180' : ''}`} />
-                                                            </button>
-                                                            {excelImportExpanded.has(idx) && (
-                                                                <div className={`px-4 pb-3 border-t ${hasDropper ? 'bg-red-50 border-red-100' : 'bg-neutral-50 border-neutral-100'}`}>
-                                                                    <p className="text-xs text-neutral-500 mb-2 font-medium">Faculty: <span className="text-neutral-700">{g.faculty.name || '—'} {g.faculty.status === 'new' ? '(will be created)' : '(existing)'}</span></p>
-                                                                    <div className="space-y-1">
-                                                                        {g.students.map((s: any, si: number) => (
-                                                                            <div key={si} className="flex items-center gap-2 text-xs">
-                                                                                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${s.isDropper ? 'bg-red-400' : s.status === 'new' ? 'bg-green-400' : 'bg-amber-400'}`} />
-                                                                                <span className={`font-medium ${s.isDropper ? 'text-red-700' : 'text-neutral-700'}`}>{s.name}</span>
-                                                                                <span className="text-neutral-400">{s.roll}</span>
-                                                                                <span className="text-neutral-400">{s.branch}</span>
-                                                                                {s.inGroup && <span className="text-amber-600 font-medium">(already in group)</span>}
-                                                                                {s.isDropper && <span className="text-red-600 font-bold">DROPPER</span>}
-                                                                            </div>
-                                                                        ))}
+                                                            <div key={idx} className={hasDropper ? 'bg-red-50/60' : ''}>
+                                                                <button onClick={() => setExcelImportExpanded(prev => { const next = new Set(prev); next.has(idx) ? next.delete(idx) : next.add(idx); return next; })}
+                                                                    className={`w-full flex items-center justify-between px-4 py-2.5 transition-colors text-left ${hasDropper ? 'hover:bg-red-100/60' : 'hover:bg-neutral-50'}`}>
+                                                                    <div className="flex items-center gap-3">
+                                                                        <span className={`text-xs font-bold w-8 ${hasDropper ? 'text-red-500' : 'text-neutral-500'}`}>#{g.groupNumber}</span>
+                                                                        <span className="text-sm font-medium text-neutral-800 truncate max-w-xs">{g.projectTitle}</span>
+                                                                        <span className="text-xs text-neutral-400">{g.students.length} students</span>
+                                                                        {hasDropper && <span className="px-2 py-0.5 bg-red-100 text-red-700 rounded-full text-xs font-bold">Dropper</span>}
+                                                                        {g.faculty.status === 'new' && <span className="px-2 py-0.5 bg-violet-100 text-violet-700 rounded-full text-xs font-medium">New Faculty</span>}
                                                                     </div>
-                                                                </div>
-                                                            )}
-                                                        </div>
+                                                                    <ChevronDown className={`w-4 h-4 transition-transform ${hasDropper ? 'text-red-400' : 'text-neutral-400'} ${excelImportExpanded.has(idx) ? 'rotate-180' : ''}`} />
+                                                                </button>
+                                                                {excelImportExpanded.has(idx) && (
+                                                                    <div className={`px-4 pb-3 border-t ${hasDropper ? 'bg-red-50 border-red-100' : 'bg-neutral-50 border-neutral-100'}`}>
+                                                                        <p className="text-xs text-neutral-500 mb-2 font-medium">Faculty: <span className="text-neutral-700">{g.faculty.name || '—'} {g.faculty.status === 'new' ? '(will be created)' : '(existing)'}</span></p>
+                                                                        <div className="space-y-1">
+                                                                            {g.students.map((s: any, si: number) => (
+                                                                                <div key={si} className="flex items-center gap-2 text-xs">
+                                                                                    <span className={`w-2 h-2 rounded-full flex-shrink-0 ${s.isDropper ? 'bg-red-400' : s.status === 'new' ? 'bg-green-400' : 'bg-amber-400'}`} />
+                                                                                    <span className={`font-medium ${s.isDropper ? 'text-red-700' : 'text-neutral-700'}`}>{s.name}</span>
+                                                                                    <span className="text-neutral-400">{s.roll}</span>
+                                                                                    <span className="text-neutral-400">{s.branch}</span>
+                                                                                    {s.inGroup && <span className="text-amber-600 font-medium">(already in group)</span>}
+                                                                                    {s.isDropper && <span className="text-red-600 font-bold">DROPPER</span>}
+                                                                                </div>
+                                                                            ))}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                            </div>
                                                         );
                                                     })}
                                                 </div>
@@ -4187,7 +4244,7 @@ const AdminDashboard: React.FC = () => {
                                                                     }}
                                                                     className="inline-flex items-center gap-2 px-3 py-1.5 bg-red-700 hover:bg-red-800 text-white text-xs font-bold rounded-lg transition-colors"
                                                                 >
-                                                                    <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                                                                    <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
                                                                     Download student template ({missingEmailStudents.length})
                                                                 </button>
                                                             </div>
@@ -4466,10 +4523,10 @@ const AdminDashboard: React.FC = () => {
                                             </>
                                         )}
                                         {(excelImportResult.created.studentList?.length ?? 0) === 0 &&
-                                         (excelImportResult.created.facultyList?.length ?? 0) === 0 &&
-                                         (excelImportResult.errors?.length ?? 0) === 0 && (
-                                            <p className="px-4 py-10 text-center text-sm text-neutral-400">Nothing to report.</p>
-                                        )}
+                                            (excelImportResult.created.facultyList?.length ?? 0) === 0 &&
+                                            (excelImportResult.errors?.length ?? 0) === 0 && (
+                                                <p className="px-4 py-10 text-center text-sm text-neutral-400">Nothing to report.</p>
+                                            )}
                                     </div>
                                 )}
                             </div>
@@ -4549,7 +4606,7 @@ const AdminDashboard: React.FC = () => {
                                         <div className="px-6 border-b border-neutral-100 flex gap-0">
                                             {([
                                                 { key: 'projects', label: 'Projects', count: snapshotImportPreview.summary.projects.create, active: 'border-blue-500 text-blue-700 bg-blue-50', badge: 'bg-blue-100 text-blue-700' },
-                                                { key: 'warnings', label: 'Warnings', count: snapshotImportPreview.summary.projects.skip,   active: 'border-amber-500 text-amber-700 bg-amber-50', badge: 'bg-amber-100 text-amber-700' },
+                                                { key: 'warnings', label: 'Warnings', count: snapshotImportPreview.summary.projects.skip, active: 'border-amber-500 text-amber-700 bg-amber-50', badge: 'bg-amber-100 text-amber-700' },
                                             ] as const).map(tab => (
                                                 <button key={tab.key} onClick={() => setSnapshotImportPreviewTab(tab.key as any)}
                                                     className={`px-4 py-2 text-xs font-bold flex items-center gap-1.5 border-b-2 -mb-px transition-colors ${snapshotImportPreviewTab === tab.key ? tab.active : 'border-transparent text-neutral-500 hover:text-neutral-700'}`}>
@@ -5061,7 +5118,7 @@ const AdminDashboard: React.FC = () => {
                                                                 </button>
                                                             </div>
                                                             <div className="flex items-center gap-1 ml-11">
-                                                                {[1,2,3,4,5].map(star => (
+                                                                {[1, 2, 3, 4, 5].map(star => (
                                                                     <button key={star} type="button"
                                                                         onClick={() => setStudentEvalData(prev => ({ ...prev, [member._id]: { ...sd, stars: star } }))}
                                                                         className={`text-lg transition-colors ${star <= sd.stars ? 'text-amber-400' : 'text-neutral-300 hover:text-amber-300'}`}

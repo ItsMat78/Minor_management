@@ -476,467 +476,243 @@ export const exportPanels = async (req: any, res: Response) => {
         const { batchYear, includeArchived } = req.query;
 
         let query: any = {};
-        if (batchYear && batchYear !== 'All') {
-            query.batchYear = Number(batchYear);
-        }
+        if (batchYear && batchYear !== 'All') query.batchYear = Number(batchYear);
         if (includeArchived !== 'true') query.isArchived = { $ne: true };
 
-        const panels = await Panel.find(query).populate('faculty', 'name email photoUrl').lean();
-
-        // Get groups similarly, but cache groups
+        const panels = await Panel.find(query).populate('faculty', 'name email').lean();
         const groups = await Group.find({ status: { $in: ['Approved', 'Pending'] }, isArchived: { $ne: true } })
-            .populate('members', 'name rollNumber photoUrl')
-            .populate({
-                path: 'project',
-                populate: { path: 'faculty', select: 'name email photoUrl _id' }
-            })
+            .populate('members', 'name rollNumber branch department')
+            .populate({ path: 'project', populate: { path: 'faculty', select: 'name email _id' } })
             .lean();
 
-        // Setup ExcelJS Workbook
-        const workbook = new ExcelJS.Workbook();
-        const worksheet = workbook.addWorksheet('Panels');
+        // helpers
+        const thin: Partial<ExcelJS.Borders> = { top:{style:'thin'}, left:{style:'thin'}, bottom:{style:'thin'}, right:{style:'thin'} };
+        const medium: Partial<ExcelJS.Borders> = { top:{style:'medium'}, left:{style:'medium'}, bottom:{style:'medium'}, right:{style:'medium'} };
+        const center: Partial<ExcelJS.Alignment> = { horizontal:'center', vertical:'middle', wrapText:true };
+        const leftAlign: Partial<ExcelJS.Alignment> = { horizontal:'left', vertical:'middle', wrapText:true };
+        const fill = (argb: string): ExcelJS.Fill => ({ type:'pattern', pattern:'solid', fgColor:{argb} });
+        const getBranch = (roll: string) => { if (!roll || roll.length < 5) return ''; const c = roll[4]; return c==='1'?'ECE':c==='2'?'DSAI':'CSE'; };
 
-        // Prepare groups per panel
-        const panelGroupsArray: any[][] = [];
-        panels.forEach((panel: any) => {
-            const panelFacultyIds = panel.faculty.map((f: any) => f._id.toString());
-            const pGroups = groups.filter((g: any) => {
-                if (!g.project) return false;
-                let projFacId = null;
-                if (typeof g.project.faculty === 'string') {
-                    projFacId = g.project.faculty;
-                } else if (g.project.faculty && g.project.faculty._id) {
-                    projFacId = g.project.faculty._id.toString();
-                }
-                if (!projFacId) return false;
-                if (!panelFacultyIds.includes(projFacId)) return false;
-
-                const gBatch = g.targetBatch ? String(g.targetBatch) : (g.members && g.members.length > 0 && g.members[0].rollNumber ? '20' + String(g.members[0].rollNumber).substring(0, 2) : 'Unknown');
-                if (gBatch !== String(panel.batchYear)) return false;
-
-                return true;
-            });
-            panelGroupsArray.push(pGroups);
-        });
-
-        // Setup Columns
-        const columns = [
-            { key: 'label', width: 15 },
-            ...panels.map((p: any, i: number) => ({
-                key: `panel_${i}`,
-                width: 30
-            }))
-        ];
-        worksheet.columns = columns;
-
-        // Base Styling constants
-        const borderStyle: Partial<ExcelJS.Borders> = {
-            top: { style: 'thin' },
-            left: { style: 'thin' },
-            bottom: { style: 'thin' },
-            right: { style: 'thin' }
-        };
-
-        const centerAlignment: Partial<ExcelJS.Alignment> = {
-            vertical: 'middle',
-            horizontal: 'center',
-            wrapText: true
-        };
-
-        const refBatchYear = panels.length > 0 ? panels[0].batchYear : (batchYear !== 'All' ? Number(batchYear) : new Date().getFullYear());
-        const currentYear = new Date().getFullYear();
-        const currentMonth = new Date().getMonth();
-        const yearDiff = currentYear - refBatchYear;
-        let semCount = yearDiff * 2;
-        if (currentMonth >= 6) semCount += 1;
+        // academic context
+        const refBatch = panels.length > 0 ? (panels[0] as any).batchYear : (batchYear !== 'All' ? Number(batchYear) : new Date().getFullYear());
+        const now = new Date(); const cy = now.getFullYear(); const cm = now.getMonth();
+        let semCount = (cy - refBatch) * 2 + (cm >= 6 ? 1 : 0);
         if (semCount < 1) semCount = 1;
-        const romanSems = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'];
-        const summarySemStr = romanSems[semCount - 1] || `${semCount}th`;
+        const romanSems = ['I','II','III','IV','V','VI','VII','VIII','IX','X'];
+        const semStr = romanSems[Math.min(semCount - 1, 9)] || `${semCount}th`;
+        const acadYear = `${cy}-${String(cy + 1).slice(2)}`;
 
-        // Add 1-4 Headers
-        worksheet.addRow({ label: 'Dr. SPM International Institute of Information Technology, Naya Raipur' });
-        worksheet.addRow({ label: '(A Joint Initiative of Govt. of Chhattisgarh and NTPC)' });
-        worksheet.addRow({ label: 'Email: iiitnr@iiitnr.ac.in, Tel: (0771) 2474040, Web: www.iiitnr.ac.in' });
-        worksheet.addRow({ label: `MINOR PROJECT EVALUATION- B.Tech. ${summarySemStr} SEM` });
-        worksheet.addRow({}); // Empty row 5
-
-        for (let i = 1; i <= 4; i++) {
-            if (panels.length > 0) worksheet.mergeCells(i, 1, i, panels.length + 1);
-            const cell = worksheet.getCell(i, 1);
-            cell.alignment = { horizontal: 'center', vertical: 'middle' };
-            if (i === 1) cell.font = { bold: true, size: 14, color: { argb: 'FF0070C0' } };
-            else if (i === 4) cell.font = { bold: true, size: 12, underline: true };
-            else cell.font = { size: 11 };
-        }
-
-        // Format Header Row (Row 6)
-        const headerRowValues: any = { label: '' };
-        panels.forEach((p: any, i: number) => { headerRowValues[`panel_${i}`] = `Panel-${i + 1}`; });
-        const headerRow = worksheet.addRow(headerRowValues);
-        headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } }; // White text on headers is cleaner
-        headerRow.alignment = centerAlignment;
-        headerRow.eachCell((cell, colNumber) => {
-            cell.border = borderStyle;
-            if (colNumber > 1) {
-                cell.fill = {
-                    type: 'pattern',
-                    pattern: 'solid',
-                    fgColor: { argb: 'FF0070C0' } // Blue headers for panels
-                };
-            }
+        // group assignment per panel
+        const panelGroups: any[][] = (panels as any[]).map((panel: any) => {
+            const facIds = new Set(panel.faculty.map((f: any) => f._id.toString()));
+            return (groups as any[]).filter((g: any) => {
+                if (!g.project) return false;
+                const facId = g.project.faculty?._id?.toString() ?? g.project.faculty;
+                if (!facId || !facIds.has(facId)) return false;
+                const gb = g.targetBatch ? String(g.targetBatch) : (g.members?.[0]?.rollNumber ? '20' + g.members[0].rollNumber.substring(0,2) : '');
+                return gb === String(panel.batchYear);
+            });
         });
 
-        // Add Faculty Row (Row 7)
-        const facultyRowValues: any = { label: '' };
-        panels.forEach((p: any, i: number) => {
-            const pGroups = panelGroupsArray[i] || [];
-            const facultyWithCounts = p.faculty.map((f: any) => {
-                const count = pGroups.filter((g: any) => {
-                    const projFacId = typeof g.project?.faculty === 'string' ? g.project.faculty : (g.project?.faculty?._id?.toString() || null);
-                    return projFacId === f._id.toString();
-                }).length;
-                return { ...f, groupCount: count };
+        const panelChairs: string[] = (panels as any[]).map((panel: any, pi: number) => {
+            const pg = panelGroups[pi]; let bestId = '', bestCount = 0;
+            panel.faculty.forEach((f: any) => {
+                const fid = f._id.toString();
+                const cnt = pg.filter((g: any) => { const id = g.project?.faculty?._id?.toString() ?? g.project?.faculty; return id === fid; }).length;
+                if (cnt > bestCount) { bestCount = cnt; bestId = fid; }
             });
-
-            let chairId = null;
-            if (facultyWithCounts.length > 0) {
-                const maxLoad = Math.max(...facultyWithCounts.map((f: any) => f.groupCount));
-                chairId = facultyWithCounts.find((f: any) => f.groupCount === maxLoad)?._id.toString();
-            }
-
-            facultyRowValues[`panel_${i}`] = p.faculty.map((f: any) => {
-                return f._id.toString() === chairId ? `${f.name} (Chair)` : f.name;
-            }).join(', ');
-        });
-        const facultyRow = worksheet.addRow(facultyRowValues);
-        facultyRow.font = { bold: true };
-        facultyRow.alignment = centerAlignment;
-        facultyRow.eachCell((cell) => {
-            cell.border = borderStyle;
+            return bestId;
         });
 
-        // Find max groups in any panel to know how many rows to create
-        let maxGroups = 0;
-        if (panelGroupsArray.length > 0) {
-            maxGroups = Math.max(...panelGroupsArray.map((pg) => pg.length));
-        }
+        const workbook = new ExcelJS.Workbook();
+        workbook.creator = 'IIITNR Minor Management';
 
-        // Add Group Rows
-        let groupNosCellMerged = false;
-        const groupStartRow = worksheet.rowCount + 1;
+        // SHEET 1: Summary
+        const summary = workbook.addWorksheet('Panel Summary');
+        const totalCols = (panels as any[]).length + 1;
+        summary.columns = [{ width: 16 }, ...(panels as any[]).map(() => ({ width: 32 }))];
 
-        for (let i = 0; i < maxGroups; i++) {
-            const groupRowValues: any = { label: i === 0 ? 'Group Nos.' : '' };
+        const instLines = [
+            'Dr. SPM International Institute of Information Technology, Naya Raipur',
+            '(A Joint Initiative of Govt. of Chhattisgarh and NTPC)',
+            'Email: iiitnr@iiitnr.ac.in  |  Tel: (0771) 2474040  |  Web: www.iiitnr.ac.in',
+            `MINOR PROJECT EVALUATION  -  B.Tech. ${semStr} Semester  |  Batch ${refBatch}  |  Academic Year ${acadYear}`,
+        ];
+        instLines.forEach((text, idx) => {
+            summary.addRow([text]);
+            if (totalCols > 1) summary.mergeCells(idx + 1, 1, idx + 1, totalCols);
+            const cell = summary.getCell(idx + 1, 1);
+            cell.alignment = center; cell.border = thin;
+            if (idx === 0) { cell.font = { bold:true, size:14, color:{argb:'FF0070C0'} }; summary.getRow(1).height = 28; }
+            else if (idx === 3) { cell.font = { bold:true, size:11, underline:true }; cell.fill = fill('FFDCE6F1'); summary.getRow(4).height = 22; }
+            else { cell.font = { size:10, italic:true }; }
+        });
 
-            panels.forEach((p: any, panelIndex: number) => {
-                const pGroups = panelGroupsArray[panelIndex];
-                if (pGroups && pGroups[i]) {
-                    groupRowValues[`panel_${panelIndex}`] = pGroups[i].name || '';
-                } else {
-                    groupRowValues[`panel_${panelIndex}`] = '';
-                }
-            });
+        const panelHeaderRow = summary.addRow(['', ...(panels as any[]).map((_: any, i: number) => `Panel ${i + 1}`)]);
+        panelHeaderRow.height = 26;
+        panelHeaderRow.eachCell({ includeEmpty: true }, (cell, col) => {
+            cell.border = medium; cell.alignment = center;
+            if (col === 1) { cell.font = { bold:true, size:10, color:{argb:'FF404040'} }; cell.fill = fill('FFD6DCE4'); }
+            else { cell.font = { bold:true, size:12, color:{argb:'FFFFFFFF'} }; cell.fill = fill('FF2E75B6'); }
+        });
 
-            const row = worksheet.addRow(groupRowValues);
-            row.alignment = centerAlignment;
-            row.eachCell((cell, colNumber) => {
-                if (colNumber > 1) { // Only set border and color for actual panel cells
-                    // In image, group numbers are often red text
-                    cell.font = { color: { argb: 'FFFF0000' } };
-                }
-            });
-        }
+        const facRow = summary.addRow([
+            'Faculty (Chair *)',
+            ...(panels as any[]).map((p: any, i: number) => p.faculty.map((f: any) => f._id.toString() === panelChairs[i] ? `${f.name} (Chair)` : f.name).join('\n')),
+        ]);
+        facRow.height = Math.max(40, (panels as any[]).reduce((mx: number, p: any) => Math.max(mx, p.faculty.length * 16), 40));
+        facRow.eachCell({ includeEmpty: true }, (cell, col) => {
+            cell.border = thin; cell.alignment = { ...center, wrapText: true };
+            if (col === 1) { cell.font = { bold:true, italic:true, size:9, color:{argb:'FF595959'} }; cell.fill = fill('FFF2F2F2'); }
+            else { cell.font = { bold:true, size:10 }; cell.fill = fill('FFE2EFDA'); }
+        });
 
-        // Merge 'Group Nos.' label vertically
-        if (maxGroups > 1) {
-            worksheet.mergeCells(`A${groupStartRow}:A${worksheet.rowCount}`);
-            const mergedGroupCell = worksheet.getCell(`A${groupStartRow}`);
-            mergedGroupCell.alignment = centerAlignment;
-            mergedGroupCell.font = { bold: true };
-            mergedGroupCell.border = borderStyle;
-        } else if (maxGroups === 1) {
-            const cell = worksheet.getCell(`A${groupStartRow}`);
-            cell.alignment = centerAlignment;
-            cell.font = { bold: true };
-            cell.border = borderStyle;
-        }
+        const roomRow = summary.addRow(['Venue / Room', ...(panels as any[]).map((p: any, i: number) => p.room || `Room ${300 + i + 4}`)]);
+        roomRow.height = 20;
+        roomRow.eachCell({ includeEmpty: true }, (cell, col) => {
+            cell.border = thin; cell.alignment = center;
+            if (col === 1) { cell.font = { bold:true, size:9, color:{argb:'FF595959'} }; cell.fill = fill('FFF2F2F2'); }
+            else { cell.font = { bold:true, size:10, color:{argb:'FF0070C0'} }; }
+        });
 
-        // Apply borders to all the group number cells (outline of the entire block per column)
-        for (let col = 2; col <= panels.length + 1; col++) {
-            for (let r = groupStartRow; r < groupStartRow + maxGroups; r++) {
-                // The image shows inner borders are typically absent or very light between numbers.
-                // We apply borders on the outside of the columns
-                const cell = worksheet.getCell(r, col);
-                cell.border = {
-                    left: { style: 'thin' },
-                    right: { style: 'thin' },
-                    // Add bottom border only to the last row of groups
-                    ...(r === groupStartRow + maxGroups - 1 ? { bottom: { style: 'thin' } } : {})
-                };
+        const maxGroupCount = Math.max(...panelGroups.map(pg => pg.length), 0);
+        if (maxGroupCount > 0) {
+            const grpStart = summary.rowCount + 1;
+            for (let gi = 0; gi < maxGroupCount; gi++) {
+                const rowData = [gi === 0 ? 'Group Nos.' : '', ...(panels as any[]).map((_: any, pi: number) => panelGroups[pi][gi]?.name ?? '')];
+                const dataRow = summary.addRow(rowData);
+                dataRow.height = 18;
+                dataRow.eachCell({ includeEmpty: true }, (cell, col) => {
+                    if (col === 1) return;
+                    cell.alignment = center; cell.font = { color:{argb:'FFCC0000'}, bold:true, size:10 }; cell.border = thin;
+                });
             }
+            const grpEnd = summary.rowCount;
+            if (grpEnd > grpStart) summary.mergeCells(grpStart, 1, grpEnd, 1);
+            const lc = summary.getCell(grpStart, 1);
+            lc.value = 'Group Nos.'; lc.alignment = center; lc.font = { bold:true, size:10, color:{argb:'FF404040'} }; lc.fill = fill('FFF2F2F2'); lc.border = medium;
         }
 
-        // Add venue row at the end mimicking the picture
-        if (maxGroups > 0) {
-            const venueRowValues: any = { label: 'Venue' };
-            panels.forEach((p: any, i: number) => {
-                venueRowValues[`panel_${i}`] = p.room || `Room no. 30${i + 4}`;
-            });
-            const venueRow = worksheet.addRow(venueRowValues);
-            venueRow.font = { bold: true, color: { argb: 'FF0000FF' } }; // Blue text for venue rooms
-            venueRow.alignment = centerAlignment;
-
-            // Customize Label 'Venue' color to red if needed
-            venueRow.getCell(1).font = { bold: true, color: { argb: 'FFFF0000' } };
-
-            venueRow.eachCell((cell) => {
-                cell.border = borderStyle;
-            });
-        }
-
-        // --- NEW: Add individual panel sheets ---
-        panels.forEach((p: any, pIndex: number) => {
-            const pSheet = workbook.addWorksheet(`Panel ${pIndex + 1}`);
-            const pGroups = panelGroupsArray[pIndex] || [];
-
-            const facultyWithCounts = p.faculty.map((f: any) => {
-                const count = pGroups.filter((g: any) => {
-                    const projFacId = typeof g.project?.faculty === 'string' ? g.project.faculty : (g.project?.faculty?._id?.toString() || null);
-                    return projFacId === f._id.toString();
-                }).length;
-                return { ...f, groupCount: count };
-            });
-
-            let chairId = null;
-            if (facultyWithCounts.length > 0) {
-                const maxLoad = Math.max(...facultyWithCounts.map((f: any) => f.groupCount));
-                chairId = facultyWithCounts.find((f: any) => f.groupCount === maxLoad)?._id.toString();
-            }
-
-            p.faculty.forEach((f: any) => {
-                f.isChair = f._id.toString() === chairId;
-            });
-
-            const panelMembersString = `Panel Members -: ` + p.faculty.map((f: any) => f.isChair ? `${f.name} (Chair)` : f.name).join(', ');
-
-            // Setup Columns for individual panel sheet
-            pSheet.columns = [
-                { width: 3 }, // Spacer
-                { width: 10 }, // Group No.
-                { width: 25 }, // Student's name
-                { width: 15 }, // Roll no.
-                { width: 15 }, // Department
-                { width: 40 }, // Title of the Project
-                { width: 25 }, // Supervisor Name
-                { width: 10 }, { width: 10 }, { width: 10 }, { width: 20 }, // Mid term
-                { width: 10 }, { width: 10 }, { width: 10 }, { width: 20 }, // End term
-                { width: 10 }, // Total
-                { width: 10 }  // Grade
+        // INDIVIDUAL PANEL SHEETS
+        (panels as any[]).forEach((panel: any, pi: number) => {
+            const pg = panelGroups[pi]; const chairId = panelChairs[pi];
+            const ws = workbook.addWorksheet(`Panel ${pi + 1}`);
+            ws.columns = [
+                {width:3},{width:9},{width:26},{width:15},{width:10},{width:38},{width:24},
+                {width:9},{width:9},{width:9},{width:18},{width:9},{width:9},{width:9},{width:18},{width:10},{width:9},
             ];
+            const LAST = 17;
 
-            // Rows 1-4: Title and Institute Info
-            pSheet.addRow([
-                null,
+            const sheetInstRows = [
                 'Dr. SPM International Institute of Information Technology, Naya Raipur',
-                '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''
-            ]);
-            pSheet.addRow([
-                null,
                 '(A Joint Initiative of Govt. of Chhattisgarh and NTPC)',
-                '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''
-            ]);
-            pSheet.addRow([
-                null,
-                'Email: iiitnr@iiitnr.ac.in, Tel: (0771) 2474040, Web: www.iiitnr.ac.in',
-                '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''
-            ]);
+                'Email: iiitnr@iiitnr.ac.in  |  Tel: (0771) 2474040  |  Web: www.iiitnr.ac.in',
+                `MINOR PROJECT - ${semStr} Semester Evaluation  |  Batch ${panel.batchYear}  |  Academic Year ${acadYear}`,
+            ];
+            sheetInstRows.forEach((text, idx) => {
+                ws.addRow([null, text]);
+                ws.mergeCells(idx+1, 2, idx+1, LAST);
+                const cell = ws.getCell(idx+1, 2);
+                cell.alignment = center; cell.border = thin;
+                if (idx === 0) { cell.font = { bold:true, size:13, color:{argb:'FF0070C0'} }; ws.getRow(1).height = 28; }
+                else if (idx === 3) { cell.font = { bold:true, size:11, underline:true }; cell.fill = fill('FFDCE6F1'); ws.getRow(4).height = 22; }
+                else { cell.font = { size:10, italic:true }; }
+            });
 
-            // Calculate semester based on batch year and current date
-            const currentYear = new Date().getFullYear();
-            const currentMonth = new Date().getMonth(); // 0 is Jan, 11 is Dec
-            const yearDiff = currentYear - p.batchYear;
-            let semCount = yearDiff * 2;
-            // If current month is July or later, they have started the next academic year
-            if (currentMonth >= 6) semCount += 1;
-            if (semCount < 1) semCount = 1;
-
-            const romanSems = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'];
-            const semStr = romanSems[semCount - 1] || `${semCount}th`;
-
-            pSheet.addRow([
-                null,
-                `MINOR PROJECT EVALUATION- B.Tech. ${semStr} SEM`,
-                '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''
-            ]);
-
-            // Merge and stylize headers
-            for (let i = 1; i <= 4; i++) {
-                pSheet.mergeCells(`B${i}:Q${i}`);
-                const cell = pSheet.getCell(`B${i}`);
-                cell.alignment = { horizontal: 'center', vertical: 'middle' };
-                if (i === 1) cell.font = { bold: true, size: 14, color: { argb: 'FF0070C0' } };
-                else if (i === 4) cell.font = { bold: true, size: 12, underline: true };
-                else cell.font = { size: 11 };
+            ws.addRow([]);
+            const facLabel = `Panel No. ${pi + 1}   |   ` + panel.faculty.map((f: any) => f._id.toString() === chairId ? `${f.name} (Chair)` : f.name).join('  -  ');
+            ws.addRow([null, `Panel No. ${pi + 1}`, null, null, facLabel]);
+            ws.mergeCells('B6:D6'); ws.mergeCells('E6:Q6'); ws.getRow(6).height = 22;
+            for (let col = 2; col <= LAST; col++) {
+                const cell = ws.getCell(6, col);
+                cell.font = { bold:true, size:10, color:{argb:'FF1F3864'} }; cell.fill = fill('FF9BC2E6'); cell.border = thin;
+                cell.alignment = col <= 4 ? center : leftAlign;
             }
 
-            pSheet.addRow([]);
+            const MID = 'FFFCE4D6'; const END = 'FFE2EFDA'; const AVG = 'FFFFF2CC'; const TOT = 'FFDCE6F1'; const HDR = 'FF002060';
+            const colBg: Record<number,string> = { 2:HDR,3:HDR,4:HDR,5:HDR,6:HDR,7:HDR, 8:MID,9:MID,10:MID,11:AVG, 12:END,13:END,14:END,15:AVG, 16:TOT,17:TOT };
+            const colFg: Record<number,string> = { 2:'FFFFFFFF',3:'FFFFFFFF',4:'FFFFFFFF',5:'FFFFFFFF',6:'FFFFFFFF',7:'FFFFFFFF', 8:'FF843C0C',9:'FF843C0C',10:'FF843C0C',11:'FF7F6000', 12:'FF1F4E3D',13:'FF1F4E3D',14:'FF1F4E3D',15:'FF7F6000', 16:'FF1F3864',17:'FF1F3864' };
 
-            // Row 6: Panel No & Members
-            pSheet.addRow([
-                null,
-                `Panel No.- ${pIndex + 1}`, '', '',
-                panelMembersString, '', '', '', '', '', '', '', '', '', '', '', ''
-            ]);
-            pSheet.mergeCells('B6:D6');
-            pSheet.mergeCells('E6:Q6');
-
-            for (let col = 2; col <= 17; col++) {
-                const cell = pSheet.getCell(6, col);
-                cell.font = { bold: true, color: { argb: 'FF000000' } };
-                cell.fill = {
-                    type: 'pattern',
-                    pattern: 'solid',
-                    fgColor: { argb: 'FF9BC2E6' } // Light blue
-                };
-                cell.border = borderStyle;
-            }
-
-            // Row 7 & 8: Headers
-            const headerRow1 = pSheet.addRow([
-                null,
-                'Group No.', 'Student\'s name', 'Roll no.', 'Department', 'Title of the Project', 'Supervisor Name',
-                'MID-TERM (15+15)', '', '', 'Average Marks (30) Guide+(E1 +E2)/2',
-                'END-TERM (35+35)', '', '', 'Average Marks (70) Guide+(E1 +E2)/2',
-                'Total (100)', 'Grade'
-            ]);
-
-            const headerRow2 = pSheet.addRow([
-                null,
-                '', '', '', '', '', '',
-                'E1 (15)', 'E2 (15)', 'Guide (15)', '',
-                'E1 (35)', 'E2 (35)', 'Guide (35)', '',
-                '', ''
-            ]);
-
-            // Merge header rows
-            const commonFields = ['B', 'C', 'D', 'E', 'F', 'G', 'K', 'O', 'P', 'Q'];
-            commonFields.forEach(col => pSheet.mergeCells(`${col}7:${col}8`));
-            pSheet.mergeCells('H7:J7'); // Mid-Term
-            pSheet.mergeCells('L7:N7'); // End-Term
-
-            // Style headers
-            [headerRow1, headerRow2].forEach(row => {
-                row.font = { bold: true };
-                row.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
-                row.eachCell((cell, colNumber) => {
-                    if (colNumber > 1) {
-                        cell.border = borderStyle;
-
-                        let bgColor = 'FFED7D31'; // Default Orange pattern
-                        // Column 11 is K (Average 30) Column 15 is O (Average 70)
-                        if (colNumber === 11 || colNumber === 15) {
-                            bgColor = 'FFFFF2CC'; // Pale yellow for averages
-                        }
-
-                        cell.fill = {
-                            type: 'pattern',
-                            pattern: 'solid',
-                            fgColor: { argb: bgColor }
-                        };
-                    }
+            const h1 = ws.addRow([null,'Group\nNo.',"Student's Name",'Roll No.','Dept','Title of the Project','Supervisor','MID-TERM (15+15+15)',null,null,'Avg.\nMid (30)\nGuide+(E1+E2)/2','END-TERM (35+35+35)',null,null,'Avg.\nEnd (70)\nGuide+(E1+E2)/2','Total\n(100)','Grade']);
+            const h2 = ws.addRow([null,null,null,null,null,null,null,'E1\n(15)','E2\n(15)','Guide\n(15)',null,'E1\n(35)','E2\n(35)','Guide\n(35)',null,null,null]);
+            ws.getRow(7).height = 38; ws.getRow(8).height = 28;
+            ['B','C','D','E','F','G','K','O','P','Q'].forEach(col => ws.mergeCells(`${col}7:${col}8`));
+            ws.mergeCells('H7:J7'); ws.mergeCells('L7:N7');
+            [h1, h2].forEach(row => {
+                row.eachCell({ includeEmpty: true }, (cell, col) => {
+                    if (col < 2) return;
+                    cell.border = thin; cell.alignment = center;
+                    cell.font = { bold:true, size:9, color:{argb: colFg[col] || 'FF000000'} };
+                    cell.fill = fill(colBg[col] || 'FFFFFFFF');
                 });
             });
 
-            // Data Rows
-            pGroups.forEach((g: any) => {
-                const members = g.members || [];
-                const projTitle = g.project?.title || 'TBD';
-                const facName = typeof g.project?.faculty === 'string' ? 'Unknown' : g.project?.faculty?.name || 'Unknown';
+            let curRow = 9;
+            pg.forEach((g: any, gi: number) => {
+                const members = (g.members || []) as any[];
+                const title = g.project?.title || 'TBD';
+                const supervisor = typeof g.project?.faculty === 'string' ? '' : (g.project?.faculty?.name || '');
                 const groupNo = g.name || '';
+                const rowFill = gi % 2 === 0 ? 'FFFFFFFF' : 'FFF5F5F5';
+                const firstRowNum = curRow;
+                const count = Math.max(members.length, 1);
 
                 if (members.length === 0) {
-                    const row = pSheet.addRow([null, groupNo, '', '', '', projTitle, facName, '', '', '', '', '', '', '', '', '', '']);
-                    row.eachCell((cell, colNum) => { if (colNum > 1) cell.border = borderStyle; });
-                    return;
-                }
-
-                members.forEach((m: any, mIdx: number) => {
-                    const getBranchFromRollNo = (rollNo: any) => {
-                        if (!rollNo) return '';
-                        const rollStr = String(rollNo);
-                        if (rollStr.length >= 5) {
-                            const code = rollStr.charAt(4);
-                            if (code === '0') return 'CSE';
-                            if (code === '1') return 'ECE';
-                            if (code === '2') return 'DSAI';
-                        }
-                        return '';
-                    };
-
-                    const row = pSheet.addRow([
-                        null,
-                        mIdx === 0 ? groupNo : '',
-                        m.name || '',
-                        m.rollNumber || '',
-                        m.branch || m.department || getBranchFromRollNo(m.rollNumber) || '',
-                        mIdx === 0 ? projTitle : '',
-                        mIdx === 0 ? facName : '',
-                        '', '', '', '', '', '', '', '', '', ''
-                    ]);
-
-                    row.eachCell((cell, colNum) => {
-                        if (colNum > 1) cell.border = borderStyle;
+                    const row = ws.addRow([null, groupNo, '','','', title, supervisor,'','','','','','','','','','']);
+                    row.height = 18;
+                    row.eachCell({ includeEmpty: true }, (cell, col) => { if (col >= 2) { cell.border = thin; cell.fill = fill(rowFill); cell.font = {size:9.5}; } });
+                    curRow++;
+                } else {
+                    members.forEach((m: any, mi: number) => {
+                        const dept = m.branch || m.department || getBranch(m.rollNumber || '');
+                        const row = ws.addRow([null, mi===0?groupNo:'', m.name||'', m.rollNumber||'', dept, mi===0?title:'', mi===0?supervisor:'','','','','','','','','','','']);
+                        row.height = 18;
+                        row.eachCell({ includeEmpty: true }, (cell, col) => {
+                            if (col < 2) return;
+                            cell.border = thin; cell.fill = fill(rowFill); cell.font = {size:9.5};
+                            cell.alignment = col <= 2 ? center : (col >= 8 ? center : leftAlign);
+                        });
+                        curRow++;
                     });
-                });
+                    if (count > 1) {
+                        const lastRowNum = firstRowNum + count - 1;
+                        ['B','F','G'].forEach(col => {
+                            ws.mergeCells(`${col}${firstRowNum}:${col}${lastRowNum}`);
+                            const mc = ws.getCell(`${col}${firstRowNum}`);
+                            mc.alignment = { horizontal: col==='B'?'center':'left', vertical:'middle', wrapText:true };
+                            mc.border = thin; mc.fill = fill(rowFill);
+                        });
+                    }
+                }
             });
 
-            pSheet.addRow([]);
-
-            // Signatures
-            pSheet.addRow([]); // margin
-
-            const sigHeaderRow = pSheet.addRow([
-                null,
-                'Evaluation Board Member', '', 'Signature', '',
-                '', '', '', '', '', '', '', '', '', '', '', ''
-            ]);
-            pSheet.mergeCells(`B${sigHeaderRow.number}:C${sigHeaderRow.number}`);
-            pSheet.mergeCells(`D${sigHeaderRow.number}:E${sigHeaderRow.number}`);
-            sigHeaderRow.font = { bold: true, size: 11 };
-            sigHeaderRow.alignment = { horizontal: 'center', vertical: 'middle' };
-            ['B', 'C', 'D', 'E'].forEach(col => {
-                const cell = pSheet.getCell(`${col}${sigHeaderRow.number}`);
-                cell.border = borderStyle;
-                cell.fill = {
-                    type: 'pattern',
-                    pattern: 'solid',
-                    fgColor: { argb: 'FFD9E1F2' }
-                };
+            ws.addRow([]); ws.addRow([]);
+            const sigHeaderRow = ws.addRow([null,'Evaluation Board Member',null,'Designation / Role',null,'Signature',null,null]);
+            ws.mergeCells(`B${sigHeaderRow.number}:C${sigHeaderRow.number}`);
+            ws.mergeCells(`D${sigHeaderRow.number}:E${sigHeaderRow.number}`);
+            ws.mergeCells(`F${sigHeaderRow.number}:H${sigHeaderRow.number}`);
+            sigHeaderRow.height = 20;
+            ['B','C','D','E','F','G','H'].forEach(col => {
+                const cell = ws.getCell(`${col}${sigHeaderRow.number}`);
+                cell.font = { bold:true, size:10, color:{argb:'FF1F3864'} }; cell.fill = fill('FFDCE6F1'); cell.border = thin; cell.alignment = center;
             });
 
-            p.faculty.forEach((fac: any) => {
-                const sigRow = pSheet.addRow([
-                    null,
-                    fac.isChair ? `${fac.name} (Chair)` : fac.name, '', '', '',
-                    '', '', '', '', '', '', '', '', '', '', '', ''
-                ]);
-                pSheet.mergeCells(`B${sigRow.number}:C${sigRow.number}`);
-                pSheet.mergeCells(`D${sigRow.number}:E${sigRow.number}`);
-
-                sigRow.height = 30; // giving space for physical signature
-                sigRow.alignment = { vertical: 'middle' };
-
-                ['B', 'C', 'D', 'E'].forEach(col => {
-                    const cell = pSheet.getCell(`${col}${sigRow.number}`);
-                    cell.border = borderStyle;
+            panel.faculty.forEach((fac: any) => {
+                const isChair = fac._id.toString() === chairId;
+                const sigRow = ws.addRow([null, isChair?`${fac.name} (Chair)`:fac.name, null, isChair?'Panel Chair':'Panel Member', null, '', null, null]);
+                ws.mergeCells(`B${sigRow.number}:C${sigRow.number}`);
+                ws.mergeCells(`D${sigRow.number}:E${sigRow.number}`);
+                ws.mergeCells(`F${sigRow.number}:H${sigRow.number}`);
+                sigRow.height = 32;
+                ['B','C','D','E','F','G','H'].forEach(col => {
+                    const cell = ws.getCell(`${col}${sigRow.number}`);
+                    cell.border = thin; cell.alignment = col <= 'C' ? leftAlign : center; cell.font = {size:10};
                 });
             });
         });
-        // --- END NEW ---
 
         const buffer = await workbook.xlsx.writeBuffer();
-
-        res.set('Content-Disposition', `attachment; filename=panels_export_${batchYear || 'All'}.xlsx`);
+        res.set('Content-Disposition', `attachment; filename="Panels_Batch${batchYear || 'All'}_${semStr}Sem.xlsx"`);
         res.set('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         res.send(buffer);
 
@@ -1502,6 +1278,73 @@ export const exportPanelFinalSheet = async (req: any, res: Response) => {
     } catch (error: any) {
         console.error(error);
         res.status(500).json({ message: 'Error exporting final sheet', error: error.message });
+    }
+};
+
+/**
+ * Export existing panels in the exact re-importable format:
+ *   Panel Number | Faculty Emails (comma separated) | Room Number (Optional)
+ * Filters by batchYear. The output can be downloaded, edited, and re-uploaded
+ * via the "Upload Excel" panel import flow.
+ */
+export const exportPanelsAsTemplate = async (req: any, res: Response) => {
+    try {
+        const { batchYear } = req.query;
+
+        let query: any = { isArchived: { $ne: true } };
+        if (batchYear && batchYear !== 'All') query.batchYear = Number(batchYear);
+
+        const panels = await Panel.find(query)
+            .populate('faculty', 'name email')
+            .lean() as any[];
+
+        // Sort panels by their numeric panel number / name
+        panels.sort((a: any, b: any) => {
+            const na = parseInt(a.name || a.panelNumber || '0') || 0;
+            const nb = parseInt(b.name || b.panelNumber || '0') || 0;
+            return na - nb;
+        });
+
+        const workbook = new ExcelJS.Workbook();
+        const ws = workbook.addWorksheet('Panel Template');
+
+        ws.columns = [
+            { header: 'Panel Number',                    key: 'panelNumber',  width: 15 },
+            { header: 'Faculty Emails (comma separated)', key: 'facultyEmails', width: 60 },
+            { header: 'Room Number (Optional)',           key: 'room',          width: 20 },
+        ];
+
+        // Style header row
+        const hdr = ws.getRow(1);
+        hdr.font      = { bold: true, color: { argb: 'FFFFFFFF' } };
+        hdr.height    = 22;
+        hdr.eachCell(cell => {
+            cell.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2E75B6' } };
+            cell.alignment = { horizontal: 'center', vertical: 'middle' };
+            cell.border    = { top:{style:'thin'}, left:{style:'thin'}, bottom:{style:'thin'}, right:{style:'thin'} };
+        });
+
+        // One row per panel with all faculty emails joined by ", "
+        panels.forEach((panel: any, idx: number) => {
+            const panelNum   = panel.name || panel.panelNumber || String(idx + 1);
+            const emails     = (panel.faculty || []).map((f: any) => f.email || '').filter(Boolean).join(', ');
+            const room       = panel.room || '';
+            const row = ws.addRow({ panelNumber: panelNum, facultyEmails: emails, room });
+            row.height = 18;
+            row.eachCell({ includeEmpty: true }, (cell, col) => {
+                cell.border    = { top:{style:'thin'}, left:{style:'thin'}, bottom:{style:'thin'}, right:{style:'thin'} };
+                cell.alignment = { vertical: 'middle', horizontal: col === 1 ? 'center' : 'left' };
+            });
+        });
+
+        const buffer = await workbook.xlsx.writeBuffer();
+        const suffix = batchYear && batchYear !== 'All' ? `_Batch${batchYear}` : '';
+        res.set('Content-Disposition', `attachment; filename="panels_reimport${suffix}.xlsx"`);
+        res.set('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.send(buffer);
+    } catch (error: any) {
+        console.error('exportPanelsAsTemplate error:', error);
+        res.status(500).json({ message: 'Error exporting panel template', error: error.message });
     }
 };
 

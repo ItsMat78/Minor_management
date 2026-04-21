@@ -1,5 +1,5 @@
 import express from 'express';
-import { createPanel, getPanels, deletePanel, getMyPanelEvaluationGroups, exportPanels, updatePanel, exportEvaluations, downloadEvaluationTemplate, importEvaluationTemplate, exportPanelFinalSheet, downloadPanelTemplate, previewPanelImport, exportOfficialFormat } from '../controllers/panelController';
+import { createPanel, getPanels, deletePanel, getMyPanelEvaluationGroups, exportPanels, updatePanel, exportEvaluations, downloadEvaluationTemplate, importEvaluationTemplate, exportPanelFinalSheet, downloadPanelTemplate, previewPanelImport, exportOfficialFormat, exportPanelsAsTemplate } from '../controllers/panelController';
 import { auth } from '../middleware/authMiddleware';
 import { UserRole } from '../models/User';
 import { upload } from '../middleware/uploadMiddleware';
@@ -28,6 +28,7 @@ router.get('/export', auth, adminAuth, exportPanels);
 router.get('/export-evaluations', auth, adminAuth, exportEvaluations);
 router.get('/export-official', auth, adminAuth, exportOfficialFormat);
 router.get('/upload/template', auth, adminAuth, downloadPanelTemplate);
+router.get('/export-template', auth, adminAuth, exportPanelsAsTemplate);
 router.post('/upload/preview', auth, adminAuth, upload.single('file'), previewPanelImport);
 router.get('/my-panels', auth, facultyAuth, getMyPanelEvaluationGroups);
 router.delete('/:id', auth, adminAuth, deletePanel);

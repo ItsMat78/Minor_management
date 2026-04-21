@@ -1561,8 +1561,15 @@ const FacultyDashboard: React.FC = () => {
                                                                                 <div key={idx} className="border-t border-indigo-100 pt-6 mt-6 first:mt-0 first:border-0 first:pt-0">
                                                                                     {/* Per-panel bulk actions toolbar */}
                                                                                     <div className="mb-5 flex flex-col xl:flex-row xl:items-center gap-3 p-4 bg-indigo-50/50 border border-indigo-100 rounded-2xl">
-                                                                                        <div className="flex items-center gap-3 mr-auto">
+                                                                                        <div className="flex items-center gap-3 mr-auto flex-wrap">
                                                                                             <span className="text-xs font-bold text-indigo-700 uppercase tracking-wider">Bulk Actions</span>
+                                                                                            {/* Room badge */}
+                                                                                            {pData.panel?.room && (
+                                                                                                <div className="flex items-center gap-1.5 px-3 py-1 bg-amber-50 border border-amber-200 text-amber-700 rounded-lg text-xs font-bold">
+                                                                                                    <span>📍</span>
+                                                                                                    <span>Venue: {pData.panel.room}</span>
+                                                                                                </div>
+                                                                                            )}
                                                                                             <div className="flex items-center gap-2 border-l border-indigo-200 pl-3">
                                                                                                 <button
                                                                                                     onClick={() => setManualMarksMode(!manualMarksMode)}

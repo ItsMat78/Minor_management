@@ -32,13 +32,14 @@ interface FacultyWorkload {
 interface DraftPanel {
     id: string;
     faculties: FacultyWorkload[];
+    room?: string;
 }
 
 interface AutoCreatePanelsModalProps {
     faculties: FacultyWorkload[];
     batchYear: number;
     onClose: () => void;
-    onConfirm: (panels: { faculty: string[], batchYear: number, _id?: string }[]) => Promise<void>;
+    onConfirm: (panels: { faculty: string[], batchYear: number, room?: string, _id?: string }[]) => Promise<void>;
     isEditingMode?: boolean;
     initialPanels?: any[];
 }
@@ -88,7 +89,7 @@ const DraggableFaculty = ({ faculty, panelId, isOverlay }: { faculty: FacultyWor
 };
 
 // Droppable Panel Component
-const DroppablePanel = ({ panel, index, onDelete }: { panel: DraftPanel, index: number, onDelete: () => void }) => {
+const DroppablePanel = ({ panel, index, onDelete, onRoomChange }: { panel: DraftPanel, index: number, onDelete: () => void, onRoomChange: (room: string) => void }) => {
     const { setNodeRef, isOver } = useDroppable({
         id: panel.id,
         data: {
@@ -137,6 +138,19 @@ const DroppablePanel = ({ panel, index, onDelete }: { panel: DraftPanel, index: 
                         <DraggableFaculty key={f._id} faculty={f} panelId={panel.id} />
                     ))}
                 </SortableContext>
+            </div>
+
+            {/* Room input */}
+            <div className="mt-3 flex items-center gap-2">
+                <span className="text-xs text-neutral-400 shrink-0">📍 Room:</span>
+                <input
+                    type="text"
+                    value={panel.room || ''}
+                    onChange={e => onRoomChange(e.target.value)}
+                    placeholder="e.g. 304"
+                    className="flex-1 text-xs px-2.5 py-1.5 border border-neutral-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400/30 focus:border-indigo-400 bg-white"
+                    onClick={e => e.stopPropagation()}
+                />
             </div>
         </div>
     );
@@ -266,7 +280,7 @@ const AutoCreatePanelsModal: React.FC<AutoCreatePanelsModalProps> = ({ faculties
             // Any faculty from the provided list NOT in initialPanels should be unallocated
             const usedFacIds = new Set(initialPanels.flatMap(p => p.faculties.map((f: any) => f._id)));
             setBoard({
-                panels: initialPanels,
+                panels: initialPanels.map((p: any) => ({ ...p, room: p.room || p._tempRoom || '' })),
                 unallocated: faculties.filter(f => !usedFacIds.has(f._id))
             });
             return;
@@ -424,6 +438,7 @@ const AutoCreatePanelsModal: React.FC<AutoCreatePanelsModalProps> = ({ faculties
         const dataToSave = validPanels.map((p: any) => ({
             batchYear: batchYear,
             faculty: p.faculties.map((f: any) => f._id),
+            room: p.room || undefined,
             ...(p._tempPanelId ? { _id: p._tempPanelId } : {})
         }));
 
@@ -491,7 +506,16 @@ const AutoCreatePanelsModal: React.FC<AutoCreatePanelsModalProps> = ({ faculties
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                                     {draftPanels.map((p: any, i) => (
-                                        <DroppablePanel key={p.id} panel={p} index={i} onDelete={() => deletePanel(p.id)} />
+                                        <DroppablePanel
+                                            key={p.id}
+                                            panel={p}
+                                            index={i}
+                                            onDelete={() => deletePanel(p.id)}
+                                            onRoomChange={(room) => setBoard(prev => ({
+                                                ...prev,
+                                                panels: prev.panels.map(panel => panel.id === p.id ? { ...panel, room } : panel)
+                                            }))}
+                                        />
                                     ))}
                                     <div className="bg-neutral-50/50 rounded-2xl p-5 border-2 border-dashed border-neutral-300 flex items-center justify-center flex-col text-neutral-500 hover:bg-indigo-50/30 hover:border-indigo-300 hover:text-indigo-600 transition-all cursor-pointer group" onClick={() => {
                                         setBoard(prev => ({ ...prev, panels: [...prev.panels, { id: `new-panel-${Date.now()}`, faculties: [] }] }));
