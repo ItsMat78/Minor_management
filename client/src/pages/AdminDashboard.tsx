@@ -170,6 +170,7 @@ const AdminDashboard: React.FC = () => {
     const [panelExcelImportFile, setPanelExcelImportFile] = useState<File | null>(null);
     const [panelExcelBatch, setPanelExcelBatch] = useState<string>('');
     const [panelExcelImportLoading, setPanelExcelImportLoading] = useState(false);
+    const [panelExcelImportError, setPanelExcelImportError] = useState<string | null>(null);
 
     // === Admin Evaluation State ===
     const [evaluatingProject, setEvaluatingProject] = useState<any>(null);
@@ -548,6 +549,7 @@ const AdminDashboard: React.FC = () => {
     const handlePanelExcelImport = async () => {
         if (!panelExcelImportFile || !panelExcelBatch) return;
         setPanelExcelImportLoading(true);
+        setPanelExcelImportError(null);
         const formData = new FormData();
         formData.append('file', panelExcelImportFile);
         formData.append('batchYear', panelExcelBatch);
@@ -557,7 +559,7 @@ const AdminDashboard: React.FC = () => {
             });
             const draftPanels = res.data.draftPanels;
             if (!draftPanels || draftPanels.length === 0) {
-                 alert('No panels found or emails did not match any active faculty');
+                 setPanelExcelImportError('No valid panel mappings found. Please ensure the emails match active faculty members.');
                  setPanelExcelImportLoading(false);
                  return;
             }
@@ -580,9 +582,10 @@ const AdminDashboard: React.FC = () => {
             setAutoCreateFaculties(facultiesWithWorkload);
             
             setShowAutoCreateModal(true);
+            setPanelExcelImportError(null);
         } catch(e: any) {
             console.error(e);
-            alert('Failed to process excel file: ' + (e.response?.data?.message || e.message));
+            setPanelExcelImportError(e.response?.data?.message || e.message || 'Failed to process excel file');
         } finally {
             setPanelExcelImportLoading(false);
         }
@@ -3006,7 +3009,7 @@ const AdminDashboard: React.FC = () => {
                                     <label className="block text-sm font-medium text-gray-700 mb-1">Batch Year (Start Year)</label>
                                     <select value={autoCreateBatchYear} onChange={(e) => setAutoCreateBatchYear(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg">
                                         <option value="">Select Batch</option>
-                                        {Array.from({ length: 7 }, (_, i) => (new Date().getFullYear() - 7) + i).map(year => (
+                                        {Array.from({ length: 8 }, (_, i) => 2026 - i).map(year => (
                                             <option key={year} value={year.toString()}>{year}</option>
                                         ))}
                                     </select>
@@ -3050,7 +3053,7 @@ const AdminDashboard: React.FC = () => {
                         <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden flex flex-col">
                             <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
                                 <h3 className="text-lg font-bold text-gray-900">Upload Panels Excel</h3>
-                                <button onClick={() => { setShowPanelExcelImportModal(false); setPanelExcelImportFile(null); }} className="text-gray-400 hover:text-gray-600">
+                                <button onClick={() => { setShowPanelExcelImportModal(false); setPanelExcelImportFile(null); setPanelExcelImportError(null); }} className="text-gray-400 hover:text-gray-600">
                                     <X className="w-5 h-5" />
                                 </button>
                             </div>
@@ -3063,7 +3066,7 @@ const AdminDashboard: React.FC = () => {
                                         className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
                                     >
                                         <option value="" disabled>Select Batch</option>
-                                        {Array.from({ length: 6 }, (_, i) => new Date().getFullYear() - 2 + i).map(year => (
+                                        {Array.from({ length: 8 }, (_, i) => 2026 - i).map(year => (
                                             <option key={year} value={year}>{year}</option>
                                         ))}
                                     </select>
@@ -3087,9 +3090,15 @@ const AdminDashboard: React.FC = () => {
                                           hover:file:bg-indigo-100 cursor-pointer"
                                     />
                                 </div>
+                                {panelExcelImportError && (
+                                    <div className="p-3 bg-red-50 border border-red-100 rounded-lg flex items-start gap-2.5 text-sm font-medium text-red-600">
+                                        <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5 text-red-500" />
+                                        <p>{panelExcelImportError}</p>
+                                    </div>
+                                )}
                             </div>
                             <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-3">
-                                <button onClick={() => { setShowPanelExcelImportModal(false); setPanelExcelImportFile(null); }} className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition">Cancel</button>
+                                <button onClick={() => { setShowPanelExcelImportModal(false); setPanelExcelImportFile(null); setPanelExcelImportError(null); }} className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition">Cancel</button>
                                 <button
                                     onClick={handlePanelExcelImport}
                                     disabled={!panelExcelBatch || !panelExcelImportFile || panelExcelImportLoading}

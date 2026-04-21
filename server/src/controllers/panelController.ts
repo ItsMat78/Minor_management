@@ -1540,14 +1540,14 @@ export const previewPanelImport = async (req: any, res: Response) => {
         
         worksheet.eachRow((row, rowNumber) => {
             if (rowNumber === 1) return; // skip header
-            let panelNo = row.getCell(1).value?.toString().trim();
-            const emailsRaw = row.getCell(2).value?.toString().trim() || "";
-            let room = row.getCell(3).value?.toString().trim() || "";
+            let panelNo = row.getCell(1).text?.trim() || row.getCell(1).value?.toString().trim();
+            const emailsRaw = row.getCell(2).text || row.getCell(2).value?.toString().trim() || "";
+            let room = row.getCell(3).text?.trim() || row.getCell(3).value?.toString().trim() || "";
             if (panelNo) {
                 if (!panelsMap[panelNo]) {
                     panelsMap[panelNo] = { id: `panel-imported-${panelNo}`, room, emails: [] };
                 }
-                const emails = emailsRaw.split(',').map((e: string) => e.trim()).filter((e: string) => e !== "");
+                const emails = emailsRaw.split(/[\s,;\n\r]+/).map((e: string) => e.trim()).filter((e: string) => e !== "");
                 panelsMap[panelNo].emails.push(...emails);
                 if (room && !panelsMap[panelNo].room) {
                     panelsMap[panelNo].room = room;
