@@ -117,6 +117,11 @@ export const exportEvaluations = async (req: any, res: Response) => {
             return numA - numB;
         });
 
+        if (filteredGroups.length === 0) {
+            return res.status(204).end();
+        }
+
+
         const workbook = new ExcelJS.Workbook();
         const pSheet = workbook.addWorksheet('Evaluations');
 
@@ -520,6 +525,10 @@ export const exportPanels = async (req: any, res: Response) => {
         const romanSems = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'];
         const semStr = romanSems[Math.min(semCount - 1, 9)] || `${semCount}th`;
         const acadYear = `${cy}-${String(cy + 1).slice(2)}`;
+
+        if (panels.length === 0) {
+            return res.status(204).end();
+        }
 
         // group assignment per panel
         const panelGroups: any[][] = (panels as any[]).map((panel: any) => {
@@ -1525,6 +1534,11 @@ export const exportOfficialFormat = async (req: any, res: Response) => {
             const numB = parseInt(b.name) || 0;
             return numA - numB;
         });
+
+        if (filteredGroups.length === 0) {
+            return res.status(204).end();
+        }
+
 
         const workbook = new ExcelJS.Workbook();
         const ws = workbook.addWorksheet('Sheet1');

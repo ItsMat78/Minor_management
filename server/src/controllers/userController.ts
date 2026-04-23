@@ -293,12 +293,26 @@ export const exportStudents = async (req: Request, res: Response) => {
 
         if (batch && typeof batch === 'string' && batch !== 'All') {
             const batchSuffix = batch.slice(-2);
-            query.rollNumber = { $regex: `^${batchSuffix}` };
+            // Include dropper students in BOTH their original year AND their target year
+            // for the student directory export specifically.
+            query.$or = [
+                { rollNumber: { $regex: `^${batchSuffix}` } },
+                { targetBatch: batch }
+            ];
         }
 
+        console.log('[exportStudents] batch param:', batch);
+        console.log('[exportStudents] query:', JSON.stringify(query, null, 2));
+
         const students = await User.find(query)
-            .select('name email rollNumber branch semester role isVerified')
+            .select('name email rollNumber branch semester role isVerified targetBatch')
             .sort({ rollNumber: 1 });
+
+        console.log('[exportStudents] found', students.length, 'students');
+
+        if (students.length === 0) {
+            return res.status(204).end();
+        }
 
         // Get group status
         const groups = await Group.find({}, 'members name project');
@@ -334,6 +348,7 @@ export const exportStudents = async (req: Request, res: Response) => {
 
         // Generate Buffer
         const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+        console.log('[exportStudents] buffer size (bytes):', buf.length, '| data rows:', data.length);
 
         // Set Headers
         res.setHeader('Content-Disposition', `attachment; filename="students_${batch || 'all'}.xlsx"`);

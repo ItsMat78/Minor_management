@@ -322,11 +322,11 @@ const AdminDashboard: React.FC = () => {
                 activeBatches = [new Date().getFullYear().toString()];
             }
 
-            // a) Student export, each batch separate.
+            // a) Student export, each batch separate — skips batches with 0 students (204 response).
             for (const batch of activeBatches) {
                 try {
                     const res = await api.get(`/users/students/export?batch=${batch}`, { responseType: 'blob' });
-                    if (res.data.type !== 'application/json' && res.data.size > 0) {
+                    if (res.status !== 204 && res.data.size > 0 && res.data.type !== 'application/json') {
                         zip.file(`Students/Students_Batch_${batch}.xlsx`, res.data);
                     }
                 } catch (e) { console.error('Failed student export for batch', batch); }
@@ -342,9 +342,6 @@ const AdminDashboard: React.FC = () => {
 
             // c) Full IIITNR Excel sheet, for each batch separate
             for (const batch of activeBatches) {
-                const hasGroups = groups.some((g: any) => getGroupBatchYear(g) === batch);
-                if (!hasGroups) continue;
-
                 try {
                     const res = await api.get(`/panels/export-official?batchYear=${batch}`, { responseType: 'blob' });
                     if (res.data.type !== 'application/json' && res.data.size > 0) {
@@ -362,17 +359,24 @@ const AdminDashboard: React.FC = () => {
                 }
             } catch (e) { console.error('Failed snapshot export'); }
 
-            // e) Each panel distribution export, for each batch separate
+            // e) Each panel distribution export (panel summary + per-panel group sheets), for each batch separate
             for (const batch of activeBatches) {
-                const hasPanels = panels.some((p: any) => String(p.batchYear) === String(batch)) || groups.some((g: any) => getGroupBatchYear(g) === String(batch));
-                if (!hasPanels) continue;
-
                 try {
                     const res = await api.get(`/panels/export?batchYear=${batch}`, { responseType: 'blob' });
                     if (res.data.type !== 'application/json' && res.data.size > 0) {
-                        zip.file(`Panels/Panels_Batch_${batch}.xlsx`, res.data);
+                        zip.file(`Panel_Distribution/Panel_Distribution_Batch_${batch}.xlsx`, res.data);
                     }
                 } catch (e) { console.error('Failed panels export for batch', batch); }
+            }
+
+            // f) Evaluation data export (full marks + grades) per batch
+            for (const batch of activeBatches) {
+                try {
+                    const res = await api.get(`/panels/export-evaluations?batchYear=${batch}&evalType=full`, { responseType: 'blob' });
+                    if (res.data.type !== 'application/json' && res.data.size > 0) {
+                        zip.file(`Evaluations/Evaluations_Full_Batch_${batch}.xlsx`, res.data);
+                    }
+                } catch (e) { console.error('Failed evaluations export for batch', batch); }
             }
 
             const blob = await zip.generateAsync({ type: 'blob' });
