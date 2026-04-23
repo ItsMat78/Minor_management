@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../utils/api';
-import { Layout, Users, CheckSquare, MessageSquare, Menu, Clock, Calendar, X, ChevronRight, Plus, Archive, FileText, Search, Square, AlertCircle, Trash2 } from 'lucide-react';
+import { Layout, Users, CheckSquare, MessageSquare, Menu, Clock, Calendar, X, ChevronRight, Plus, Archive, FileText, Search, Square, AlertCircle, Trash2, AlertTriangle } from 'lucide-react';
 import FilePreview from '../components/FilePreview';
 import AdminDashboard from './AdminDashboard';
 import FacultyDashboard from './FacultyDashboard';
@@ -444,7 +444,12 @@ const Dashboard: React.FC = () => {
                             </div>
                         )}
                         <div className="overflow-hidden">
-                            <p className="text-sm font-medium truncate">{user?.name}</p>
+                            <p className="text-sm font-medium truncate flex items-center gap-1.5">
+                                {user?.name}
+                                {user?.targetBatch && user?.targetBatch !== getBatch(user?.rollNumber) && (
+                                    <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 text-[9px] font-black uppercase rounded border border-amber-200">Dropper</span>
+                                )}
+                            </p>
                             <p className="text-xs text-neutral-500 truncate">{user?.email}</p>
                         </div>
                     </div>
@@ -481,6 +486,41 @@ const Dashboard: React.FC = () => {
                 </header>
 
                 <main className="flex-1 overflow-y-auto p-6">
+                    {/* Status Banners */}
+                    <div className="max-w-5xl mx-auto space-y-4 mb-6">
+                        {user?.isParticipating === false && (
+                            <div className="bg-rose-50 border-2 border-rose-100 rounded-2xl p-4 flex items-center gap-4 shadow-sm animate-pulse">
+                                <div className="p-3 bg-rose-100 text-rose-700 rounded-xl">
+                                    <AlertCircle className="w-5 h-5" />
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-black text-rose-900 uppercase tracking-tight">Portal Access Restricted</h3>
+                                    <p className="text-xs text-rose-700 font-medium mt-0.5">
+                                        You have been marked as non-participating for the current cycle. Group formation and project features are disabled.
+                                    </p>
+                                </div>
+                            </div>
+                        )}
+
+                        {user?.targetBatch && user?.targetBatch !== getBatch(user?.rollNumber) && (
+                            <div className="bg-amber-50 border-2 border-amber-100 rounded-2xl p-4 flex items-center justify-between shadow-sm">
+                                <div className="flex items-center gap-4">
+                                    <div className="p-3 bg-amber-100 text-amber-700 rounded-xl">
+                                        <AlertTriangle className="w-5 h-5" />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-sm font-black text-amber-900 uppercase tracking-tight">Active Batch Override</h3>
+                                        <p className="text-xs text-amber-700 font-medium mt-0.5">
+                                            You are participating in the <span className="font-bold underline">Batch {user.targetBatch}</span> cycle (Dropper Status).
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="hidden sm:block px-3 py-1 bg-white rounded-lg border border-amber-200 text-[10px] font-black text-amber-600 uppercase tracking-widest">
+                                    Admin Configured
+                                </div>
+                            </div>
+                        )}
+                    </div>
                     {activeTab === 'directory' && (
                         /* Directory View */
                         <div className="max-w-5xl mx-auto space-y-6">
@@ -1117,6 +1157,12 @@ const Dashboard: React.FC = () => {
                                                                             </p>
 
                                                                             {/* Tag Badges */}
+                                                                            {project.faculty && (
+                                                                                <div className="flex items-center gap-2 mb-4 text-xs font-bold text-indigo-600 bg-indigo-50/50 w-fit px-3 py-1.5 rounded-xl border border-indigo-100">
+                                                                                    <Users className="w-3.5 h-3.5" />
+                                                                                    <span>{project.faculty.name}</span>
+                                                                                </div>
+                                                                            )}
                                                                             <div className="flex flex-wrap gap-1.5 mb-4">
                                                                                 {(project.tags || []).slice(0, 2).map((tag: string, i: number) => (
                                                                                     <span key={i} className="px-2 py-0.5 bg-neutral-50 text-neutral-500 text-[10px] rounded border border-neutral-100 font-bold uppercase">
@@ -1177,6 +1223,12 @@ const Dashboard: React.FC = () => {
                                                                         <div key={project._id} className="bg-white p-6 rounded-3xl border border-red-100">
                                                                             <span className="px-2 py-0.5 bg-red-100 text-red-600 text-[9px] font-black uppercase rounded mb-3 inline-block">Rejected</span>
                                                                             <h4 className="font-bold text-neutral-900 mb-1">{project.title}</h4>
+                                                                            {project.faculty && (
+                                                                                <div className="flex items-center gap-1.5 text-[10px] font-bold text-neutral-400 mb-2">
+                                                                                    <Users className="w-3 h-3" />
+                                                                                    <span>{project.faculty.name}</span>
+                                                                                </div>
+                                                                            )}
                                                                             <p className="text-xs text-neutral-500 line-clamp-1 mb-3">{project.feedback}</p>
                                                                             <button onClick={() => navigate(`/project/propose?edit=${project._id}`)} className="text-[10px] font-black text-indigo-600 uppercase tracking-widest hover:underline">Revise Proposal</button>
                                                                         </div>
@@ -1808,9 +1860,30 @@ const Dashboard: React.FC = () => {
                         <div className="flex-1 overflow-y-auto p-8 space-y-8">
                             <div>
                                 <h4 className="text-xs font-black text-neutral-400 uppercase tracking-widest mb-4">Project Overview</h4>
-                                <p className="text-neutral-700 leading-relaxed text-sm whitespace-pre-wrap">
+                                <p className="text-neutral-700 leading-relaxed text-sm whitespace-pre-wrap mb-6">
                                     {selectedProject?.description || "No description provided."}
                                 </p>
+
+                                {selectedProject?.faculty && (
+                                    <div className="p-4 bg-indigo-50/50 rounded-2xl border border-indigo-100 mb-8">
+                                        <h4 className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                                            <Users className="w-3.5 h-3.5" /> Proposed Faculty Mentor
+                                        </h4>
+                                        <div className="flex items-center gap-3">
+                                            {selectedProject.faculty.photoUrl ? (
+                                                <img src={selectedProject.faculty.photoUrl} alt={selectedProject.faculty.name} className="w-10 h-10 rounded-full object-cover border border-indigo-200 shadow-sm" />
+                                            ) : (
+                                                <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-sm">
+                                                    {selectedProject.faculty.name?.charAt(0) || 'F'}
+                                                </div>
+                                            )}
+                                            <div>
+                                                <p className="text-sm font-bold text-neutral-900">{selectedProject.faculty.name}</p>
+                                                <p className="text-[11px] text-neutral-500 font-medium">{selectedProject.faculty.department}</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
 
                             {selectedProject?.tags && selectedProject.tags.length > 0 && (
