@@ -138,8 +138,8 @@ export const getAllStudents = async (req: Request, res: Response) => {
             }
         }
 
-        // 2. Filter by Branch / Batch / Verification / search
-        const { branch, status: filterStatus, page: pageParam, limit: limitParam, search, batch, verification } = req.query;
+        // 2. Filter by Branch / Batch / Verification / search / participation
+        const { branch, status: filterStatus, participationStatus, page: pageParam, limit: limitParam, search, batch, verification } = req.query;
         if (branch && branch !== 'all' && branch !== 'All') {
             query.branch = branch;
         }
@@ -155,6 +155,12 @@ export const getAllStudents = async (req: Request, res: Response) => {
         }
         if (verification === 'Verified') query.isVerified = true;
         if (verification === 'Unverified') query.isVerified = false;
+        
+        if (participationStatus === 'participating') {
+            query.isParticipating = true;
+        } else if (participationStatus === 'non-participating') {
+            query.isParticipating = false;
+        }
         if (search && typeof search === 'string' && search.trim()) {
             const safe = search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
             const rx = new RegExp(safe, 'i');
@@ -169,7 +175,7 @@ export const getAllStudents = async (req: Request, res: Response) => {
 
         // Fetch students
         let studentQuery = User.find(query)
-            .select('name email rollNumber branch semester targetBatch isVerified _id')
+            .select('name email rollNumber branch semester targetBatch isVerified isParticipating _id')
             .sort({ rollNumber: 1 });
         if (usePagination) studentQuery = studentQuery.skip((page - 1) * limit).limit(limit);
         const students = await studentQuery;

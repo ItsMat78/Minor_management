@@ -74,18 +74,10 @@ const Dashboard: React.FC = () => {
     const [isProposalWarningOpen, setIsProposalWarningOpen] = useState(false);
     const [creatingGroup, setCreatingGroup] = useState(false);
 
-    // Dropper State
-    const [isDropper, setIsDropper] = useState(false);
-    const [targetBatch, setTargetBatch] = useState('2024');
-
     // Confirmation State
     const [showConfirmation, setShowConfirmation] = useState(false);
     const [estimatedGroupNumber, setEstimatedGroupNumber] = useState<number | null>(null);
     const [isFetchingGroupNo, setIsFetchingGroupNo] = useState(false);
-
-    useEffect(() => {
-        if (myBatch) setTargetBatch(myBatch);
-    }, [myBatch]);
 
     // Leave Group State
     const [isLeaveDialogOpen, setIsLeaveDialogOpen] = useState(false);
@@ -241,8 +233,7 @@ const Dashboard: React.FC = () => {
     const handleReviewGroup = async () => {
         setIsFetchingGroupNo(true);
         try {
-            const batch = isDropper ? targetBatch : myBatch;
-            const res = await api.get(`/groups/next-number?batch=${batch}`);
+            const res = await api.get(`/groups/next-number?batch=${myBatch}`);
             setEstimatedGroupNumber(res.data.nextNumber);
             setShowConfirmation(true);
         } catch (error) {
@@ -275,9 +266,6 @@ const Dashboard: React.FC = () => {
         setCreatingGroup(true);
         try {
             const payload: any = { members: Array.from(selectedStudents) };
-            if (isDropper) {
-                payload.targetBatch = targetBatch;
-            }
             await api.post('/groups', payload);
             // Refresh state
             const groupRes = await api.get('/groups/my');
@@ -675,44 +663,13 @@ const Dashboard: React.FC = () => {
                                                             </div>
                                                         </div>
 
-                                                        <div className="mt-4 p-4 border border-neutral-200 rounded-xl bg-neutral-50/50">
-                                                            <label className="flex items-center gap-2 text-sm font-medium text-neutral-700 cursor-pointer">
-                                                                <input
-                                                                    type="checkbox"
-                                                                    checked={isDropper}
-                                                                    onChange={(e) => setIsDropper(e.target.checked)}
-                                                                    className="rounded border-neutral-300 text-indigo-600 focus:ring-indigo-500"
-                                                                />
-                                                                Is anyone in this group a dropper / re-registering?
-                                                            </label>
-                                                            {isDropper && (
-                                                                <div className="mt-4 animate-in fade-in slide-in-from-top-2 duration-300">
-                                                                    <label className="block text-xs font-bold text-neutral-400 uppercase tracking-widest mb-1.5 ml-1">Target Evaluation Batch</label>
-                                                                    <select
-                                                                        value={targetBatch}
-                                                                        onChange={(e) => setTargetBatch(e.target.value)}
-                                                                        className="w-full px-4 py-2 bg-white border border-neutral-200 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm"
-                                                                        disabled={isFetchingGroupNo}
-                                                                    >
-                                                                        <option value="">Select Batch Year</option>
-                                                                        {participatingBatchYears.map(year => (
-                                                                            <option key={year} value={year}>Batch {year}</option>
-                                                                        ))}
-                                                                    </select>
-                                                                    <p className="mt-1.5 text-[10px] text-neutral-400 leading-relaxed ml-1">
-                                                                        Selecting a target batch ensures your group is evaluated with the correct cohort members.
-                                                                    </p>
-                                                                </div>
-                                                            )}
-                                                        </div>
-
                                                         <div className="flex justify-end gap-3 mt-8">
                                                             <Dialog.Close asChild>
                                                                 <button className="px-4 py-2 text-sm font-semibold text-neutral-500 hover:bg-neutral-50 rounded-lg transition-colors">Cancel</button>
                                                             </Dialog.Close>
                                                             <button
                                                                 onClick={handleReviewGroup}
-                                                                disabled={isFetchingGroupNo || (isDropper && !targetBatch)}
+                                                                disabled={isFetchingGroupNo}
                                                                 className="px-6 py-2 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg disabled:opacity-50 shadow-lg shadow-indigo-100 flex items-center gap-2"
                                                             >
                                                                 {isFetchingGroupNo ? (
@@ -733,7 +690,7 @@ const Dashboard: React.FC = () => {
                                                                     <span>G-{estimatedGroupNumber}</span>
                                                                 ) : 'G-??'}
                                                             </div>
-                                                            <p className="text-xs font-bold text-indigo-400 uppercase tracking-widest">Batch {isDropper ? targetBatch : myBatch}</p>
+                                                            <p className="text-xs font-bold text-indigo-400 uppercase tracking-widest">Batch {myBatch}</p>
                                                         </div>
 
                                                         <div className="space-y-4 mb-8">

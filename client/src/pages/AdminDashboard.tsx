@@ -73,6 +73,7 @@ const AdminDashboard: React.FC = () => {
     // Filter State
     const [searchTerm, setSearchTerm] = useState('');
     const [filterBatch, setFilterBatch] = useState<string>('All');
+    const [filterParticipationStatus, setFilterParticipationStatus] = useState<string>('Participating');
     const [filterBranch, setFilterBranch] = useState<string>('All');
     const [filterGroupStatus, setFilterGroupStatus] = useState<string>('All'); // Added group status filter
     const [filterVerificationStatus, setFilterVerificationStatus] = useState<string>('All'); // Added verification filter
@@ -85,6 +86,7 @@ const AdminDashboard: React.FC = () => {
     const [collapsedPanelsBatches, setCollapsedPanelsBatches] = useState<Record<string, boolean>>({});
     const [configBatchGroup, setConfigBatchGroup] = useState<any>(null); // For configure batch modal
     const [configStudentBatch, setConfigStudentBatch] = useState<any>(null); // For student batch override modal
+    const [studentParticipationOverride, setStudentParticipationOverride] = useState<boolean>(true);
     const [configBatchMenuOpen, setConfigBatchMenuOpen] = useState<string | null>(null); // To toggle menu per row
     const [studentBatchMenuOpen, setStudentBatchMenuOpen] = useState<string | null>(null); // To toggle student menu per row
     const [editingUser, setEditingUser] = useState<any>(null); // Edit student/faculty modal
@@ -549,7 +551,7 @@ const AdminDashboard: React.FC = () => {
         if (activeTab === 'groups') {
             setViewGroup(null); // Reset detail view on tab change
         }
-    }, [activeTab, filterBatch, archiveYear]);
+    }, [activeTab, filterBatch, archiveYear, filterParticipationStatus]);
 
     // Reset sort when tab changes
     useEffect(() => {
@@ -820,7 +822,10 @@ const AdminDashboard: React.FC = () => {
             const matchesVerificationStatus = filterVerificationStatus === 'All' ||
                 (filterVerificationStatus === 'Verified' ? s.isVerified : !s.isVerified);
 
-            return matchesSearch && matchesBranch && matchesBatch && matchesGroupStatus && matchesVerificationStatus;
+            const matchesParticipation = filterParticipationStatus === 'All' ||
+                (filterParticipationStatus === 'Participating' ? s.isParticipating : !s.isParticipating);
+
+            return matchesSearch && matchesBranch && matchesBatch && matchesGroupStatus && matchesVerificationStatus && matchesParticipation;
         }).sort((a, b) => {
             if (sortOption === 'Name (A-Z)') return a.name.localeCompare(b.name);
             if (sortOption === 'Name (Z-A)') return b.name.localeCompare(a.name);
@@ -844,17 +849,20 @@ const AdminDashboard: React.FC = () => {
         }
     };
 
-    const handleUpdateStudentBatch = async (newBatch: string) => {
+    const handleUpdateStudentBatch = async (newBatch: string, isParticipating: boolean) => {
         if (!configStudentBatch) return;
         try {
-            await api.put(`/users/${configStudentBatch._id}`, { targetBatch: newBatch });
+            await api.put(`/users/${configStudentBatch._id}`, { 
+                targetBatch: newBatch,
+                isParticipating: isParticipating
+            });
             const res = await api.get('/users/students');
             setStudents(Array.isArray(res.data) ? res.data : []);
             setConfigStudentBatch(null);
             setStudentBatchMenuOpen(null);
         } catch (error) {
-            console.error('Failed to update student targetBatch', error);
-            alert('Failed to update student batch');
+            console.error('Failed to update student status', error);
+            alert('Failed to update student status');
         }
     };
 
@@ -1142,6 +1150,8 @@ const AdminDashboard: React.FC = () => {
             rollNumber: user.rollNumber || '',
             branch: user.branch || '',
             department: user.department || '',
+            isParticipating: user.isParticipating ?? true,
+            targetBatch: user.targetBatch || '',
         });
     };
 
@@ -1329,6 +1339,20 @@ const AdminDashboard: React.FC = () => {
                                                 <option key={year} value={year}>{year}-{parseInt(year) + 4}</option>
                                             ))}
                                         </select>
+                                    )}
+
+                                    {activeTab === 'students' && (
+                                        <div className="flex flex-col gap-1 min-w-[120px]">
+                                            <select
+                                                className="px-3 py-2 bg-white rounded-xl border border-neutral-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer hover:border-indigo-300 transition-colors"
+                                                value={filterParticipationStatus}
+                                                onChange={(e) => setFilterParticipationStatus(e.target.value)}
+                                            >
+                                                <option value="All">Participation: All</option>
+                                                <option value="Participating">Participating</option>
+                                                <option value="Non-Participating">Non-Participating</option>
+                                            </select>
+                                        </div>
                                     )}
 
                                     {activeTab === 'students' && (
@@ -1628,15 +1652,26 @@ const AdminDashboard: React.FC = () => {
                                                                 )}
                                                             </td>
                                                             <td className="px-6 py-4">
-                                                                {student.isVerified ? (
-                                                                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-100">
-                                                                        <CheckCircle className="w-3 h-3" /> Activated
-                                                                    </span>
-                                                                ) : (
-                                                                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-rose-50 text-rose-700 border border-rose-100">
-                                                                        <Clock className="w-3 h-3" /> Pending
-                                                                    </span>
-                                                                )}
+                                                                <div className="flex flex-col gap-1">
+                                                                    {student.isVerified ? (
+                                                                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black bg-blue-50 text-blue-700 border border-blue-100 uppercase tracking-tighter w-fit">
+                                                                            <CheckCircle className="w-2.5 h-2.5" /> Activated
+                                                                        </span>
+                                                                    ) : (
+                                                                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black bg-rose-50 text-rose-700 border border-rose-100 uppercase tracking-tighter w-fit">
+                                                                            <Clock className="w-2.5 h-2.5" /> Pending
+                                                                        </span>
+                                                                    )}
+                                                                    {student.isParticipating !== false ? (
+                                                                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black bg-emerald-50 text-emerald-700 border border-emerald-100 uppercase tracking-tighter w-fit">
+                                                                            <UserCheck className="w-2.5 h-2.5" /> Participating
+                                                                        </span>
+                                                                    ) : (
+                                                                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black bg-neutral-100 text-neutral-500 border border-neutral-200 uppercase tracking-tighter w-fit">
+                                                                            <UserX className="w-2.5 h-2.5" /> Excluded
+                                                                        </span>
+                                                                    )}
+                                                                </div>
                                                             </td>
                                                             <td className="px-6 py-4 text-right">
                                                                 <div className="flex items-center justify-end gap-1">
@@ -1665,7 +1700,11 @@ const AdminDashboard: React.FC = () => {
                                                                                 onClick={e => e.stopPropagation()}
                                                                             >
                                                                                 <button
-                                                                                    onClick={() => { setConfigStudentBatch(student); setStudentBatchMenuOpen(null); }}
+                                                                                    onClick={() => { 
+                                                                            setConfigStudentBatch(student); 
+                                                                            setStudentParticipationOverride(student.isParticipating ?? true);
+                                                                            setStudentBatchMenuOpen(null); 
+                                                                        }}
                                                                                     className="w-full text-left px-4 py-2 text-sm text-neutral-700 hover:bg-indigo-50 hover:text-indigo-600 flex items-center gap-2 transition-colors"
                                                                                 >
                                                                                     <AlertCircle className="w-4 h-4" /> Override batch
@@ -3461,6 +3500,27 @@ const AdminDashboard: React.FC = () => {
                                             <option>CSE</option><option>ECE</option><option>DSAI</option>
                                         </select>
                                     </div>
+                                    <div className="flex flex-col gap-1">
+                                        <label className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Target Batch (Override)</label>
+                                        <select className="border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" value={editUserForm.targetBatch} onChange={e => setEditUserForm((f: any) => ({ ...f, targetBatch: e.target.value }))}>
+                                            <option value="">No Override</option>
+                                            {[...participatingBatchYears].reverse().map(year => (
+                                                <option key={year} value={year}>{year}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div className="flex items-center justify-between p-3 bg-neutral-50 rounded-xl border border-neutral-100">
+                                        <div>
+                                            <p className="text-sm font-bold text-neutral-800">Participating</p>
+                                            <p className="text-[10px] text-neutral-500">Controls portal access for this student</p>
+                                        </div>
+                                        <button
+                                            onClick={() => setEditUserForm((f: any) => ({ ...f, isParticipating: !f.isParticipating }))}
+                                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${editUserForm.isParticipating ? 'bg-indigo-600' : 'bg-neutral-300'}`}
+                                        >
+                                            <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${editUserForm.isParticipating ? 'translate-x-6' : 'translate-x-1'}`} />
+                                        </button>
+                                    </div>
                                 </>)}
                                 {editingUser.role === 'Faculty' && (
                                     <div className="flex flex-col gap-1">
@@ -3548,14 +3608,32 @@ const AdminDashboard: React.FC = () => {
                                         ))}
                                     </select>
                                 </div>
+                                <div className="space-y-3 pt-2">
+                                    <label className="block text-[10px] uppercase font-black tracking-widest text-neutral-400">Portal Participation</label>
+                                    <div className="flex items-center justify-between p-4 bg-neutral-50 rounded-xl border border-neutral-200">
+                                        <div>
+                                            <p className="text-sm font-bold text-neutral-800">Is Participating?</p>
+                                            <p className="text-[10px] text-neutral-500 uppercase font-bold tracking-tighter">Controls access to portal features</p>
+                                        </div>
+                                        <button
+                                            onClick={() => setStudentParticipationOverride(!studentParticipationOverride)}
+                                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${studentParticipationOverride ? 'bg-indigo-600' : 'bg-neutral-300'}`}
+                                        >
+                                            <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${studentParticipationOverride ? 'translate-x-6' : 'translate-x-1'}`} />
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                             <div className="px-6 py-5 bg-neutral-50 border-t border-neutral-100 flex justify-end gap-3">
                                 <button onClick={() => setConfigStudentBatch(null)} className="px-5 py-2.5 text-sm font-black uppercase tracking-widest text-neutral-500 hover:text-neutral-700 hover:bg-neutral-100 rounded-xl transition-all">Cancel</button>
                                 <button
-                                    onClick={() => handleUpdateStudentBatch((document.getElementById('studentBatchUpdateSelect') as HTMLSelectElement).value)}
+                                    onClick={() => handleUpdateStudentBatch(
+                                        (document.getElementById('studentBatchUpdateSelect') as HTMLSelectElement).value,
+                                        studentParticipationOverride
+                                    )}
                                     className="px-6 py-2.5 bg-indigo-600 text-white text-sm font-black uppercase tracking-widest rounded-xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 active:scale-95"
                                 >
-                                    Apply Override
+                                    Apply Changes
                                 </button>
                             </div>
                         </div>

@@ -9,7 +9,7 @@ import { sendGroupCreationEmail, sendGroupInviteEmail, sendGroupInviteResponseEm
 export const createGroup = async (req: Request, res: Response) => {
     try {
         const userId = (req as any).user.id;
-        const { name, members, targetBatch } = req.body; // Expecting array of member IDs
+        const { name, members } = req.body; // Expecting array of member IDs
 
         // Check if user is already in a group (accepted or pending)
         const user = await User.findById(userId);
@@ -23,6 +23,7 @@ export const createGroup = async (req: Request, res: Response) => {
 
         // Validate other members — they go into pendingMembers and must accept
         const pendingMembers: string[] = [];
+        let derivedTargetBatch: string | undefined = user.targetBatch;
         if (members && Array.isArray(members) && members.length > 0) {
             if (members.length + 1 > 3) {
                 return res.status(400).json({ message: 'Group cannot exceed 3 members' });
@@ -34,6 +35,10 @@ export const createGroup = async (req: Request, res: Response) => {
                 const member = await User.findById(memberId);
                 if (!member) return res.status(404).json({ message: `User ${memberId} not found` });
                 if (member.role !== 'Student') return res.status(400).json({ message: `User ${member.name} is not a student` });
+
+                if (member.targetBatch && !derivedTargetBatch) {
+                    derivedTargetBatch = member.targetBatch;
+                }
 
                 const memberGroup = await Group.findOne({
                     $or: [{ members: memberId }, { pendingMembers: memberId }],
@@ -48,7 +53,7 @@ export const createGroup = async (req: Request, res: Response) => {
         let assignedName = name;
         if (!assignedName) {
             // Determine the batch year for the new group
-            let batchYear = targetBatch;
+            let batchYear = derivedTargetBatch;
             if (!batchYear && user.rollNumber) {
                 batchYear = '20' + user.rollNumber.substring(0, 2);
             }
@@ -83,7 +88,7 @@ export const createGroup = async (req: Request, res: Response) => {
             createdBy: userId,
             status: 'Forming',
             inviteCode: Math.random().toString(36).substring(7).toUpperCase(),
-            targetBatch
+            targetBatch: derivedTargetBatch
         });
 
         await newGroup.save();

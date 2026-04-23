@@ -96,7 +96,7 @@ export const exportEvaluations = async (req: any, res: Response) => {
 
         // Get all groups and filter by batch
         const allGroups = await Group.find({ status: { $in: ['Approved', 'Pending'] }, isArchived: { $ne: true } })
-            .populate('members', 'name rollNumber photoUrl branch department')
+            .populate('members', 'name rollNumber photoUrl branch department isParticipating')
             .populate({
                 path: 'project',
                 populate: { path: 'faculty', select: 'name email photoUrl _id' }
@@ -108,7 +108,10 @@ export const exportEvaluations = async (req: any, res: Response) => {
             const gBatch = g.targetBatch ? String(g.targetBatch) : (g.members && g.members.length > 0 && g.members[0].rollNumber ? '20' + String(g.members[0].rollNumber).substring(0, 2) : 'Unknown');
             if (batchYear && batchYear !== 'All' && gBatch !== String(batchYear)) return false;
             return true;
-        });
+        }).map((g: any) => ({
+            ...g,
+            members: (g.members || []).filter((m: any) => m.isParticipating !== false)
+        })).filter((g: any) => g.members.length > 0);
 
         // Sort groups by group number (parse g.name as integer)
         filteredGroups.sort((a: any, b: any) => {
@@ -763,11 +766,15 @@ async function getPanelWithGroups(panelId: string) {
 
     const panelFacultyIds = panel.faculty.map((f: any) => f._id.toString());
     const groups = await Group.find({ status: { $in: ['Approved', 'Forming', 'Pending'] }, isArchived: { $ne: true } })
-        .populate('members', 'name rollNumber photoUrl email branch department')
+        .populate('members', 'name rollNumber photoUrl email branch department isParticipating')
         .populate({ path: 'project', populate: { path: 'faculty', select: 'name email photoUrl _id' } })
         .lean();
 
-    const panelGroups = groups.filter((g: any) => {
+    const panelGroups = groups.map((g: any) => ({
+        ...g,
+        members: (g.members || []).filter((m: any) => m.isParticipating !== false)
+    })).filter((g: any) => {
+        if (g.members.length === 0) return false;
         if (!g.project) return false;
         const projFacId = typeof g.project.faculty === 'string' ? g.project.faculty : g.project.faculty?._id?.toString();
         if (!projFacId || !panelFacultyIds.includes(projFacId)) return false;
@@ -1511,7 +1518,7 @@ export const exportOfficialFormat = async (req: any, res: Response) => {
         }
 
         const allGroups = await Group.find({ status: { $in: ['Approved', 'Pending'] }, isArchived: { $ne: true } })
-            .populate('members', 'name rollNumber branch department')
+            .populate('members', 'name rollNumber branch department isParticipating')
             .populate({
                 path: 'project',
                 populate: { path: 'faculty', select: 'name' }
@@ -1526,7 +1533,10 @@ export const exportOfficialFormat = async (req: any, res: Response) => {
                     ? '20' + String(g.members[0].rollNumber).substring(0, 2)
                     : 'Unknown');
             return gBatch === String(batchYear);
-        });
+        }).map((g: any) => ({
+            ...g,
+            members: (g.members || []).filter((m: any) => m.isParticipating !== false)
+        })).filter((g: any) => g.members.length > 0);
 
         // Sort by group name (numeric)
         filteredGroups.sort((a: any, b: any) => {

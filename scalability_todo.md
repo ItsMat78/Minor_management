@@ -103,3 +103,5 @@ Tick items as they are completed.
 - [ ] Group-name numbering audit (likely already correct per `groupController.ts:48-86, 304-311`)
 - [ ] Participation audit log (beyond `event.participatingBatches` + `createdBy` + timestamps)
 - [ ] Event-list pagination
+
+$env:ADMIN_SETUP_SECRET="ilovekeiraknightleyandiwishshewasmywife"; npm run seed:admin --prefix server
