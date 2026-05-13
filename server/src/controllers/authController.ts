@@ -154,9 +154,10 @@ export const changePassword = async (req: Request, res: Response) => {
         const user = await User.findById(userId);
         if (!user) return res.status(404).json({ message: 'User not found' });
 
-        // On first-login flow currentPassword is still required (protects against stolen tokens)
-        const isMatch = await bcrypt.compare(currentPassword || '', user.password);
-        if (!isMatch) return res.status(400).json({ message: 'Current password is incorrect' });
+        if (!user.mustChangePassword) {
+            const isMatch = await bcrypt.compare(currentPassword || '', user.password);
+            if (!isMatch) return res.status(400).json({ message: 'Current password is incorrect' });
+        }
 
         const salt = await bcrypt.genSalt(10);
         user.password = await bcrypt.hash(newPassword, salt);

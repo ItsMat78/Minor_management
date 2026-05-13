@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import crypto from 'crypto';
 import * as XLSX from 'xlsx';
 import fs from 'fs';
 import bcrypt from 'bcryptjs';
@@ -256,7 +257,7 @@ export const commitExcelImport = async (req: Request, res: Response) => {
         const activeGF = await getActiveGroupFormation();
         const participatingBatches = activeGF?.participatingBatches || [];
 
-        const defaultPassword = await bcrypt.hash('changeme', 10);
+        const defaultPassword = await bcrypt.hash(crypto.randomBytes(12).toString('hex'), 10);
         const created = {
             students: 0, faculty: 0, groups: 0, projects: 0, skipped: 0,
             studentList: [] as { name: string; roll: string; email: string; branch: string; isDropper: boolean }[],

@@ -10,7 +10,6 @@ import Chat from '../components/Chat';
 import { motion } from 'framer-motion';
 import * as Dialog from '@radix-ui/react-dialog';
 import { GlobalEventBanner } from '../components/GlobalEventBanner';
-import { useParticipatingBatches } from '../hooks/useParticipatingBatches';
 
 interface Group {
     _id: string;
@@ -49,7 +48,6 @@ const Dashboard: React.FC = () => {
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
     const [activeTab, setActiveTab] = useState<'directory' | 'project' | 'group' | 'archive'>(initialStudentTab || 'directory');
 
-    const { batches: participatingBatchYears } = useParticipatingBatches();
 
     useEffect(() => {
         const current = searchParams.get('tab');
@@ -63,7 +61,7 @@ const Dashboard: React.FC = () => {
         if (!roll) return 'Unknown';
         return '20' + roll.toString().substring(0, 2);
     };
-    const myBatch = (user as any)?.targetBatch || getBatch(user?.rollNumber);
+    const myBatch = user?.targetBatch || getBatch(user?.rollNumber);
 
     const [isChatOpen, setIsChatOpen] = useState(false);
     const [filterStatus, setFilterStatus] = useState<string>('all');

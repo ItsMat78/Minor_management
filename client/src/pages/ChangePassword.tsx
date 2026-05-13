@@ -58,6 +58,7 @@ const ChangePassword: React.FC = () => {
                 )}
 
                 <form onSubmit={handleSubmit} className="space-y-4">
+                    {!isForced && (
                     <div className="relative">
                         <Lock size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                         <input
@@ -69,6 +70,7 @@ const ChangePassword: React.FC = () => {
                             className="w-full rounded-lg border border-gray-300 bg-gray-50 py-3 pl-10 pr-3 text-gray-900 focus:border-blue-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-600/20"
                         />
                     </div>
+                    )}
                     <div className="relative">
                         <Lock size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                         <input

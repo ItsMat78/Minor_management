@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import crypto from 'crypto';
 import User, { UserRole } from '../models/User';
 import Group from '../models/Group';
 import Project from '../models/Project';
@@ -96,7 +97,7 @@ export const createUser = async (req: Request, res: Response) => {
             return res.status(400).json({ message: 'A user with that email or roll number already exists.' });
         }
 
-        const defaultPassword = await bcrypt.hash('changeme', 10);
+        const defaultPassword = await bcrypt.hash(crypto.randomBytes(12).toString('hex'), 10);
 
         // For students: check if a GF event is active and their batch is participating
         let isParticipating = role === 'Faculty'; // faculty always participate

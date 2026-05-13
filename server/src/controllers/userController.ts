@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import crypto from 'crypto';
 import User, { UserRole } from '../models/User';
 import Group from '../models/Group';
 import Project from '../models/Project';
@@ -468,7 +469,7 @@ export const commitImport = async (req: Request, res: Response) => {
             return res.status(400).json({ message: 'No valid rows provided' });
         }
 
-        const defaultPassword = await bcrypt.hash('changeme', 10);
+        const defaultPassword = await bcrypt.hash(crypto.randomBytes(12).toString('hex'), 10);
 
         // Determine participating batches once for this import run
         const activeBatches = await getActiveParticipatingBatches();

@@ -20,7 +20,7 @@ const Login: React.FC = () => {
 
     useEffect(() => {
         if (isAuthenticated && user) {
-            if ((user as any).mustChangePassword) {
+            if (user.mustChangePassword) {
                 navigate('/change-password', { replace: true });
             } else if (user.role === 'Admin') {
                 navigate('/admin', { replace: true });

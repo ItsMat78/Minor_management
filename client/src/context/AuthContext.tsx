@@ -8,12 +8,17 @@ interface User {
     role: 'Student' | 'Faculty' | 'Admin';
     branch?: string;
     rollNumber?: string;
+    semester?: number;
+    targetBatch?: string;
     department?: string;
     expertise?: string[];
     maxStudents?: number;
     maxGroups?: number;
     currentStudents?: number;
     currentGroups?: number;
+    batchConfigs?: { batchYear: number; maxStudents: number; maxGroups: number }[];
+    isVerified?: boolean;
+    isParticipating?: boolean;
     mustChangePassword?: boolean;
     photoUrl?: string;
 }
