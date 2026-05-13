@@ -89,6 +89,14 @@ Install command: `cd client && npm install --save-dev vitest @testing-library/re
 | `client/src/__tests__/components/GroupFormation.test.tsx` | ❌ Skipped | GroupFormation is a redirect-only stub — no UI logic to test |
 | `client/src/__tests__/components/Dashboard.test.tsx` | ✅ Done | Role-based rendering: Admin→AdminDashboard, Faculty→FacultyDashboard, Student→student UI |
 
+### E2E Tests (Playwright + Chromium)
+| File | Status | Covers |
+|------|--------|--------|
+| `e2e/tests/setup.spec.ts` | ✅ Done | Login as each role, save `localStorage` auth state to `.auth/*.json` |
+| `e2e/tests/auth.spec.ts` | ✅ Done | Login form, wrong creds, role redirects, OTP screen, first-login, unauthenticated guards |
+| `e2e/tests/dashboard.spec.ts` | ✅ Done | Admin/Faculty/Student content, sign-out, RBAC guard on /admin |
+| `e2e/tests/group.spec.ts` | ✅ Done | Full group creation dialog flow end-to-end |
+
 ---
 
 ## Test Outcomes & Findings
@@ -164,7 +172,7 @@ The following were verified by tests passing — no bugs found, these all work c
 
 ---
 
-## Commands
+## Unit & Integration Test Commands
 
 ```bash
 # Run all backend tests
@@ -181,6 +189,86 @@ cd client && npm test
 
 # Frontend with coverage report
 cd client && npm run test:coverage
+```
+
+---
+
+## E2E Tests (Playwright)
+
+### What E2E tests cover
+
+Full browser-level tests using Playwright + Chromium. Tests run against real running servers (backend + frontend) seeded with a dedicated test database (`minor_management_e2e`).
+
+| Suite | File | Tests | What it covers |
+|---|---|---|---|
+| Auth setup | `tests/setup.spec.ts` | 3 | Logs in as each role, saves `localStorage` token to `.auth/*.json` |
+| Login flows | `tests/auth.spec.ts` | 12 | Login form render, wrong credentials, role-based redirects, OTP screen, first-login forced redirect, unauthenticated route guards |
+| Dashboard | `tests/dashboard.spec.ts` | 14 | Admin/Faculty/Student role-based content, sign-out, student blocked from /admin |
+| Group creation | `tests/group.spec.ts` | 4 | Full dialog flow: Form Group → Review & Form Group → Confirm & Create → group nav appears |
+
+### Architecture
+
+```
+e2e/
+├── global-setup.ts       ← drops + reseeds minor_management_e2e (users + active event)
+├── global-teardown.ts    ← drops test DB after all tests
+├── playwright.config.ts  ← starts backend (port 5000) + frontend (port 5173) automatically
+├── fixtures/users.ts     ← test credential constants shared across spec files
+├── pages/
+│   ├── LoginPage.ts      ← Page Object Model for /login
+│   └── DashboardPage.ts  ← POM for /dashboard (with spinner-wait in goto())
+└── tests/
+    ├── setup.spec.ts     ← "setup" project; runs before "e2e" project
+    ├── auth.spec.ts
+    ├── dashboard.spec.ts
+    └── group.spec.ts
+```
+
+### Prerequisites to run
+
+1. MongoDB must be running on `localhost:27017` — use `start_db.bat` (starts from `C:\Program Files\MongoDB\Server\8.2\`)
+2. Stop any dev servers on ports 5000 and 5173 first (Playwright starts its own with the test DB env vars)
+3. Only Chromium is installed — the test DB env vars are passed via `webServer.env` in `playwright.config.ts`
+
+### E2E-specific gotchas
+
+**A. `storageState()` only captures localStorage, not sessionStorage**
+- The app's `login()` function defaults to `sessionStorage` when "Remember me" is unchecked
+- `page.context().storageState()` captures localStorage and cookies but NOT sessionStorage
+- If setup tests don't check "Remember me", the saved `.auth/*.json` files are empty, and all dashboard tests redirect to /login
+- **Fix**: `setup.spec.ts` explicitly checks the "Remember me" checkbox before logging in
+
+**B. `waitForLoadState('networkidle')` hangs forever**
+- The app connects a Socket.io WebSocket immediately after auth loads
+- This persistent connection means `networkidle` is never reached, causing test timeouts
+- **Fix**: `DashboardPage.goto()` waits for the loading spinner (`.animate-spin`) to disappear instead
+
+**C. Strict-mode violations from duplicate text nodes**
+- "My Project" and "E2E Student" each appear in two places (sidebar + table/breadcrumb header)
+- Playwright's strict mode throws when a locator matches >1 element
+- **Fix**: Scope locators to `page.locator('aside')` to target the sidebar specifically
+
+**D. The `e2e` project also runs setup.spec.ts (not just the `setup` project)**
+- Playwright's project config means `setup.spec.ts` runs twice: once in "setup" project (creates auth states), once in "e2e" project (at the end, overwrites them)
+- This is harmless but adds ~18s to the run — by design in Playwright's project dependency model
+
+### E2E commands
+
+```bash
+# Prerequisites
+start_db.bat           # start MongoDB (must be running before E2E tests)
+
+# Run all E2E tests (starts servers automatically)
+cd e2e && npm test
+
+# Interactive UI mode (debug in browser)
+cd e2e && npm run test:ui
+
+# Headed mode (watch tests run in real browser)
+cd e2e && npm run test:headed
+
+# Record new tests interactively
+cd e2e && npm run codegen
 ```
 
 ---
@@ -217,3 +305,4 @@ cd client && npm run test:coverage
 - **2026-05-14**: Initial setup. Wrote all infrastructure + first test suites (auth, group, Login). Installed deps.
 - **2026-05-14**: Continued. Added project.routes, admin.routes, panel.routes, Dashboard component tests. Total: 96 backend + 11 frontend = 107 passing tests.
 - **2026-05-14**: Continued. Added event.routes, user.routes, unit/groupController. All 9 backend suites + 2 frontend suites written. Total: 142 backend + 11 frontend = 153 passing tests. Every route module now has coverage.
+- **2026-05-14**: Added Playwright E2E suite. 36 tests, all passing. Requires MongoDB running + `cd e2e && npm test`. Three gotchas found: storageState captures localStorage only (not sessionStorage), networkidle hangs due to Socket.io, strict-mode violations need locator scoping.
