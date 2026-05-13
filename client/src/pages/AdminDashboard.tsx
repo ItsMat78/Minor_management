@@ -361,14 +361,26 @@ const AdminDashboard: React.FC = () => {
                 }
             } catch (e) { console.error('Failed snapshot export'); }
 
-            // e) Each panel distribution export (panel summary + per-panel group sheets), for each batch separate
+            // e) Panel distribution export — fetch all panels (no batch filter) to avoid missing
+            //    panels whose batchYear doesn't appear in activeBatches
+            const panelBatchesDone = new Set<string>();
             for (const batch of activeBatches) {
                 try {
                     const res = await api.get(`/panels/export?batchYear=${batch}`, { responseType: 'blob' });
                     if (res.data.type !== 'application/json' && res.data.size > 0) {
                         zip.file(`Panel_Distribution/Panel_Distribution_Batch_${batch}.xlsx`, res.data);
+                        panelBatchesDone.add(batch);
                     }
                 } catch (e) { console.error('Failed panels export for batch', batch); }
+            }
+            // Fallback: export all panels at once in case some batches were missed
+            if (panelBatchesDone.size === 0) {
+                try {
+                    const res = await api.get('/panels/export', { responseType: 'blob' });
+                    if (res.data.type !== 'application/json' && res.data.size > 0) {
+                        zip.file('Panel_Distribution/Panels_All_Batches.xlsx', res.data);
+                    }
+                } catch (e) { console.error('Failed panels export (all batches)'); }
             }
 
             // f) Evaluation data export (full marks + grades) per batch
