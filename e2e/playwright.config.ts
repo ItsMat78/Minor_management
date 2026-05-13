@@ -40,9 +40,18 @@ export default defineConfig({
             testMatch: /setup\.spec\.ts/,
         },
         {
-            name: 'e2e',
+            name: 'chromium',
             use: { ...devices['Desktop Chrome'] },
             dependencies: ['setup'],
+        },
+        {
+            // Firefox only runs stateless tests (auth flows + admin navigation).
+            // State-modifying tests (group creation, project proposal) run in Chromium only
+            // because Firefox tests execute after Chromium has already changed the DB.
+            name: 'firefox',
+            use: { ...devices['Desktop Firefox'] },
+            dependencies: ['setup'],
+            testMatch: ['**/auth.spec.ts', '**/admin.spec.ts'],
         },
     ],
 
