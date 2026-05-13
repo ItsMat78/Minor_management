@@ -99,6 +99,70 @@ Install command: `cd client && npm install --save-dev vitest @testing-library/re
 
 ---
 
+## What Is Still Missing
+
+### Priority 1 — High value, should be done
+
+#### CI Pipeline (GitHub Actions)
+- **Status**: ❌ Not set up
+- **Why it matters**: Without CI, the test suite only runs when someone manually remembers to run it. A broken push won't be caught until someone notices something wrong in production. All 189 tests are useless as a regression net without automation.
+- **What to do**: Add `.github/workflows/test.yml` that runs `cd server && npm test` and `cd client && npm test` on every push and PR. E2E tests can be excluded from CI initially (need MongoDB + browser setup) or added with a Docker MongoDB service.
+
+#### E2E — Project Proposal flow
+- **Status**: ❌ Not written
+- **File to create**: `e2e/tests/project.spec.ts`
+- **Why it matters**: The project proposal → faculty approval cycle is the most-used faculty-facing flow and has zero browser coverage. Integration tests cover the API, but the UI flow (navigating to the proposal form, filling it, submitting, faculty seeing it) is untested in the browser.
+- **Flows to cover**:
+  - Student (with group) submits a project proposal
+  - Faculty logs in, sees the proposal in their dashboard
+  - Faculty approves → group status changes in student view
+
+### Priority 2 — Genuinely untested layers
+
+#### Socket.io / Real-time chat
+- **Status**: ❌ Zero tests at any layer
+- **What's untested**: `server/src/socket.ts` (room join, message broadcast, JWT auth on WS handshake), `client/src/components/Chat.tsx` (message send/receive, room-based isolation)
+- **How to test**: Backend — use `socket.io-client` in Jest to connect and assert message delivery. Frontend — component test with a mocked socket.
+
+#### File uploads (multer + import/export routes)
+- **Status**: ❌ Zero tests
+- **What's untested**: `importRoutes.ts`, `exportStudents`, `exportFaculty`, bulk user import from Excel, PDF parsing
+- **Why it's risky**: Import failures silently corrupt data or create duplicate users. The export routes are admin-only but untested for correctness.
+
+#### Email template rendering
+- **Status**: ❌ Always mocked — never tested for real
+- **What's untested**: Whether the nodemailer HTML templates actually render correctly, whether the SMTP config works in production, whether recipient lists are built correctly
+- **How to test**: Use a test SMTP service (Ethereal Email — free, no real delivery) in a dedicated integration test that actually sends and inspects the received message.
+
+### Priority 3 — Nice to have
+
+#### Coverage report (actual numbers unknown)
+- **Status**: ❌ Never generated
+- **How to get it**: `cd server && npm run test:coverage` — outputs to `server/coverage/`
+- **Why it matters**: You don't know if critical files like `projectController.ts` are 30% or 85% covered. The report shows exactly which branches and lines are missed.
+
+#### Cross-browser E2E
+- **Status**: ❌ Chromium only
+- **Missing**: Firefox, Safari (WebKit). Unlikely to matter for an intranet portal where you control the browser, but worth noting.
+
+#### Admin dashboard E2E
+- **Status**: ❌ Not written
+- **What's not covered in the browser**: Creating users, managing panels, archiving a semester, creating events — all tested at the API level but not through the admin UI.
+
+---
+
+## Honest Verdict
+
+The current suite (153 unit/integration + 36 E2E = 189 tests) is **solid for a university portal**. The core auth, business rules, and student group-formation flow are well covered.
+
+The two things that genuinely matter before calling it done:
+1. **CI pipeline** — tests without CI are a safety net with no rope
+2. **Project proposal E2E** — the main faculty-student interaction has no browser coverage
+
+Everything else is diminishing returns for this project's scale.
+
+---
+
 ## Test Outcomes & Findings
 
 ### Application behaviour clarified (tests corrected to match reality)
