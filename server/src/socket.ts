@@ -11,7 +11,7 @@ interface AuthenticatedSocket extends Socket {
 export const initSocket = (httpServer: HttpServer) => {
     const io = new Server(httpServer, {
         cors: {
-            origin: "http://localhost:5173", // Client URL
+            origin: ["https://minor-management.vercel.app"],
             methods: ["GET", "POST"]
         }
     });

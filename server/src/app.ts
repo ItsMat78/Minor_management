@@ -13,7 +13,10 @@ import importRoutes from './routes/importRoutes';
 
 const app = express();
 
-app.use(cors());
+app.use(cors({
+    origin: ['https://minor-management.vercel.app'],
+    credentials: true
+}));
 app.use(express.json({ limit: '50mb' }));
 
 const uploadsPath = process.env.UPLOAD_DIR ? path.resolve(process.env.UPLOAD_DIR) : 'uploads';
