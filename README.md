@@ -1,7 +1,7 @@
 # IIITNR Minor Project Management Portal
 
 This is a web-based application for managing minor projects at IIIT Naya Raipur. It includes features for students, faculty, and administrators to streamline project proposals, group formation, and evaluations.
-
+ 
 ## Prerequisites
 
 - [Node.js](https://nodejs.org/) installed
