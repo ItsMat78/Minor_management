@@ -15,6 +15,11 @@ const Login: React.FC = () => {
     const [isOtpMode, setIsOtpMode] = useState(false);
     const [otp, setOtp] = useState('');
     const [resendCooldown, setResendCooldown] = useState(0);
+    const [isForgotMode, setIsForgotMode] = useState(false);
+    const [isForgotOtpMode, setIsForgotOtpMode] = useState(false);
+    const [forgotEmail, setForgotEmail] = useState('');
+    const [forgotOtp, setForgotOtp] = useState('');
+    const [forgotCooldown, setForgotCooldown] = useState(0);
     const { login, isAuthenticated, user } = useAuth();
     const navigate = useNavigate();
 
@@ -35,6 +40,12 @@ const Login: React.FC = () => {
         const t = setTimeout(() => setResendCooldown(c => c - 1), 1000);
         return () => clearTimeout(t);
     }, [resendCooldown]);
+
+    useEffect(() => {
+        if (forgotCooldown <= 0) return;
+        const t = setTimeout(() => setForgotCooldown(c => c - 1), 1000);
+        return () => clearTimeout(t);
+    }, [forgotCooldown]);
 
     const LOGO_URL = "/logo.svg";
     const CAMPUS_BG_URL = "/cover.jpeg";
@@ -99,6 +110,71 @@ const Login: React.FC = () => {
         }
     };
 
+    const handleForgotSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setIsLoading(true);
+        setError('');
+        setInfo('');
+        try {
+            await api.post('/auth/forgot-password', { email: forgotEmail });
+            setIsForgotOtpMode(true);
+            setForgotCooldown(60);
+            setInfo('If that email is registered, an OTP has been sent.');
+        } catch (err: any) {
+            const retry = err.response?.data?.retryAfter;
+            if (retry) setForgotCooldown(retry);
+            setError(err.response?.data?.message || 'Could not send OTP. Try again.');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleForgotOtpSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setIsLoading(true);
+        setError('');
+        setInfo('');
+        try {
+            const res = await api.post('/auth/verify-forgot-password-otp', { email: forgotEmail, otp: forgotOtp });
+            login(res.data.token, res.data.user, rememberMe);
+            if (res.data.user.mustChangePassword) {
+                navigate('/change-password');
+            } else if (res.data.user.role === 'Admin') {
+                navigate('/admin');
+            } else {
+                navigate('/dashboard');
+            }
+        } catch (err: any) {
+            setError(err.response?.data?.message || 'Invalid or expired OTP.');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleForgotResend = async () => {
+        if (forgotCooldown > 0) return;
+        setError('');
+        setInfo('');
+        try {
+            await api.post('/auth/forgot-password', { email: forgotEmail });
+            setForgotCooldown(60);
+            setInfo('A new OTP has been sent to your email.');
+        } catch (err: any) {
+            const retry = err.response?.data?.retryAfter;
+            if (retry) setForgotCooldown(retry);
+            setError(err.response?.data?.message || 'Could not resend OTP.');
+        }
+    };
+
+    const resetToLogin = () => {
+        setIsForgotMode(false);
+        setIsForgotOtpMode(false);
+        setForgotEmail('');
+        setForgotOtp('');
+        setError('');
+        setInfo('');
+    };
+
     return (
         <div className="relative flex min-h-screen items-center justify-center overflow-hidden">
             <div
@@ -123,7 +199,7 @@ const Login: React.FC = () => {
                 </div>
 
                 <div className="p-8 pt-6">
-                    <form onSubmit={handleSubmit} className="space-y-5">
+                    <form onSubmit={isForgotOtpMode ? handleForgotOtpSubmit : isForgotMode ? handleForgotSubmit : handleSubmit} className="space-y-5">
                         <AnimatePresence>
                             {error && (
                                 <motion.div
@@ -148,7 +224,60 @@ const Login: React.FC = () => {
                         </AnimatePresence>
 
                         <div className="space-y-4">
-                            {!isOtpMode ? (
+                            {isForgotOtpMode ? (
+                                <>
+                                    <p className="text-sm text-gray-600 text-center">Enter the OTP sent to <span className="font-medium text-gray-800">{forgotEmail}</span></p>
+                                    <div className="relative">
+                                        <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-gray-500">
+                                            <KeyRound size={18} />
+                                        </div>
+                                        <input
+                                            type="text"
+                                            required
+                                            value={forgotOtp}
+                                            onChange={(e) => setForgotOtp(e.target.value)}
+                                            className="block w-full rounded-lg border border-gray-300 bg-gray-50 py-3 pl-10 pr-3 text-gray-900 placeholder-gray-500 transition-all focus:border-blue-600 focus:bg-white focus:ring-2 focus:ring-blue-600/20 focus:outline-none tracking-widest text-center text-lg font-bold"
+                                            placeholder="Enter 6-digit OTP"
+                                            maxLength={6}
+                                            autoFocus
+                                        />
+                                    </div>
+                                    <div className="flex items-center justify-between text-xs">
+                                        <button type="button" onClick={resetToLogin} className="font-medium text-gray-600 hover:text-blue-800 hover:underline">
+                                            ← Back to login
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={handleForgotResend}
+                                            disabled={forgotCooldown > 0}
+                                            className="font-medium text-blue-700 hover:text-blue-900 hover:underline disabled:text-gray-400 disabled:hover:no-underline"
+                                        >
+                                            {forgotCooldown > 0 ? `Resend in ${forgotCooldown}s` : 'Resend OTP'}
+                                        </button>
+                                    </div>
+                                </>
+                            ) : isForgotMode ? (
+                                <>
+                                    <p className="text-sm text-gray-600 text-center">Enter your institute email and we'll send you a one-time sign-in code.</p>
+                                    <div className="relative">
+                                        <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-gray-500">
+                                            <User size={18} />
+                                        </div>
+                                        <input
+                                            type="email"
+                                            required
+                                            value={forgotEmail}
+                                            onChange={(e) => setForgotEmail(e.target.value)}
+                                            className="block w-full rounded-lg border border-gray-300 bg-gray-50 py-3 pl-10 pr-3 text-gray-900 placeholder-gray-500 transition-all focus:border-blue-600 focus:bg-white focus:ring-2 focus:ring-blue-600/20 focus:outline-none"
+                                            placeholder="Institute Email ID"
+                                            autoFocus
+                                        />
+                                    </div>
+                                    <button type="button" onClick={resetToLogin} className="text-xs font-medium text-gray-500 hover:text-blue-800 hover:underline">
+                                        ← Back to login
+                                    </button>
+                                </>
+                            ) : !isOtpMode ? (
                                 <>
                                     <div className="relative">
                                         <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-gray-500">
@@ -175,6 +304,15 @@ const Login: React.FC = () => {
                                             className="block w-full rounded-lg border border-gray-300 bg-gray-50 py-3 pl-10 pr-3 text-gray-900 placeholder-gray-500 transition-all focus:border-blue-600 focus:bg-white focus:ring-2 focus:ring-blue-600/20 focus:outline-none"
                                             placeholder="Password"
                                         />
+                                    </div>
+                                    <div className="flex items-center justify-end">
+                                        <button
+                                            type="button"
+                                            onClick={() => { setIsForgotMode(true); setError(''); setInfo(''); setForgotEmail(email); }}
+                                            className="text-xs font-medium text-blue-700 hover:text-blue-900 hover:underline"
+                                        >
+                                            Forgot password?
+                                        </button>
                                     </div>
                                 </>
                             ) : (
@@ -214,7 +352,7 @@ const Login: React.FC = () => {
                             )}
                         </div>
 
-                        {!isOtpMode && (
+                        {!isOtpMode && !isForgotMode && !isForgotOtpMode && (
                             <div className="flex items-center gap-2">
                                 <input
                                     type="checkbox"
@@ -238,7 +376,7 @@ const Login: React.FC = () => {
                                 <Loader2 className="mr-2 h-5 w-5 animate-spin" />
                             ) : (
                                 <>
-                                    {isOtpMode ? 'Verify & Activate' : 'Sign In'}
+                                    {isForgotOtpMode ? 'Verify OTP & Sign In' : isForgotMode ? 'Send OTP' : isOtpMode ? 'Verify & Activate' : 'Sign In'}
                                     <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
                                 </>
                             )}

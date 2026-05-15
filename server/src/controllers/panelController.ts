@@ -92,7 +92,7 @@ const addCollegeAndPanelHeader = (ws: ExcelJS.Worksheet, panel: any, evalLabel: 
 
 export const exportEvaluations = async (req: any, res: Response) => {
     try {
-        const { batchYear, evalType } = req.query; // evalType: 'midterm' or 'full'
+        const { batchYear, evalType, branch } = req.query; // evalType: 'midterm' or 'full'
 
         // Get all groups and filter by batch
         const allGroups = await Group.find({ status: { $in: ['Approved', 'Pending'] }, isArchived: { $ne: true } })
@@ -103,14 +103,18 @@ export const exportEvaluations = async (req: any, res: Response) => {
             })
             .lean();
 
-        // Filter by batch if specified
+        // Filter by batch and branch if specified
         let filteredGroups = allGroups.filter((g: any) => {
             const gBatch = g.targetBatch ? String(g.targetBatch) : (g.members && g.members.length > 0 && g.members[0].rollNumber ? '20' + String(g.members[0].rollNumber).substring(0, 2) : 'Unknown');
             if (batchYear && batchYear !== 'All' && gBatch !== String(batchYear)) return false;
             return true;
         }).map((g: any) => ({
             ...g,
-            members: (g.members || []).filter((m: any) => m.isParticipating !== false)
+            members: (g.members || []).filter((m: any) => {
+                if (m.isParticipating === false) return false;
+                if (branch && branch !== 'All') return (m.branch || m.department || '').toUpperCase() === String(branch).toUpperCase();
+                return true;
+            })
         })).filter((g: any) => g.members.length > 0);
 
         // Sort groups by group number (parse g.name as integer)
@@ -226,8 +230,7 @@ export const exportEvaluations = async (req: any, res: Response) => {
             if (total >= 60) return 'B';
             if (total >= 50) return 'C+';
             if (total >= 40) return 'C';
-            if (total > 0) return 'F';
-            return '';
+            return 'F';
         };
 
         // Data Population — marks are now per-student in studentEvaluations
@@ -242,18 +245,19 @@ export const exportEvaluations = async (req: any, res: Response) => {
                 const midSE = studentEvals.find((e: any) => String(e.student?._id || e.student) === String(m._id) && e.evalType === 'mid-term');
                 const endSE = studentEvals.find((e: any) => String(e.student?._id || e.student) === String(m._id) && e.evalType === 'end-term');
 
-                const fmtMark = (n: number) => n > 0 ? String(Math.round(n * 100) / 100) : '';
+                // Always render the numeric value; empty string only when the record doesn't exist.
+                const fmtMark = (n: number) => String(Math.round(n * 100) / 100);
                 let midE1 = '', midE2 = '', midGuide = '', midAvg = '';
                 if (midSE) {
                     const midGNum = Object.values(midSE.guide || {}).reduce((s: number, v: any) => s + Number(v || 0), 0);
                     const midP1 = Object.values(midSE.panel1 || midSE.panel || {}).reduce((s: number, v: any) => s + Number(v || 0), 0);
                     const midP2 = Object.values(midSE.panel2 || {}).reduce((s: number, v: any) => s + Number(v || 0), 0);
-                    midGuide = fmtMark(midGNum) || String(midGNum);
-                    midE1 = fmtMark(midP1) || String(midP1);
-                    midE2 = fmtMark(midP2);
+                    midGuide = fmtMark(midGNum);
+                    midE1 = fmtMark(midP1);
+                    midE2 = midP2 > 0 ? fmtMark(midP2) : ''; // empty only when no second examiner
                     const pAvg = midP2 > 0 ? (midP1 + midP2) / 2 : midP1;
                     const finalMarks = midSE.marks ?? (midGNum + pAvg);
-                    midAvg = fmtMark(finalMarks) || String(finalMarks);
+                    midAvg = fmtMark(finalMarks);
                 }
 
                 let endE1 = '', endE2 = '', endGuide = '', endAvg = '';
@@ -261,12 +265,12 @@ export const exportEvaluations = async (req: any, res: Response) => {
                     const endGNum = Object.values(endSE.guide || {}).reduce((s: number, v: any) => s + Number(v || 0), 0);
                     const endP1 = Object.values(endSE.panel1 || endSE.panel || {}).reduce((s: number, v: any) => s + Number(v || 0), 0);
                     const endP2 = Object.values(endSE.panel2 || {}).reduce((s: number, v: any) => s + Number(v || 0), 0);
-                    endGuide = fmtMark(endGNum) || String(endGNum);
-                    endE1 = fmtMark(endP1) || String(endP1);
-                    endE2 = fmtMark(endP2);
+                    endGuide = fmtMark(endGNum);
+                    endE1 = fmtMark(endP1);
+                    endE2 = endP2 > 0 ? fmtMark(endP2) : '';
                     const pAvg = endP2 > 0 ? (endP1 + endP2) / 2 : endP1;
                     const finalMarks = endSE.marks ?? (endGNum + pAvg);
-                    endAvg = fmtMark(finalMarks) || String(finalMarks);
+                    endAvg = fmtMark(finalMarks);
                 }
 
                 const total = evalType === 'full' ? (Number(midAvg || 0) + Number(endAvg || 0)) : 0;
@@ -286,7 +290,7 @@ export const exportEvaluations = async (req: any, res: Response) => {
                 if (evalType === 'full') {
                     rowData.push(
                         endE1, endE2, endGuide, endAvg,
-                        total > 0 ? total : '',
+                        (midSE || endSE) ? total : '',
                         grade
                     );
                 }
@@ -322,7 +326,8 @@ export const exportEvaluations = async (req: any, res: Response) => {
         });
 
         const buffer = await workbook.xlsx.writeBuffer();
-        res.set('Content-Disposition', `attachment; filename=evaluation_export_${batchYear || 'All'}_${evalType}.xlsx`);
+        const branchSuffix = branch && branch !== 'All' ? `_${branch}` : '';
+        res.set('Content-Disposition', `attachment; filename=evaluation_export_${batchYear || 'All'}${branchSuffix}_${evalType}.xlsx`);
         res.set('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         res.send(buffer);
 
@@ -1102,6 +1107,9 @@ export const importEvaluationTemplate = async (req: any, res: Response) => {
                 (e: any) => String(e.student) === sv.studentId && e.evalType === et
             );
             if (existing) {
+                // When uploading end-term, midterm columns are included in the sheet but may be
+                // left blank (parsed as 0). Don't overwrite a real midterm record with zeros.
+                if (et !== evalType && marks === 0 && existing.marks > 0) return;
                 if (et === evalType) { existing.attendance = sv.attendance.toLowerCase(); existing.stars = sv.stars; }
                 existing.guide = guide; existing.panel1 = panel1; existing.panel2 = panel2;
                 existing.marks = marks; existing.updatedAt = new Date();

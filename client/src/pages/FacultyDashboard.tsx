@@ -2133,6 +2133,11 @@ const FacultyDashboard: React.FC = () => {
 
                                                             const gMaxSum = guideFields.reduce((s: number, f: any) => s + f.max, 0);
                                                             const pMaxSum = panelFields.reduce((s: number, f: any) => s + f.max, 0);
+                                                            // A field stored as a number (including 0) means a record exists; '' means not yet evaluated
+                                                            const hasGuideData = guideFields.some((f: any) => typeof sd.guide?.[f.key] === 'number');
+                                                            const hasPanel1Data = panelFields.some((f: any) => typeof sd.panel1?.[f.key] === 'number');
+                                                            const hasPanel2Data = panelFields.some((f: any) => typeof sd.panel2?.[f.key] === 'number');
+                                                            const hasAnyData = hasGuideData || hasPanel1Data;
 
                                                             const handleDirectDistribute = (val: number, fields: any[], targetKey: 'guide' | 'panel1' | 'panel2', maxSum: number) => {
                                                                 const newSubMap: Record<string, number> = {};
@@ -2176,19 +2181,19 @@ const FacultyDashboard: React.FC = () => {
                                                                     {manualMarksMode ? (
                                                                         <>
                                                                             <td className="px-2 py-1 border-r border-indigo-100 text-center relative">
-                                                                                <input type="number" min={0} max={gMaxSum} value={gTotal > 0 ? Number(gTotal.toFixed(1)) : ''}
+                                                                                <input type="number" min={0} max={gMaxSum} value={hasGuideData ? Number(gTotal.toFixed(1)) : ''}
                                                                                     onChange={e => { const v = e.target.value === '' ? 0 : Math.min(Number(e.target.value), gMaxSum); handleDirectDistribute(v, guideFields, 'guide', gMaxSum); }}
                                                                                     className="w-16 px-1 py-1 text-center text-sm font-bold border border-neutral-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-400 bg-white" placeholder="—" />
                                                                                 <div className="text-[9px] text-indigo-400 font-bold mt-1">/{gMaxSum}</div>
                                                                             </td>
                                                                             <td className="px-2 py-1 border-r border-emerald-100 text-center relative">
-                                                                                <input type="number" min={0} max={pMaxSum} value={p1Total > 0 ? Number(p1Total.toFixed(1)) : ''}
+                                                                                <input type="number" min={0} max={pMaxSum} value={hasPanel1Data ? Number(p1Total.toFixed(1)) : ''}
                                                                                     onChange={e => { const v = e.target.value === '' ? 0 : Math.min(Number(e.target.value), pMaxSum); handleDirectDistribute(v, panelFields, 'panel1', pMaxSum); }}
                                                                                     className="w-16 px-1 py-1 text-center text-sm font-bold border border-neutral-200 rounded focus:outline-none focus:ring-1 focus:ring-emerald-400 bg-white" placeholder="—" />
                                                                                 <div className="text-[9px] text-emerald-400 font-bold mt-1">/{pMaxSum}</div>
                                                                             </td>
                                                                             <td className="px-2 py-1 border-r border-amber-100 text-center relative">
-                                                                                <input type="number" min={0} max={pMaxSum} value={p2Total > 0 ? Number(p2Total.toFixed(1)) : ''}
+                                                                                <input type="number" min={0} max={pMaxSum} value={hasPanel2Data ? Number(p2Total.toFixed(1)) : ''}
                                                                                     onChange={e => { const v = e.target.value === '' ? 0 : Math.min(Number(e.target.value), pMaxSum); handleDirectDistribute(v, panelFields, 'panel2', pMaxSum); }}
                                                                                     className="w-16 px-1 py-1 text-center text-sm font-bold border border-neutral-200 rounded focus:outline-none focus:ring-1 focus:ring-amber-400 bg-white" placeholder="—" />
                                                                                 <div className="text-[9px] text-amber-400 font-bold mt-1">/{pMaxSum}</div>
@@ -2224,7 +2229,7 @@ const FacultyDashboard: React.FC = () => {
                                                                         </>
                                                                     )}
                                                                     <td className="px-2 py-2 text-center border-l border-neutral-200">
-                                                                        <span className={`text-sm font-black ${rowTotal > 0 ? 'text-indigo-700' : 'text-neutral-300'}`}>{rowTotal > 0 ? Math.round(rowTotal * 10) / 10 : '—'}</span>
+                                                                        <span className={`text-sm font-black ${hasAnyData ? 'text-indigo-700' : 'text-neutral-300'}`}>{hasAnyData ? Math.round(rowTotal * 10) / 10 : '—'}</span>
                                                                     </td>
                                                                 </tr>
                                                             );

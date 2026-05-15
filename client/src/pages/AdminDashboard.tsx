@@ -80,6 +80,7 @@ const AdminDashboard: React.FC = () => {
     const [filterFaculty, setFilterFaculty] = useState<string>('All'); // Added faculty filter
     const [viewGroup, setViewGroup] = useState<any>(null); // Re-added viewGroup state
     const [exportBatch, setExportBatch] = useState<string>(''); // For export filtering (Require selection)
+    const [exportBranch, setExportBranch] = useState<string>('All');
     const [editingFaculty, setEditingFaculty] = useState<any>(null);
     const [showLimitSettings, setShowLimitSettings] = useState(false);
     const [sortOption, setSortOption] = useState<string>('Default'); // Added sort state
@@ -978,14 +979,16 @@ const AdminDashboard: React.FC = () => {
     const handleExportEvaluations = async (type: 'midterm' | 'full') => {
         if (!exportBatch || exportBatch === 'All') { alert('Please select a specific batch first.'); return; }
         try {
-            const response = await api.get(`/panels/export-evaluations?batchYear=${exportBatch}&evalType=${type}`, {
+            const branchParam = exportBranch && exportBranch !== 'All' ? `&branch=${exportBranch}` : '';
+            const response = await api.get(`/panels/export-evaluations?batchYear=${exportBatch}&evalType=${type}${branchParam}`, {
                 responseType: 'blob',
             });
             const url = window.URL.createObjectURL(new Blob([response.data]));
             const link = document.createElement('a');
             link.href = url;
             const dateStr = new Date().toISOString().split('T')[0];
-            link.setAttribute('download', `Evaluations_${type}_Batch_${exportBatch}_${dateStr}.xlsx`);
+            const branchSuffix = exportBranch && exportBranch !== 'All' ? `_${exportBranch}` : '';
+            link.setAttribute('download', `Evaluations_${type}_Batch_${exportBatch}${branchSuffix}_${dateStr}.xlsx`);
             document.body.appendChild(link);
             link.click();
             link.remove();
@@ -2506,16 +2509,28 @@ const AdminDashboard: React.FC = () => {
                                                         <p className="text-sm text-neutral-500">Export evaluation marks and grades for each group.</p>
                                                     </div>
                                                 </div>
-                                                <select
-                                                    value={exportBatch}
-                                                    onChange={(e) => setExportBatch(e.target.value)}
-                                                    className="px-3 py-1.5 bg-neutral-50 rounded-lg border border-neutral-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                                                >
-                                                    <option value="">Select Batch</option>
-                                                    {participatingBatchYears.map(year => (
-                                                        <option key={year} value={year}>{year}-{parseInt(year) + 4}</option>
-                                                    ))}
-                                                </select>
+                                                <div className="flex items-center gap-2">
+                                                    <select
+                                                        value={exportBranch}
+                                                        onChange={(e) => setExportBranch(e.target.value)}
+                                                        className="px-3 py-1.5 bg-neutral-50 rounded-lg border border-neutral-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                                                    >
+                                                        <option value="All">All Branches</option>
+                                                        <option value="CSE">CSE</option>
+                                                        <option value="ECE">ECE</option>
+                                                        <option value="DSAI">DSAI</option>
+                                                    </select>
+                                                    <select
+                                                        value={exportBatch}
+                                                        onChange={(e) => setExportBatch(e.target.value)}
+                                                        className="px-3 py-1.5 bg-neutral-50 rounded-lg border border-neutral-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                                                    >
+                                                        <option value="">Select Batch</option>
+                                                        {participatingBatchYears.map(year => (
+                                                            <option key={year} value={year}>{year}-{parseInt(year) + 4}</option>
+                                                        ))}
+                                                    </select>
+                                                </div>
                                             </div>
 
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

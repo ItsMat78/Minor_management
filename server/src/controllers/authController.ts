@@ -144,6 +144,81 @@ export const resendOtp = async (req: Request, res: Response) => {
     }
 };
 
+export const forgotPassword = async (req: Request, res: Response) => {
+    try {
+        const { email } = req.body;
+        const user = await User.findOne({ email });
+
+        // Always respond the same way to avoid leaking whether an email is registered
+        const genericOk = () => res.json({ message: 'If that email is registered, an OTP has been sent.' });
+
+        if (!user) return genericOk();
+
+        // 60-second cooldown (same logic as resendOtp)
+        if (user.otpExpires) {
+            const secondsSinceLastSend = (10 * 60 * 1000 - (user.otpExpires.getTime() - Date.now())) / 1000;
+            if (secondsSinceLastSend < 60) {
+                return res.status(429).json({
+                    message: 'Please wait before requesting another OTP.',
+                    retryAfter: Math.ceil(60 - secondsSinceLastSend)
+                });
+            }
+        }
+
+        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+        user.otp = otp;
+        user.otpExpires = new Date(Date.now() + 10 * 60 * 1000);
+        await user.save();
+
+        const subject = 'Your IIITNR Minor Portal Password Reset OTP';
+        const text = `Your OTP to sign in to the Minor Project Portal is: ${otp}\n\nThis code expires in 10 minutes.\n\nIf you did not request this, ignore this email.`;
+        const html = `
+            <div style="font-family: sans-serif; padding: 20px;">
+                <h2 style="color: #1e3a8a;">Password Reset</h2>
+                <p>Use the following OTP to sign in to the Minor Project Portal:</p>
+                <p style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #111827;">${otp}</p>
+                <p style="color: #6b7280;">This code expires in <strong>10 minutes</strong>.</p>
+                <p style="color: #9ca3af; font-size: 12px;">If you did not request this, ignore this email.</p>
+            </div>
+        `;
+        sendEmail(user.email, subject, text, html).catch(err =>
+            console.error(`[AuthController] Failed to send forgot-password OTP to ${user.email}:`, err)
+        );
+
+        return genericOk();
+    } catch (error) {
+        res.status(500).json({ message: 'Server error', error });
+    }
+};
+
+export const verifyForgotPasswordOtp = async (req: Request, res: Response) => {
+    try {
+        const { email, otp } = req.body;
+        const user = await User.findOne({ email });
+
+        if (!user) {
+            return res.status(400).json({ message: 'Invalid request.' });
+        }
+
+        if (!user.otp || user.otp !== otp || !user.otpExpires || user.otpExpires < new Date()) {
+            return res.status(400).json({ message: 'Invalid or expired OTP.' });
+        }
+
+        user.otp = undefined;
+        user.otpExpires = undefined;
+        if (!user.isVerified) user.isVerified = true;
+        await user.save();
+
+        const token = jwt.sign({ id: user._id, role: user.role }, JWT_SECRET, { expiresIn: '1d' });
+        const userObj = user.toObject() as any;
+        delete userObj.password;
+
+        res.json({ token, user: userObj });
+    } catch (error) {
+        res.status(500).json({ message: 'Server error', error });
+    }
+};
+
 export const changePassword = async (req: Request, res: Response) => {
     try {
         const userId = (req as any).user.id;
