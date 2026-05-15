@@ -5,7 +5,6 @@
  *
  * Heavy sub-components are mocked to keep tests fast and focused on the branch logic.
  */
-import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
@@ -57,6 +56,8 @@ function setAuthUser(role: 'Admin' | 'Faculty' | 'Student', extra: Record<string
         isAuthenticated: true,
         login: vi.fn(),
         loading: false,
+        refreshActiveEvents: vi.fn(),
+        refreshUser: vi.fn(),
     });
 }
 
