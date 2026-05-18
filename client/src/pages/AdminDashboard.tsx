@@ -181,14 +181,14 @@ const AdminDashboard: React.FC = () => {
     const [panelExcelImportError, setPanelExcelImportError] = useState<string | null>(null);
 
     // === Admin Evaluation State ===
+    type EvalStudentEntry = { stars: number; attendance: 'present' | 'absent'; guide: Record<string, number | ''>; panel1: Record<string, number | ''>; panel2: Record<string, number | ''>; };
     const [evaluatingProject, setEvaluatingProject] = useState<any>(null);
-    const [evaluationMarks, setEvaluationMarks] = useState<number>(0);
     const [evaluationRemarks, setEvaluationRemarks] = useState<string>('');
-    const [evaluationDetails, setEvaluationDetails] = useState<any>({});
-    const [evaluationType, setEvaluationType] = useState<'mid-term' | 'end-term' | null>(null);
+    const [evaluationType] = useState<'end-term'>('end-term');
     const [evaluationFeedback, setEvaluationFeedback] = useState<string>('');
     const [savingFeedback, setSavingFeedback] = useState(false);
-    const [studentEvalData, setStudentEvalData] = useState<Record<string, { stars: number; attendance: 'present' | 'absent' }>>({});
+    const [studentEvalData, setStudentEvalData] = useState<Record<string, EvalStudentEntry>>({});
+    const [studentMidData, setStudentMidData] = useState<Record<string, EvalStudentEntry> | null>(null);
     const [manualMarksMode, setManualMarksMode] = useState(false);
 
     const ADMIN_RUBRIC_CONFIG: any = {
@@ -242,40 +242,40 @@ const AdminDashboard: React.FC = () => {
         return ADMIN_RUBRIC_CONFIG[type];
     };
 
-    const handleAdminOpenEvaluation = (group: any, type: 'mid-term' | 'end-term') => {
+    const handleAdminOpenEvaluation = (group: any) => {
         setEvaluatingProject(group);
-        setEvaluationType(type);
         const projectData = group.project || group;
-        let existingEval: any;
-        if (type === 'mid-term') existingEval = projectData.midTermEvaluation;
-        else if (type === 'end-term') existingEval = projectData.endTermEvaluation;
-
-        const config = getAdminRubricConfig(type);
-        const initialDetails: any = { guide: {}, panel: {}, facultyScores: {} };
-        if (config) {
-            config.sections.forEach((section: any) => {
-                section.fields.forEach((field: any) => {
-                    initialDetails[section.key][field.key] = existingEval?.[section.key]?.[field.key] || '';
-                });
-            });
-        }
-        if (existingEval?.facultyScores) {
-            initialDetails.facultyScores = { ...existingEval.facultyScores };
-        }
-        setEvaluationDetails(initialDetails);
-        setEvaluationMarks(existingEval?.marks || 0);
-        setEvaluationRemarks(existingEval?.remarks || '');
+        setEvaluationRemarks(projectData?.endTermEvaluation?.remarks || '');
         setEvaluationFeedback(projectData?.feedback || '');
-        setManualMarksMode(existingEval ? existingEval.evaluationMode !== 'rubric' : true);
+        setManualMarksMode(false);
 
         const members = group.members || [];
-        const existingStudentEvals = (projectData?.studentEvaluations || []).filter((e: any) => e.evalType === type);
-        const initStudentData: Record<string, { stars: number; attendance: 'present' | 'absent' }> = {};
-        members.forEach((m: any) => {
-            const ev = existingStudentEvals.find((e: any) => String(e.student?._id || e.student) === String(m._id));
-            initStudentData[m._id] = { stars: ev?.stars || 0, attendance: ev?.attendance || 'present' };
-        });
-        setStudentEvalData(initStudentData);
+        const allEvals = projectData?.studentEvaluations || [];
+        const midEvals = allEvals.filter((e: any) => e.evalType === 'mid-term');
+        const endEvals = allEvals.filter((e: any) => e.evalType === 'end-term');
+
+        const buildData = (evals: any[], evalT: 'mid-term' | 'end-term'): Record<string, EvalStudentEntry> => {
+            const config = getAdminRubricConfig(evalT);
+            const result: Record<string, EvalStudentEntry> = {};
+            members.forEach((m: any) => {
+                const ev = evals.find((e: any) => String(e.student?._id || e.student) === String(m._id));
+                const guideFields = config?.sections?.find((s: any) => s.key === 'guide')?.fields || [];
+                const panelFields = config?.sections?.find((s: any) => s.key === 'panel')?.fields || [];
+                const initGuide: Record<string, number | ''> = {};
+                const initPanel1: Record<string, number | ''> = {};
+                const initPanel2: Record<string, number | ''> = {};
+                guideFields.forEach((f: any) => { initGuide[f.key] = ev?.guide?.[f.key] ?? ''; });
+                panelFields.forEach((f: any) => {
+                    initPanel1[f.key] = ev?.panel1?.[f.key] ?? ev?.panel?.[f.key] ?? '';
+                    initPanel2[f.key] = ev?.panel2?.[f.key] ?? '';
+                });
+                result[m._id] = { stars: ev?.stars ?? 0, attendance: ev?.attendance ?? 'present', guide: initGuide, panel1: initPanel1, panel2: initPanel2 };
+            });
+            return result;
+        };
+
+        setStudentEvalData(buildData(endEvals, 'end-term'));
+        setStudentMidData(buildData(midEvals, 'mid-term'));
     };
 
     const [isCompleteExporting, setIsCompleteExporting] = useState(false);
@@ -412,30 +412,7 @@ const AdminDashboard: React.FC = () => {
         }
     };
 
-    const handleAdminDetailChange = (section: string, field: string, value: number | string) => {
-        setEvaluationDetails((prev: any) => ({
-            ...prev,
-            [section]: { ...prev[section], [field]: value }
-        }));
-    };
 
-    // Auto-calculate marks when details change
-    useEffect(() => {
-        const config = evaluationType ? getAdminRubricConfig(evaluationType) : null;
-        if (!evaluationType || !config) return;
-        if (manualMarksMode) {
-            // In manual/direct mode, admin enters total directly via marks field
-            // Nothing to auto-calculate for admin (no panel member breakdown)
-        } else {
-            let total = 0;
-            config.sections.forEach((sect: any) => {
-                sect.fields.forEach((f: any) => {
-                    total += Number(evaluationDetails[sect.key]?.[f.key] || 0);
-                });
-            });
-            setEvaluationMarks(total);
-        }
-    }, [evaluationDetails, evaluationType, manualMarksMode, events]);
 
     const handleAdminSaveEvaluationFeedback = async () => {
         if (!evaluatingProject) return;
@@ -454,43 +431,43 @@ const AdminDashboard: React.FC = () => {
     };
 
     const handleAdminSubmitEvaluation = async () => {
-        if (!evaluatingProject || !evaluationType) return;
+        if (!evaluatingProject) return;
         try {
             const projectData = evaluatingProject.project || evaluatingProject;
             const projectId = projectData._id;
-            const sanitize = (obj: any) => {
-                const clean: any = {};
+
+            const sanitize = (obj: Record<string, number | ''>) => {
+                const clean: Record<string, number> = {};
                 Object.keys(obj || {}).forEach(k => { clean[k] = obj[k] === '' ? 0 : Number(obj[k]); });
                 return clean;
             };
-            const payload: any = {
-                type: evaluationType,
-                marks: evaluationMarks,
-                remarks: evaluationRemarks,
-                evaluationMode: manualMarksMode ? 'direct' : 'rubric',
-            };
-            if (manualMarksMode) {
-                payload.guide = {};
-                payload.panel = {};
-            } else {
-                payload.guide = sanitize(evaluationDetails.guide);
-                payload.panel = sanitize(evaluationDetails.panel);
-            }
-            await api.put(`/projects/${projectId}/evaluation`, payload);
-            if (Object.keys(studentEvalData).length > 0) {
-                const evaluations = Object.entries(studentEvalData).map(([studentId, data]) => ({
-                    studentId, stars: data.stars, attendance: data.attendance,
+
+            const mapEntries = (map: Record<string, EvalStudentEntry>) =>
+                Object.entries(map).map(([studentId, data]) => ({
+                    studentId,
+                    stars: data.stars,
+                    attendance: data.attendance,
+                    guide: sanitize(data.guide),
+                    panel1: sanitize(data.panel1),
+                    panel2: sanitize(data.panel2),
                 }));
-                await api.put(`/projects/${projectId}/student-evaluations`, { evaluations, evalType: evaluationType });
-            }
+
+            const students = mapEntries(studentEvalData);
+            const midStudents = studentMidData ? mapEntries(studentMidData) : undefined;
+
+            await api.put(`/projects/${projectId}/evaluation`, {
+                type: 'end-term',
+                remarks: evaluationRemarks,
+                students,
+                ...(midStudents ? { midStudents } : {}),
+            });
+
             await refreshGroups();
             setEvaluatingProject(null);
-            setEvaluationType(null);
-            setEvaluationDetails({});
-            setEvaluationMarks(0);
             setEvaluationRemarks('');
             setManualMarksMode(false);
             setStudentEvalData({});
+            setStudentMidData(null);
         } catch (error) {
             console.error('Failed to submit evaluation', error);
             alert('Failed to submit evaluation. Check console for details.');
@@ -1980,21 +1957,12 @@ const AdminDashboard: React.FC = () => {
                                                                                                                         <div className="h-px bg-neutral-100 my-1" />
                                                                                                                         <button
                                                                                                                             onClick={() => {
-                                                                                                                                handleAdminOpenEvaluation(item, 'mid-term');
+                                                                                                                                handleAdminOpenEvaluation(item);
                                                                                                                                 setConfigBatchMenuOpen(null);
                                                                                                                             }}
                                                                                                                             className="w-full text-left px-4 py-2 text-sm text-indigo-700 hover:bg-indigo-50 flex items-center gap-2"
                                                                                                                         >
-                                                                                                                            <Pencil className="w-4 h-4" /> {item.project?.midTermEvaluation?.marks != null ? 'Edit' : 'Add'} Mid-Term Eval
-                                                                                                                        </button>
-                                                                                                                        <button
-                                                                                                                            onClick={() => {
-                                                                                                                                handleAdminOpenEvaluation(item, 'end-term');
-                                                                                                                                setConfigBatchMenuOpen(null);
-                                                                                                                            }}
-                                                                                                                            className="w-full text-left px-4 py-2 text-sm text-purple-700 hover:bg-purple-50 flex items-center gap-2"
-                                                                                                                        >
-                                                                                                                            <Pencil className="w-4 h-4" /> {item.project?.endTermEvaluation?.marks != null ? 'Edit' : 'Add'} End-Term Eval
+                                                                                                                            <Pencil className="w-4 h-4" /> Edit Evaluations
                                                                                                                         </button>
                                                                                                                     </>
                                                                                                                 )}
@@ -5329,236 +5297,243 @@ const AdminDashboard: React.FC = () => {
             {/* Admin Evaluation Modal */}
             <Dialog.Root open={!!evaluatingProject} onOpenChange={(open) => !open && setEvaluatingProject(null)}>
                 <Dialog.Portal>
-                    <Dialog.Overlay className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 transition-opacity" />
-                    <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-6xl bg-white rounded-3xl shadow-2xl z-50 overflow-hidden flex flex-col focus:outline-none max-h-[90vh]">
-                        <div className="flex items-center justify-between p-6 border-b border-neutral-100 bg-neutral-50/50">
+                    <Dialog.Overlay className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50" />
+                    <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[96vw] max-w-[1300px] bg-white rounded-2xl shadow-2xl z-50 flex flex-col focus:outline-none max-h-[92vh]">
+                        {/* Header */}
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between px-6 py-4 border-b border-neutral-100 shrink-0 gap-4">
                             <div>
-                                <Dialog.Title className="text-xl font-bold text-neutral-900">
-                                    {evaluationType === 'mid-term' ? 'Mid-Term Evaluation' : 'End-Term Evaluation'}
-                                    <span className="ml-2 text-xs font-bold uppercase tracking-wider text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-100">Admin Override</span>
+                                <Dialog.Title className="text-lg font-bold text-neutral-900 flex items-center gap-3">
+                                    Edit Evaluations
+                                    <span className="text-xs font-bold uppercase tracking-wider text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-100">Admin Override</span>
+                                    {evaluatingProject && (
+                                        <span className="text-sm font-normal text-neutral-500">
+                                            — Group {evaluatingProject.name} · {evaluatingProject.project?.title}
+                                        </span>
+                                    )}
                                 </Dialog.Title>
                             </div>
-                            <Dialog.Close className="p-2 rounded-full hover:bg-neutral-100 transition-colors">
-                                <X className="w-5 h-5 text-neutral-500" />
-                            </Dialog.Close>
+                            <div className="flex items-center gap-4">
+                                <button
+                                    onClick={() => setManualMarksMode(!manualMarksMode)}
+                                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${manualMarksMode ? 'bg-indigo-600' : 'bg-neutral-300'}`}
+                                >
+                                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${manualMarksMode ? 'translate-x-6' : 'translate-x-1'}`} />
+                                </button>
+                                <span className="text-sm font-medium text-neutral-600 select-none cursor-pointer" onClick={() => setManualMarksMode(!manualMarksMode)}>
+                                    {manualMarksMode ? 'Direct Marks Entry' : 'Rubric Mode'}
+                                </span>
+                                <div className="h-6 w-px bg-neutral-200"></div>
+                                <Dialog.Close className="p-1.5 rounded-lg hover:bg-neutral-100 transition-colors">
+                                    <X className="w-5 h-5 text-neutral-500" />
+                                </Dialog.Close>
+                            </div>
                         </div>
 
-                        <div className="flex-1 overflow-hidden grid grid-cols-1 lg:grid-cols-3">
-                            {/* Left Column: Project Details */}
-                            <div className="col-span-1 border-r border-neutral-100 bg-white p-8 overflow-y-auto hidden lg:block">
-                                <div className="mb-8 flex items-start gap-3">
-                                    <div className="mt-1 shrink-0">
-                                        <FileText className="w-6 h-6 text-indigo-500" />
-                                    </div>
-                                    <h3 className="text-2xl font-black text-indigo-900 leading-tight">
-                                        {evaluatingProject?.project?.title || evaluatingProject?.title || 'Project Details'}
-                                    </h3>
-                                </div>
+                        {/* Table area */}
+                        <div className="flex-1 overflow-auto p-4 space-y-5">
+                            {(() => {
+                                const members = evaluatingProject?.members || evaluatingProject?.group?.members || [];
+                                if (members.length === 0) return <div className="p-8 text-center text-neutral-500">No members found.</div>;
 
-                                <div className="space-y-8">
-                                    <div>
-                                        <h4 className="flex items-center gap-2 text-sm font-bold text-neutral-900 mb-2">
-                                            <div className="w-1.5 h-1.5 rounded-full bg-indigo-500"></div>
-                                            Abstract & Description
-                                        </h4>
-                                        <p className="text-sm text-neutral-600 leading-relaxed">
-                                            {evaluatingProject?.project?.description || evaluatingProject?.description || 'No description provided.'}
-                                        </p>
-                                    </div>
+                                const renderEvalTable = (
+                                    blockLabel: string,
+                                    evalT: 'mid-term' | 'end-term',
+                                    dataMap: Record<string, EvalStudentEntry>,
+                                    setDataMap: (fn: (p: Record<string, EvalStudentEntry>) => Record<string, EvalStudentEntry>) => void
+                                ) => {
+                                    const config = getAdminRubricConfig(evalT);
+                                    if (!config) return null;
+                                    const guideFields = config.sections?.find((s: any) => s.key === 'guide')?.fields || [];
+                                    const panelFields = config.sections?.find((s: any) => s.key === 'panel')?.fields || [];
+                                    const empty: EvalStudentEntry = { stars: 0, attendance: 'present', guide: {}, panel1: {}, panel2: {} };
 
-                                    {((evaluatingProject?.members) || (evaluatingProject?.group?.members))?.length > 0 && (
-                                        <div>
-                                            <h4 className="flex items-center gap-2 text-sm font-bold text-neutral-900 mb-3">
-                                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
-                                                Student Evaluation
-                                            </h4>
-                                            <div className="space-y-3">
-                                                {(evaluatingProject?.members || evaluatingProject?.group?.members).map((member: any) => {
-                                                    const sd = studentEvalData[member._id] || { stars: 0, attendance: 'present' };
-                                                    return (
-                                                        <div key={member._id} className="p-3 rounded-xl bg-neutral-50 border border-neutral-100">
-                                                            <div className="flex items-center gap-3 mb-2">
-                                                                <div className="w-8 h-8 rounded-full bg-indigo-50 text-indigo-700 flex items-center justify-center font-bold text-xs ring-1 ring-indigo-100 shrink-0">
-                                                                    {member.name?.charAt(0) || '?'}
-                                                                </div>
-                                                                <div className="flex-1 min-w-0">
-                                                                    <p className="text-sm font-bold text-neutral-900 truncate">{member.name}</p>
-                                                                    <p className="text-xs text-neutral-500 font-medium">{member.rollNumber}</p>
-                                                                </div>
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => setStudentEvalData(prev => ({ ...prev, [member._id]: { ...sd, attendance: sd.attendance === 'present' ? 'absent' : 'present' } }))}
-                                                                    className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider border-2 cursor-pointer transition-all select-none shadow-sm hover:scale-105 active:scale-95 ${sd.attendance === 'present' ? 'bg-emerald-500 text-white border-emerald-600 hover:bg-emerald-600' : 'bg-red-500 text-white border-red-600 hover:bg-red-600'}`}
-                                                                >
-                                                                    {sd.attendance === 'present' ? '✓ Present' : '✗ Absent'}
-                                                                </button>
-                                                            </div>
-                                                            <div className="flex items-center gap-1 ml-11">
-                                                                {[1, 2, 3, 4, 5].map(star => (
-                                                                    <button key={star} type="button"
-                                                                        onClick={() => setStudentEvalData(prev => ({ ...prev, [member._id]: { ...sd, stars: star } }))}
-                                                                        className={`text-lg transition-colors ${star <= sd.stars ? 'text-amber-400' : 'text-neutral-300 hover:text-amber-300'}`}
-                                                                    >★</button>
+                                    return (
+                                        <div className="rounded-xl border border-neutral-200 overflow-hidden">
+                                            <div className="px-4 py-2 bg-neutral-50 border-b border-neutral-200 text-xs font-black uppercase tracking-wider text-neutral-600">{blockLabel}</div>
+                                            <div className="overflow-x-auto">
+                                                <table className="w-full text-sm border-collapse">
+                                                    <thead className="sticky top-0 z-10 bg-white">
+                                                        <tr className="border-b border-neutral-200">
+                                                            <th rowSpan={manualMarksMode ? 1 : 2} className="px-3 py-2 text-left text-[11px] font-bold text-neutral-700 border-r border-neutral-200 w-32 align-middle">Student</th>
+                                                            <th rowSpan={manualMarksMode ? 1 : 2} className="px-2 py-2 text-center text-[11px] font-bold text-neutral-600 border-r border-neutral-200 w-24 align-middle">Attendance</th>
+                                                            <th rowSpan={manualMarksMode ? 1 : 2} className="px-2 py-2 text-center text-[11px] font-bold text-neutral-600 border-r border-neutral-200 w-20 align-middle">Stars</th>
+                                                            {manualMarksMode ? (
+                                                                <>
+                                                                    <th className="px-2 py-2 text-center text-[11px] font-black text-indigo-700 bg-indigo-50 border-r border-indigo-200 w-24">Guide Score</th>
+                                                                    <th className="px-2 py-2 text-center text-[11px] font-black text-emerald-700 bg-emerald-50 border-r border-emerald-200 w-24">E1 Score</th>
+                                                                    <th className="px-2 py-2 text-center text-[11px] font-black text-amber-700 bg-amber-50 border-r border-amber-200 w-24">E2 Score</th>
+                                                                </>
+                                                            ) : (
+                                                                <>
+                                                                    {guideFields.length > 0 && <th colSpan={guideFields.length} className="px-2 py-1 text-center text-[11px] font-black text-indigo-700 bg-indigo-50 border-r border-indigo-200">Guide</th>}
+                                                                    {panelFields.length > 0 && <th colSpan={panelFields.length} className="px-2 py-1 text-center text-[11px] font-black text-amber-700 bg-amber-50 border-r border-amber-200">Panel (E1 / E2)</th>}
+                                                                </>
+                                                            )}
+                                                            <th rowSpan={manualMarksMode ? 1 : 2} className="px-2 py-2 text-center text-[11px] font-bold text-neutral-500 border-l border-neutral-200 w-14 align-middle">Total</th>
+                                                        </tr>
+                                                        {!manualMarksMode && (
+                                                            <tr className="border-b border-neutral-200">
+                                                                {guideFields.map((f: any) => (
+                                                                    <th key={f.key} className="px-1 py-1 text-center text-[10px] font-bold text-indigo-600 bg-indigo-50/60 border-r border-indigo-100 max-w-[80px]">
+                                                                        <div>{f.label}</div><div className="font-normal text-indigo-400">/{f.max}</div>
+                                                                    </th>
                                                                 ))}
-                                                                <span className="text-xs text-neutral-400 ml-1">{sd.stars > 0 ? `${sd.stars}/5` : 'Rate'}</span>
-                                                            </div>
-                                                        </div>
-                                                    );
-                                                })}
+                                                                {panelFields.map((f: any) => (
+                                                                    <th key={f.key} className="px-1 py-1 text-center text-[10px] font-bold text-amber-600 bg-amber-50/60 border-r border-amber-100 max-w-[80px]">
+                                                                        <div>{f.label}</div><div className="font-normal text-amber-400">/{f.max}</div>
+                                                                    </th>
+                                                                ))}
+                                                            </tr>
+                                                        )}
+                                                    </thead>
+                                                    <tbody>
+                                                        {members.map((m: any, mi: number) => {
+                                                            const sd = dataMap[m._id] || empty;
+                                                            const gTotal = guideFields.reduce((s: number, f: any) => s + Number(sd.guide?.[f.key] || 0), 0);
+                                                            const p1Total = panelFields.reduce((s: number, f: any) => s + Number(sd.panel1?.[f.key] || 0), 0);
+                                                            const p2Total = panelFields.reduce((s: number, f: any) => s + Number(sd.panel2?.[f.key] || 0), 0);
+                                                            const rowTotal = gTotal + (p2Total > 0 ? (p1Total + p2Total) / 2 : p1Total);
+                                                            const upd = (patch: Partial<EvalStudentEntry>) =>
+                                                                setDataMap(prev => ({ ...prev, [m._id]: { ...prev[m._id], ...patch } }));
+                                                            const gMaxSum = guideFields.reduce((s: number, f: any) => s + f.max, 0);
+                                                            const pMaxSum = panelFields.reduce((s: number, f: any) => s + f.max, 0);
+                                                            const hasGuideData = guideFields.some((f: any) => typeof sd.guide?.[f.key] === 'number');
+                                                            const hasPanel1Data = panelFields.some((f: any) => typeof sd.panel1?.[f.key] === 'number');
+                                                            const hasPanel2Data = panelFields.some((f: any) => typeof sd.panel2?.[f.key] === 'number');
+                                                            const hasAnyData = hasGuideData || hasPanel1Data;
+
+                                                            const handleDirectDistribute = (val: number, fields: any[], targetKey: 'guide' | 'panel1' | 'panel2', maxSum: number) => {
+                                                                const newSubMap: Record<string, number> = {};
+                                                                if (val === 0 || maxSum === 0) {
+                                                                    fields.forEach((f: any) => newSubMap[f.key] = 0);
+                                                                } else {
+                                                                    let remaining = val;
+                                                                    fields.forEach((f: any, idx: number) => {
+                                                                        if (idx === fields.length - 1) {
+                                                                            newSubMap[f.key] = Number(remaining.toFixed(2));
+                                                                        } else {
+                                                                            const fieldVal = (val / maxSum) * f.max;
+                                                                            newSubMap[f.key] = Number(fieldVal.toFixed(2));
+                                                                            remaining -= newSubMap[f.key];
+                                                                        }
+                                                                    });
+                                                                }
+                                                                upd({ [targetKey]: { ...sd[targetKey], ...newSubMap } });
+                                                            };
+
+                                                            return (
+                                                                <tr key={m._id} className={`border-b border-neutral-100 ${mi % 2 === 0 ? 'bg-white' : 'bg-neutral-50/40'} hover:bg-indigo-50/10`}>
+                                                                    <td className="px-3 py-2 border-r border-neutral-200">
+                                                                        <div className="font-semibold text-xs text-neutral-900">{m.name}</div>
+                                                                        <div className="text-[10px] text-neutral-400">{m.rollNumber}</div>
+                                                                    </td>
+                                                                    <td className="px-2 py-1.5 text-center border-r border-neutral-200">
+                                                                        <button type="button" onClick={() => upd({ attendance: sd.attendance === 'present' ? 'absent' : 'present' })}
+                                                                            className={`px-2 py-0.5 rounded text-[10px] font-bold ${sd.attendance === 'present' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+                                                                            {sd.attendance === 'present' ? '✓ P' : '✗ A'}
+                                                                        </button>
+                                                                    </td>
+                                                                    <td className="px-2 py-1.5 text-center border-r border-neutral-200">
+                                                                        <div className="flex justify-center gap-0">
+                                                                            {[1, 2, 3, 4, 5].map(s => (
+                                                                                <button key={s} type="button" onClick={() => upd({ stars: s })}
+                                                                                    className={`text-sm leading-none ${s <= sd.stars ? 'text-amber-400' : 'text-neutral-300 hover:text-amber-300'}`}>★</button>
+                                                                            ))}
+                                                                        </div>
+                                                                    </td>
+                                                                    {manualMarksMode ? (
+                                                                        <>
+                                                                            <td className="px-2 py-1 border-r border-indigo-100 text-center">
+                                                                                <input type="number" min={0} max={gMaxSum} value={hasGuideData ? Number(gTotal.toFixed(1)) : ''}
+                                                                                    onChange={e => { const v = e.target.value === '' ? 0 : Math.min(Number(e.target.value), gMaxSum); handleDirectDistribute(v, guideFields, 'guide', gMaxSum); }}
+                                                                                    className="w-16 px-1 py-1 text-center text-sm font-bold border border-neutral-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-400 bg-white" placeholder="—" />
+                                                                                <div className="text-[9px] text-indigo-400 font-bold mt-1">/{gMaxSum}</div>
+                                                                            </td>
+                                                                            <td className="px-2 py-1 border-r border-emerald-100 text-center">
+                                                                                <input type="number" min={0} max={pMaxSum} value={hasPanel1Data ? Number(p1Total.toFixed(1)) : ''}
+                                                                                    onChange={e => { const v = e.target.value === '' ? 0 : Math.min(Number(e.target.value), pMaxSum); handleDirectDistribute(v, panelFields, 'panel1', pMaxSum); }}
+                                                                                    className="w-16 px-1 py-1 text-center text-sm font-bold border border-neutral-200 rounded focus:outline-none focus:ring-1 focus:ring-emerald-400 bg-white" placeholder="—" />
+                                                                                <div className="text-[9px] text-emerald-400 font-bold mt-1">/{pMaxSum}</div>
+                                                                            </td>
+                                                                            <td className="px-2 py-1 border-r border-amber-100 text-center">
+                                                                                <input type="number" min={0} max={pMaxSum} value={hasPanel2Data ? Number(p2Total.toFixed(1)) : ''}
+                                                                                    onChange={e => { const v = e.target.value === '' ? 0 : Math.min(Number(e.target.value), pMaxSum); handleDirectDistribute(v, panelFields, 'panel2', pMaxSum); }}
+                                                                                    className="w-16 px-1 py-1 text-center text-sm font-bold border border-neutral-200 rounded focus:outline-none focus:ring-1 focus:ring-amber-400 bg-white" placeholder="—" />
+                                                                                <div className="text-[9px] text-amber-400 font-bold mt-1">/{pMaxSum}</div>
+                                                                            </td>
+                                                                        </>
+                                                                    ) : (
+                                                                        <>
+                                                                            {guideFields.map((f: any) => (
+                                                                                <td key={f.key} className="px-1 py-1 border-r border-indigo-100 text-center">
+                                                                                    <input type="number" min={0} max={f.max} value={sd.guide?.[f.key] ?? ''}
+                                                                                        onChange={e => { const v = e.target.value === '' ? '' : Math.min(Number(e.target.value), f.max); upd({ guide: { ...sd.guide, [f.key]: v } }); }}
+                                                                                        className="w-12 px-1 py-0.5 text-center text-sm font-bold border border-neutral-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-400 bg-white" placeholder="—" />
+                                                                                </td>
+                                                                            ))}
+                                                                            {panelFields.map((f: any) => (
+                                                                                <td key={f.key} className="px-1 py-1 border-r border-amber-100 text-center">
+                                                                                    <div className="flex flex-col gap-0.5 items-center">
+                                                                                        <div className="flex items-center gap-0.5">
+                                                                                            <span className="text-[9px] font-bold text-emerald-500 w-4">E1</span>
+                                                                                            <input type="number" min={0} max={f.max} value={sd.panel1?.[f.key] ?? ''}
+                                                                                                onChange={e => { const v = e.target.value === '' ? '' : Math.min(Number(e.target.value), f.max); upd({ panel1: { ...sd.panel1, [f.key]: v } }); }}
+                                                                                                className="w-10 px-1 py-0.5 text-center text-xs font-bold border border-neutral-200 rounded focus:outline-none focus:ring-1 focus:ring-emerald-400 bg-white" placeholder="—" />
+                                                                                        </div>
+                                                                                        <div className="flex items-center gap-0.5">
+                                                                                            <span className="text-[9px] font-bold text-amber-500 w-4">E2</span>
+                                                                                            <input type="number" min={0} max={f.max} value={sd.panel2?.[f.key] ?? ''}
+                                                                                                onChange={e => { const v = e.target.value === '' ? '' : Math.min(Number(e.target.value), f.max); upd({ panel2: { ...sd.panel2, [f.key]: v } }); }}
+                                                                                                className="w-10 px-1 py-0.5 text-center text-xs font-bold border border-neutral-200 rounded focus:outline-none focus:ring-1 focus:ring-amber-400 bg-white" placeholder="—" />
+                                                                                        </div>
+                                                                                    </div>
+                                                                                </td>
+                                                                            ))}
+                                                                        </>
+                                                                    )}
+                                                                    <td className="px-2 py-2 text-center border-l border-neutral-200">
+                                                                        <span className={`text-sm font-black ${hasAnyData ? 'text-indigo-700' : 'text-neutral-300'}`}>{hasAnyData ? Math.round(rowTotal * 10) / 10 : '—'}</span>
+                                                                    </td>
+                                                                </tr>
+                                                            );
+                                                        })}
+                                                    </tbody>
+                                                </table>
                                             </div>
                                         </div>
-                                    )}
+                                    );
+                                };
 
-                                    {(evaluatingProject?.project?.attachments?.length > 0 || evaluatingProject?.attachments?.length > 0) && (
-                                        <div>
-                                            <h4 className="flex items-center gap-2 text-sm font-bold text-neutral-900 mb-3">
-                                                <div className="w-1.5 h-1.5 rounded-full bg-amber-500"></div>
-                                                Resources & Links
-                                            </h4>
-                                            <div className="space-y-2">
-                                                {(evaluatingProject?.project?.attachments || evaluatingProject?.attachments || []).map((att: string, i: number) => {
-                                                    const isLink = att.startsWith('http') && !att.includes('/uploads/');
-                                                    return (
-                                                        <a key={i} href={att} target="_blank" rel="noopener noreferrer"
-                                                            className="flex items-center gap-3 p-2.5 bg-neutral-50 border border-neutral-100 rounded-xl hover:border-indigo-300 hover:bg-indigo-50/50 transition-colors group">
-                                                            <div className="text-indigo-600"><FileText className="w-4 h-4" /></div>
-                                                            <div className="flex-1 min-w-0">
-                                                                <p className="text-sm font-bold text-neutral-800 truncate group-hover:text-indigo-700 transition-colors">
-                                                                    {isLink ? 'External Link' : att.split('/').pop()}
-                                                                </p>
-                                                            </div>
-                                                        </a>
-                                                    );
-                                                })}
-                                            </div>
-                                        </div>
-                                    )}
+                                return (
+                                    <>
+                                        {studentMidData && renderEvalTable('Mid-Term Scores', 'mid-term', studentMidData, fn => setStudentMidData(p => fn(p!)))}
+                                        {renderEvalTable('End-Term Scores', 'end-term', studentEvalData, setStudentEvalData)}
+                                    </>
+                                );
+                            })()}
+                        </div>
 
-                                    {evaluationType === 'end-term' && (
-                                        <div>
-                                            <h4 className="flex items-center gap-2 text-sm font-bold text-neutral-900 mb-3">
-                                                <div className="w-1.5 h-1.5 rounded-full bg-orange-500"></div>
-                                                Faculty Feedback
-                                            </h4>
-                                            <textarea
-                                                value={evaluationFeedback}
-                                                onChange={(e) => setEvaluationFeedback(e.target.value)}
-                                                placeholder="Share overall feedback visible to the team on their project..."
-                                                className="w-full px-3 py-2 rounded-xl border border-neutral-200 focus:outline-none focus:ring-2 focus:ring-orange-500/20 text-sm h-[120px] resize-none bg-orange-50/30"
-                                            />
-                                            <button
-                                                onClick={handleAdminSaveEvaluationFeedback}
-                                                disabled={savingFeedback}
-                                                className="mt-2 w-full py-2 bg-orange-600 text-white text-xs font-bold rounded-lg hover:bg-orange-700 disabled:opacity-50"
-                                            >
-                                                {savingFeedback ? 'Saving...' : 'Save Feedback'}
-                                            </button>
-                                        </div>
-                                    )}
+                        {/* Footer: remarks + submit */}
+                        <div className="shrink-0 border-t border-neutral-100 bg-neutral-50/50 px-6 py-4">
+                            <div className="flex flex-col sm:flex-row gap-3 items-end">
+                                <div className="flex-1">
+                                    <label className="block text-xs font-bold text-neutral-600 mb-1">Remarks (group-level)</label>
+                                    <textarea
+                                        value={evaluationRemarks}
+                                        onChange={(e) => setEvaluationRemarks(e.target.value)}
+                                        placeholder="Overall feedback for the group..."
+                                        rows={2}
+                                        className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 resize-none"
+                                    />
                                 </div>
-                            </div>
-
-                            {/* Right Column: Evaluation Inputs */}
-                            <div className="col-span-1 lg:col-span-2 flex flex-col overflow-hidden h-full">
-                                <div className="p-6 space-y-8 overflow-y-auto flex-1">
-                                    {/* Sticky Score Display */}
-                                    <div className="sticky top-0 z-10 flex items-center justify-between bg-indigo-600 text-white p-6 rounded-2xl shadow-lg shadow-indigo-200 border border-indigo-500 backdrop-blur-md">
-                                        <div>
-                                            <h4 className="font-bold text-indigo-100 text-sm uppercase tracking-wider mb-1">Total Score</h4>
-                                            <div className="flex items-baseline gap-2">
-                                                <span className="text-4xl font-bold">{evaluationMarks}</span>
-                                                <span className="text-indigo-200 font-medium">/ {evaluationType ? (getAdminRubricConfig(evaluationType)?.maxMarks ?? 100) : 100}</span>
-                                            </div>
-                                        </div>
-                                        <div className="text-right flex flex-col items-end">
-                                            <div className="flex items-center gap-3 mb-4">
-                                                <span className="text-xs font-medium text-indigo-200 uppercase tracking-wider">Direct Marks Entry</span>
-                                                <button
-                                                    onClick={() => setManualMarksMode(!manualMarksMode)}
-                                                    className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${manualMarksMode ? 'bg-emerald-400' : 'bg-indigo-400/50'}`}
-                                                >
-                                                    <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${manualMarksMode ? 'translate-x-4.5' : 'translate-x-1'}`} />
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* Rubric Sections OR Manual Mode */}
-                                    {manualMarksMode ? (
-                                        <div className="space-y-4">
-                                            <h4 className="text-lg font-bold text-neutral-900 border-b border-neutral-100 pb-2">Direct Total Marks Entry</h4>
-                                            <div className="bg-white border border-neutral-200 rounded-2xl p-6">
-                                                <label className="text-sm font-bold text-neutral-700 block mb-2">Total Marks</label>
-                                                <input
-                                                    type="number"
-                                                    min="0"
-                                                    max={evaluationType ? (getAdminRubricConfig(evaluationType)?.maxMarks ?? 100) : 100}
-                                                    value={evaluationMarks}
-                                                    onChange={(e) => setEvaluationMarks(Math.min(Number(e.target.value), evaluationType ? (getAdminRubricConfig(evaluationType)?.maxMarks ?? 100) : 100))}
-                                                    className="w-32 px-3 py-2 border border-neutral-300 rounded-lg text-2xl font-bold text-center focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                                                />
-                                                <span className="text-sm font-bold text-neutral-400 ml-2">/ {evaluationType ? (getAdminRubricConfig(evaluationType)?.maxMarks ?? 100) : 100}</span>
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        evaluationType && getAdminRubricConfig(evaluationType)?.sections?.map((section: any, idx: number) => (
-                                            <div key={idx} className="space-y-4">
-                                                <div className="flex items-center justify-between border-b border-neutral-100 pb-2">
-                                                    <h4 className="text-lg font-bold text-neutral-900 flex items-center gap-2">
-                                                        {section.title}
-                                                        <span className="text-xs font-normal text-neutral-500 bg-neutral-100 px-2 py-0.5 rounded-full">Max {section.maxMarks}</span>
-                                                    </h4>
-                                                </div>
-                                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                                    {section.fields.map((field: any) => (
-                                                        <div key={field.key} className="bg-neutral-50 p-4 rounded-xl border border-neutral-100 hover:border-indigo-100 transition-colors">
-                                                            <div className="flex justify-between items-start mb-2">
-                                                                <label className="text-sm font-bold text-neutral-700 block mb-1">{field.label}</label>
-                                                                <span className="text-xs font-bold text-neutral-400 bg-white px-1.5 py-0.5 rounded border border-neutral-100">/{field.max}</span>
-                                                            </div>
-                                                            <p className="text-xs text-neutral-500 mb-3 h-8 line-clamp-2" title={field.description}>{field.description}</p>
-                                                            <input
-                                                                type="number" min="0" max={field.max}
-                                                                value={evaluationDetails[section.key]?.[field.key] ?? ''}
-                                                                onChange={(e) => {
-                                                                    const rawVal = e.target.value;
-                                                                    if (rawVal === '') handleAdminDetailChange(section.key, field.key, '');
-                                                                    else handleAdminDetailChange(section.key, field.key, Math.min(Number(rawVal), field.max));
-                                                                }}
-                                                                className="w-full px-3 py-2 rounded-lg border border-neutral-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold text-neutral-900 bg-white"
-                                                            />
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        ))
-                                    )}
-
-                                    <div className="h-px bg-neutral-100 w-full"></div>
-
-                                    <div className="space-y-2">
-                                        <label className="block text-sm font-bold text-neutral-700">Remarks & Feedback</label>
-                                        <textarea
-                                            value={evaluationRemarks}
-                                            onChange={(e) => setEvaluationRemarks(e.target.value)}
-                                            placeholder="Enter detailed feedback for the team..."
-                                            className="w-full px-4 py-3 rounded-xl border border-neutral-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-sm h-[100px] resize-none"
-                                        />
-                                    </div>
-                                </div>
-
-                                <div className="p-6 border-t border-neutral-100 bg-neutral-50 flex gap-3">
-                                    <button
-                                        onClick={() => setEvaluatingProject(null)}
-                                        className="flex-1 py-3 bg-white border border-neutral-200 text-neutral-600 font-bold rounded-xl hover:bg-neutral-50 transition-colors"
-                                    >
+                                <div className="flex gap-2 shrink-0">
+                                    <button onClick={() => setEvaluatingProject(null)}
+                                        className="px-5 py-2.5 bg-white border border-neutral-200 text-neutral-600 font-bold rounded-xl hover:bg-neutral-50 transition-colors text-sm">
                                         Cancel
                                     </button>
-                                    <button
-                                        onClick={handleAdminSubmitEvaluation}
-                                        className="flex-1 py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 shadow-sm shadow-indigo-200 transition-colors flex items-center justify-center gap-2"
-                                    >
-                                        <CheckCircle className="w-4 h-4" /> Submit Evaluation
+                                    <button onClick={handleAdminSubmitEvaluation}
+                                        className="px-6 py-2.5 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-colors flex items-center gap-2 text-sm shadow-sm">
+                                        <CheckCircle className="w-4 h-4" /> Submit
                                     </button>
                                 </div>
                             </div>
@@ -5566,6 +5541,7 @@ const AdminDashboard: React.FC = () => {
                     </Dialog.Content>
                 </Dialog.Portal>
             </Dialog.Root>
+
 
         </div>
     );
