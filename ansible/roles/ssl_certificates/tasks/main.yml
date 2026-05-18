@@ -1,0 +1,28 @@
+---
+- name: Ensure SSL certificate directory exists
+  file:
+    path: "{{ ssl_cert_dir }}"
+    state: directory
+    owner: root
+    group: "{{ deployment_group }}"
+    mode: "0750"
+
+- name: Copy SSL certificate
+  copy:
+    src: "{{ local_ssl_cert_path }}"
+    dest: "{{ ssl_cert_file }}"
+    owner: root
+    group: "{{ deployment_group }}"
+    mode: "0640"
+
+- name: Copy SSL private key
+  copy:
+    src: "{{ local_ssl_key_path }}"
+    dest: "{{ ssl_key_file }}"
+    owner: root
+    group: "{{ deployment_group }}"
+    mode: "0640"
+
+- name: Verify SSL certificate is readable
+  command: "openssl x509 -noout -subject -in {{ ssl_cert_file }}"
+  changed_when: false

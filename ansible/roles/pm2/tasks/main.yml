@@ -1,0 +1,22 @@
+---
+- name: Install PM2 globally via npm
+  npm:
+    name: pm2
+    global: yes
+    state: present
+
+- name: Generate PM2 startup command
+  command: "pm2 startup systemd -u {{ pm2_startup_user }} --hp /home/{{ pm2_startup_user }}"
+  register: pm2_startup_output
+  changed_when: false
+
+- name: Execute generated PM2 startup command
+  shell: "{{ pm2_startup_output.stdout_lines | select('match', '^sudo') | list | last }}"
+  when: pm2_startup_output.stdout_lines | select('match', '^sudo') | list | length > 0
+
+- name: Enable and start PM2 systemd service
+  systemd:
+    name: "pm2-{{ pm2_startup_user }}"
+    enabled: yes
+    state: started
+    daemon_reload: yes
