@@ -1,0 +1,85 @@
+name: Deploy to Server (Self-hosted)
+
+on:
+  push:
+    branches:
+      - prod/*
+
+concurrency:
+  group: "deploy-prod"
+  cancel-in-progress: false
+
+jobs:
+  client:
+    name: Build & Deploy Client
+    runs-on: self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: client/package-lock.json
+
+      - name: Create .env
+        run: echo '${{ secrets.CLIENT_ENV_PROD }}' > client/.env
+
+      - name: Install dependencies
+        working-directory: client
+        run: npm ci
+
+      - name: Build
+        working-directory: client
+        run: npm run build
+
+      - name: Sync to client folder
+        run: |
+          set -e
+          TARGET=$HOME/minor_management/client
+          mkdir -p "$TARGET"
+          rsync -a --delete \
+            --exclude '.git' \
+            --exclude '.github' \
+            --exclude 'node_modules' \
+            ./client/ "$TARGET/"
+
+      - name: Reload Nginx
+        run: sudo nginx -t && sudo systemctl reload nginx
+
+  server:
+    name: Deploy Server
+    runs-on: self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create .env
+        run: echo '${{ secrets.SERVER_ENV_PROD }}' > server/.env
+
+      - name: Sync to server folder
+        run: |
+          set -e
+          TARGET=$HOME/minor_management/server
+          mkdir -p "$TARGET"
+          rsync -a --delete \
+            --exclude '.git' \
+            --exclude '.github' \
+            --exclude 'node_modules' \
+            ./server/ "$TARGET/"
+
+      - name: Install production dependencies
+        run: npm ci --omit=dev --prefix $HOME/minor_management/server
+
+      - name: Deploy with PM2
+        run: |
+          set -e
+          TARGET=$HOME/minor_management/server
+          cd "$TARGET"
+          sudo fuser -k -9 3000/tcp || true
+          ENTRY=$(node -p "require('./package.json').main || 'index.js'")
+          pm2 start "$ENTRY" --name minor-management-server --update-env \
+            || pm2 restart minor-management-server --update-env
+          pm2 save

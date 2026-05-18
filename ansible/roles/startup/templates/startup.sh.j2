@@ -1,0 +1,5 @@
+#!/bin/bash
+export PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
+su -c "pm2 resurrect" {{ ansible_user }}
+su -c "pm2 save" {{ ansible_user }}
+systemctl start {{ github_runner_service_name }}
