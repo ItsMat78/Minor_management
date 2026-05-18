@@ -40,11 +40,7 @@ jobs:
           set -e
           TARGET=$HOME/minor_project_management
           mkdir -p "$TARGET"
-          rsync -a --delete \
-            --exclude '.git' \
-            --exclude '.github' \
-            --exclude 'node_modules' \
-            ./client/ "$TARGET/"
+          rsync -a --delete ./client/dist/ "$TARGET/"
 
       - name: Reload Nginx
         run: sudo nginx -t && sudo systemctl reload nginx

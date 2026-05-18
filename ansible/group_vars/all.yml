@@ -11,7 +11,7 @@ nginx_server_name: minor-project.iiitnr.ac.in
 nginx_config_path: /etc/nginx/sites-available
 nginx_enabled_path: /etc/nginx/sites-enabled
 api_port: 3000          # external port nginx exposes for direct API access (SSL)
-api_backend_port: 3000  # internal port Node.js actually listens on
+api_backend_port: 5000  # internal port Node.js actually listens on
 ssl_cert_dir: "/home/{{ ansible_user }}/ssl_certificates"
 ssl_cert_file: "{{ ssl_cert_dir }}/certificate.crt"
 ssl_key_file: "{{ ssl_cert_dir }}/key.key"
