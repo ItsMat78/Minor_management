@@ -70,8 +70,11 @@ jobs:
             --exclude 'node_modules' \
             ./server/ "$TARGET/"
 
-      - name: Install production dependencies
-        run: npm ci --omit=dev --prefix $HOME/minor_project_management_server
+      - name: Install dependencies
+        run: npm ci --prefix $HOME/minor_project_management_server
+
+      - name: Build TypeScript
+        run: npm run build --prefix $HOME/minor_project_management_server
 
       - name: Deploy with PM2
         run: |
