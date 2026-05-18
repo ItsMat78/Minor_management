@@ -50,6 +50,22 @@
     permissions: rx
     state: present
 
+- name: Allow www-data to traverse home directory to reach SSL certs
+  acl:
+    path: "/home/{{ ansible_user }}"
+    entity: www-data
+    etype: user
+    permissions: x
+    state: present
+
+- name: Allow www-data to read SSL cert directory
+  acl:
+    path: "{{ ssl_cert_dir }}"
+    entity: www-data
+    etype: user
+    permissions: rx
+    state: present
+
 - name: Configure passwordless sudo for service commands
   copy:
     dest: /etc/sudoers.d/{{ ansible_user }}-services
