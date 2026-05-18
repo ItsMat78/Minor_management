@@ -1,0 +1,6 @@
+all:
+  children:
+    webservers:
+      hosts:
+        server:
+          ansible_host: "172.16.61.29"

@@ -1,0 +1,20 @@
+---
+- hosts: all
+  become: true
+  vars_files:
+    - group_vars/vault.yml
+  roles:
+    - role: base
+      tags: [base]
+    - role: nodejs
+      tags: [nodejs]
+    - role: pm2
+      tags: [pm2]
+    - role: ssl_certificates
+      tags: [ssl_certificates]
+    - role: nginx
+      tags: [nginx]
+    - role: github_runner
+      tags: [github_runner]
+    - role: startup
+      tags: [startup]

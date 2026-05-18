@@ -1,0 +1,68 @@
+---
+- name: Update apt cache
+  apt:
+    update_cache: yes
+    cache_valid_time: 3600
+
+- name: Upgrade all packages
+  apt:
+    upgrade: dist
+    autoremove: yes
+
+- name: Install essential packages
+  apt:
+    name:
+      - curl
+      - git
+      - unzip
+      - build-essential
+      - ca-certificates
+      - gnupg
+      - acl
+    state: present
+
+- name: Create deployment group
+  group:
+    name: "{{ deployment_group }}"
+    state: present
+
+- name: Create deployment user
+  user:
+    name: "{{ ansible_user }}"
+    group: "{{ deployment_group }}"
+    create_home: yes
+    shell: /bin/bash
+    state: present
+
+- name: Create SSL certificate directory
+  file:
+    path: "{{ ssl_cert_dir }}"
+    state: directory
+    owner: root
+    group: "{{ deployment_group }}"
+    mode: "0750"
+
+- name: Set ACL for deployment user on SSL cert directory
+  acl:
+    path: "{{ ssl_cert_dir }}"
+    entity: "{{ ansible_user }}"
+    etype: user
+    permissions: rx
+    state: present
+
+- name: Configure passwordless sudo for service commands
+  copy:
+    dest: /etc/sudoers.d/{{ ansible_user }}-services
+    content: |
+      {{ ansible_user }} ALL=(ALL) NOPASSWD: /usr/bin/pm2
+      {{ ansible_user }} ALL=(ALL) NOPASSWD: /usr/sbin/nginx
+      {{ ansible_user }} ALL=(ALL) NOPASSWD: /usr/bin/systemctl start nginx
+      {{ ansible_user }} ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop nginx
+      {{ ansible_user }} ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart nginx
+      {{ ansible_user }} ALL=(ALL) NOPASSWD: /usr/bin/systemctl reload nginx
+      {{ ansible_user }} ALL=(ALL) NOPASSWD: /usr/bin/systemctl status nginx
+      {{ ansible_user }} ALL=(ALL) NOPASSWD: /usr/bin/fuser
+    owner: root
+    group: root
+    mode: "0440"
+    validate: "visudo -cf %s"

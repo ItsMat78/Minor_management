@@ -1,0 +1,30 @@
+---
+- name: Install nginx
+  apt:
+    name: nginx
+    state: present
+
+- name: Deploy nginx site configuration
+  template:
+    src: nginx-site.conf.j2
+    dest: "{{ nginx_config_path }}/{{ project_title }}"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: reload nginx
+
+- name: Symlink site to sites-enabled
+  file:
+    src: "{{ nginx_config_path }}/{{ project_title }}"
+    dest: "{{ nginx_enabled_path }}/{{ project_title }}"
+    state: link
+
+- name: Remove default nginx site from sites-enabled
+  file:
+    path: "{{ nginx_enabled_path }}/default"
+    state: absent
+  notify: reload nginx
+
+- name: Test nginx configuration
+  command: nginx -t
+  changed_when: false
