@@ -1022,7 +1022,16 @@ export const importEvaluationTemplate = async (req: any, res: Response) => {
             const getCell = (col: number) => {
                 const v = row.getCell(col).value;
                 if (v === null || v === undefined) return '';
-                return typeof v === 'object' && 'result' in v ? String((v as any).result) : String(v).trim();
+                if (typeof v !== 'object') return String(v).trim();
+                // Formula cell: { formula, result } — unwrap the cached result
+                const inner = 'result' in (v as any) ? (v as any).result : v;
+                if (inner === null || inner === undefined) return '';
+                if (typeof inner !== 'object') return String(inner).trim();
+                // CellErrorValue: { error: '#VALUE!' } or similar — formula didn't produce a number
+                if ('error' in (inner as any)) return '__FORMULA_ERROR__';
+                // Rich text: { richText: [{ text, font }] }
+                if ('richText' in (inner as any)) return (inner as any).richText.map((r: any) => r.text ?? '').join('').trim();
+                return '';
             };
 
             const groupId = getCell(1);
@@ -1050,6 +1059,10 @@ export const importEvaluationTemplate = async (req: any, res: Response) => {
                 if (!scores[rc.evalT]) scores[rc.evalT] = {};
                 if (!scores[rc.evalT][rc.section]) scores[rc.evalT][rc.section] = {};
                 if (val === '') { scores[rc.evalT][rc.section][rc.key] = 0; return; }
+                if (val === '__FORMULA_ERROR__') {
+                    errors.push({ row: r, message: `Group ${groupName}: ${rc.headerLabel} — cell contains a formula error (e.g. RANDBETWEEN result was not cached). Please replace the formula with a plain number and re-upload.` });
+                    scores[rc.evalT][rc.section][rc.key] = 0; return;
+                }
                 const num = Number(val);
                 if (isNaN(num) || num < 0 || num > rc.max)
                     errors.push({ row: r, message: `Group ${groupName}: ${rc.headerLabel} must be 0-${rc.max}, got "${val}"` });

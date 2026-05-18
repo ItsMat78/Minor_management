@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../utils/api';
-import { Layout, Users, CheckSquare, MessageSquare, Menu, Clock, Calendar, X, ChevronRight, Plus, Archive, FileText, Search, Square, AlertCircle, Trash2, AlertTriangle } from 'lucide-react';
+import { Layout, Users, CheckSquare, MessageSquare, Menu, Clock, Calendar, X, ChevronRight, Plus, Archive, FileText, Search, Square, AlertCircle, Trash2, AlertTriangle, Trophy, Star } from 'lucide-react';
 import FilePreview from '../components/FilePreview';
 import AdminDashboard from './AdminDashboard';
 import FacultyDashboard from './FacultyDashboard';
@@ -38,7 +38,7 @@ const Dashboard: React.FC = () => {
     const { user, logout, activeEvents } = useAuth();
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
-    const initialStudentTab = searchParams.get('tab') as 'directory' | 'project' | 'group' | 'archive' | null;
+    const initialStudentTab = searchParams.get('tab') as 'directory' | 'project' | 'group' | 'archive' | 'results' | null;
     const [group, setGroup] = useState<Group | null>(null);
     const [loading, setLoading] = useState(true);
     const [students, setStudents] = useState<Student[]>([]);
@@ -46,7 +46,7 @@ const Dashboard: React.FC = () => {
     const [selectedStudents, setSelectedStudents] = useState<Set<string>>(new Set());
     const [searchTerm, setSearchTerm] = useState('');
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-    const [activeTab, setActiveTab] = useState<'directory' | 'project' | 'group' | 'archive'>(initialStudentTab || 'directory');
+    const [activeTab, setActiveTab] = useState<'directory' | 'project' | 'group' | 'archive' | 'results'>(initialStudentTab || 'directory');
 
 
     useEffect(() => {
@@ -360,6 +360,10 @@ const Dashboard: React.FC = () => {
     const hasEndTermSubs = !!(approvedProjectForSidebar?.submissions?.endTermReport || approvedProjectForSidebar?.submissions?.endTermPPT);
     const midTermActive = activeEvents?.some(e => e.type === 'mid_term_evaluation');
     const endTermActive = activeEvents?.some(e => e.type === 'end_term_evaluation');
+    const myStudentEvals = ((approvedProjectForSidebar?.studentEvaluations || []) as any[]).filter(
+        (e: any) => String(e.student?._id ?? e.student) === String(user?._id)
+    );
+    const hasEvaluations = myStudentEvals.length > 0;
 
 
 
@@ -431,6 +435,14 @@ const Dashboard: React.FC = () => {
                         active={activeTab === 'archive'}
                         onClick={() => setActiveTab('archive')}
                     />
+                    {approvedProjectForSidebar && hasEvaluations && (
+                        <SidebarItem
+                            icon={<Trophy className="w-5 h-5" />}
+                            label="My Results"
+                            active={activeTab === 'results'}
+                            onClick={() => setActiveTab('results')}
+                        />
+                    )}
                 </nav>
                 <div className="p-4 border-t border-neutral-100">
                     <div className="flex items-center gap-3 mb-4">
@@ -473,10 +485,16 @@ const Dashboard: React.FC = () => {
                             <div className="flex items-center gap-2 text-xs text-neutral-500 mb-0.5">
                                 <span>Portal</span>
                                 <ChevronRight className="w-3 h-3" />
-                                <span>{activeTab === 'directory' ? 'Directory' : 'My Project'}</span>
+                                <span>
+                                    {activeTab === 'directory' ? 'Directory' :
+                                     activeTab === 'results' ? 'Results' :
+                                     activeTab === 'archive' ? 'Archive' : 'My Project'}
+                                </span>
                             </div>
                             <h1 className="text-xl font-bold text-neutral-800">
-                                {activeTab === 'directory' ? 'Student Directory' : 'Project Workspace'}
+                                {activeTab === 'directory' ? 'Student Directory' :
+                                 activeTab === 'results' ? 'My Results' :
+                                 activeTab === 'archive' ? 'Project Archive' : 'Project Workspace'}
                             </h1>
                         </div>
                     </div>
@@ -969,7 +987,7 @@ const Dashboard: React.FC = () => {
                                                         </div>
 
                                                         {/* Final Deliverables Tray */}
-                                                        <div className="mb-8 bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-100 rounded-2xl p-6">
+                                                        {(midTermActive || endTermActive) && <div className="mb-8 bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-100 rounded-2xl p-6">
                                                             <div className="flex items-center justify-between mb-4">
                                                                 <h3 className="text-lg font-bold text-neutral-900 flex items-center gap-2">
                                                                     <Archive className="w-5 h-5 text-emerald-600" /> Final Deliverables
@@ -1020,7 +1038,7 @@ const Dashboard: React.FC = () => {
                                                                     );
                                                                 })}
                                                             </div>
-                                                        </div>
+                                                        </div>}
 
                                                         <div className="space-y-6">
                                                             <div className="flex flex-wrap items-center justify-between gap-4">
@@ -1586,6 +1604,191 @@ const Dashboard: React.FC = () => {
                             </div>
                         </div>
                     )}
+
+                    {activeTab === 'results' && (() => {
+                        if (!hasEvaluations) {
+                            return (
+                                <div className="max-w-4xl mx-auto">
+                                    <div className="text-center py-32 bg-white rounded-3xl border border-dashed border-neutral-200">
+                                        <Trophy className="w-10 h-10 mx-auto mb-3 text-neutral-300" />
+                                        <h2 className="text-xl font-bold text-neutral-900">Results Not Available Yet</h2>
+                                        <p className="text-neutral-500 mt-1 max-w-xs mx-auto text-sm">Your results will appear here once the faculty has completed and saved your evaluation.</p>
+                                    </div>
+                                </div>
+                            );
+                        }
+
+                        const approvedProject = approvedProjectForSidebar;
+                        const midEval = myStudentEvals.find((e: any) => e.evalType === 'mid-term');
+                        const endEval = myStudentEvals.find((e: any) => e.evalType === 'end-term');
+                        const midRemarks = approvedProject?.midTermEvaluation?.remarks;
+                        const endRemarks = approvedProject?.endTermEvaluation?.remarks;
+                        const totalMarks = (midEval?.marks ?? 0) + (endEval?.marks ?? 0);
+
+                        const EvalCard = ({ title, evalData, remarks, accent, rubricGuideLabels, rubricPanelLabels }: {
+                            title: string;
+                            evalData: any;
+                            remarks?: string;
+                            accent: string;
+                            rubricGuideLabels: Record<string, string>;
+                            rubricPanelLabels: Record<string, string>;
+                        }) => {
+                            const guideEntries = evalData?.guide ? Object.entries(evalData.guide) : [];
+                            const panel1Entries = evalData?.panel1 ? Object.entries(evalData.panel1) : (evalData?.panel ? Object.entries(evalData.panel) : []);
+                            const panel2Entries = evalData?.panel2 ? Object.entries(evalData.panel2) : [];
+
+                            return (
+                                <div className={`bg-white rounded-3xl border border-${accent}-100 shadow-sm overflow-hidden`}>
+                                    <div className={`bg-${accent}-50 px-7 py-5 border-b border-${accent}-100 flex items-center justify-between`}>
+                                        <div className="flex items-center gap-3">
+                                            <div className={`p-2.5 bg-${accent}-100 rounded-xl text-${accent}-700`}>
+                                                <Trophy className="w-5 h-5" />
+                                            </div>
+                                            <div>
+                                                <h3 className="font-black text-neutral-900 text-base">{title}</h3>
+                                                {evalData?.attendance && (
+                                                    <span className={`text-[10px] font-bold uppercase tracking-widest ${evalData.attendance === 'present' ? 'text-emerald-600' : 'text-red-500'}`}>
+                                                        {evalData.attendance === 'present' ? 'Present' : 'Absent'}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+                                        <div className="text-right">
+                                            {evalData?.marks != null ? (
+                                                <>
+                                                    <p className={`text-3xl font-black text-${accent}-700 leading-none`}>{evalData.marks}</p>
+                                                    <p className="text-[10px] text-neutral-400 font-medium mt-0.5">Total Marks</p>
+                                                </>
+                                            ) : (
+                                                <span className="text-xs font-bold text-neutral-400 uppercase tracking-widest bg-neutral-100 px-3 py-1.5 rounded-full">Not Evaluated</span>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {evalData ? (
+                                        <div className="p-7 space-y-5">
+                                            {evalData.stars != null && evalData.stars > 0 && (
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-xs font-bold text-neutral-500 uppercase tracking-widest">Performance</span>
+                                                    <div className="flex items-center gap-0.5 ml-2">
+                                                        {[1,2,3,4,5].map(i => (
+                                                            <Star key={i} className={`w-4 h-4 ${i <= evalData.stars ? 'text-amber-400 fill-amber-400' : 'text-neutral-200 fill-neutral-200'}`} />
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {guideEntries.length > 0 && (
+                                                <div>
+                                                    <p className="text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-3">Guide Evaluation</p>
+                                                    <div className="space-y-2">
+                                                        {guideEntries.map(([key, val]: any) => (
+                                                            <div key={key} className="flex items-center justify-between text-sm">
+                                                                <span className="text-neutral-600 font-medium capitalize">
+                                                                    {rubricGuideLabels[key] || key.replace(/([A-Z])/g, ' $1').trim()}
+                                                                </span>
+                                                                <span className="font-bold text-neutral-900 tabular-nums">{val}</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {panel1Entries.length > 0 && (
+                                                <div>
+                                                    <p className="text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-3">
+                                                        {panel2Entries.length > 0 ? 'Panel Evaluator 1' : 'Panel Evaluation'}
+                                                    </p>
+                                                    <div className="space-y-2">
+                                                        {panel1Entries.map(([key, val]: any) => (
+                                                            <div key={key} className="flex items-center justify-between text-sm">
+                                                                <span className="text-neutral-600 font-medium capitalize">
+                                                                    {rubricPanelLabels[key] || key.replace(/([A-Z])/g, ' $1').trim()}
+                                                                </span>
+                                                                <span className="font-bold text-neutral-900 tabular-nums">{val}</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {panel2Entries.length > 0 && (
+                                                <div>
+                                                    <p className="text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-3">Panel Evaluator 2</p>
+                                                    <div className="space-y-2">
+                                                        {panel2Entries.map(([key, val]: any) => (
+                                                            <div key={key} className="flex items-center justify-between text-sm">
+                                                                <span className="text-neutral-600 font-medium capitalize">
+                                                                    {rubricPanelLabels[key] || key.replace(/([A-Z])/g, ' $1').trim()}
+                                                                </span>
+                                                                <span className="font-bold text-neutral-900 tabular-nums">{val}</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {remarks && (
+                                                <div className="pt-4 border-t border-neutral-100">
+                                                    <p className="text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-2">Faculty Remarks</p>
+                                                    <p className="text-sm text-neutral-700 leading-relaxed bg-neutral-50 rounded-xl p-3 border border-neutral-100">{remarks}</p>
+                                                </div>
+                                            )}
+                                        </div>
+                                    ) : (
+                                        <div className="p-7 text-center text-neutral-400">
+                                            <Clock className="w-8 h-8 mx-auto mb-3 opacity-40" />
+                                            <p className="text-sm font-medium">Evaluation not yet completed</p>
+                                            <p className="text-xs mt-1">Your marks will appear here once the evaluation is done.</p>
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        };
+
+                        return (
+                            <div className="max-w-4xl mx-auto space-y-6">
+                                <>
+                                    {/* Summary card */}
+                                        <div className="bg-neutral-900 rounded-3xl p-7 text-white relative overflow-hidden">
+                                            <div className="absolute -top-8 -right-8 w-40 h-40 bg-white/5 rounded-full" />
+                                            <div className="absolute -bottom-4 -left-4 w-24 h-24 bg-white/5 rounded-full" />
+                                            <div className="relative flex items-start justify-between">
+                                                <div>
+                                                    <p className="text-[10px] font-bold text-neutral-500 uppercase tracking-[0.2em] mb-2">Project Results</p>
+                                                    <h2 className="text-xl font-black text-white leading-tight mb-1 max-w-sm">{approvedProject.title}</h2>
+                                                    <p className="text-xs text-neutral-400 font-medium">Group {group?.name} · {approvedProject?.faculty?.name || 'No Mentor'}</p>
+                                                </div>
+                                                <div className="text-right shrink-0 ml-6">
+                                                    <p className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest mb-1">Combined Total</p>
+                                                    <p className="text-5xl font-black text-white leading-none">{totalMarks}</p>
+                                                    <p className="text-xs text-neutral-500 mt-1">marks earned</p>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                                            <EvalCard
+                                                title="Mid-Term Evaluation"
+                                                evalData={midEval}
+                                                remarks={midRemarks}
+                                                accent="emerald"
+                                                rubricGuideLabels={{ dataElicitation: 'Data Elicitation', problemDefinition: 'Problem Definition', planning: 'Planning' }}
+                                                rubricPanelLabels={{ literatureSurvey: 'Literature Survey', presentationSkills: 'Presentation Skills', technicalUnderstanding: 'Technical Understanding' }}
+                                            />
+                                            <EvalCard
+                                                title="End-Term Evaluation"
+                                                evalData={endEval}
+                                                remarks={endRemarks}
+                                                accent="indigo"
+                                                rubricGuideLabels={{ requirementSpecification: 'Requirement Specification', systemDesign: 'System Design', implementation: 'Implementation', projectManagement: 'Project Management', planningVsExecution: 'Planning vs Execution' }}
+                                                rubricPanelLabels={{ testingAndResults: 'Testing & Results', innovationAndRelevance: 'Innovation & Relevance', presentationAndViva: 'Presentation & Viva', conceptualDepth: 'Conceptual Depth' }}
+                                            />
+                                        </div>
+                                </>
+                            </div>
+                        );
+                    })()}
                 </main>
             </div > {/* Closing main content flex */}
 
