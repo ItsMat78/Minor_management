@@ -20,7 +20,7 @@ export const transporter = nodemailer.createTransport({
  */
 export const sendEmail = async (to: string | string[], subject: string, text: string, html?: string) => {
     try {
-        const fromAddress = process.env.EMAIL_USER || 'no-reply@minor-management.edu';
+        const fromAddress = process.env.EMAIL_FROM || process.env.EMAIL_USER || 'no-reply@minor-management.edu';
         const replyTo = process.env.EMAIL_REPLY_TO;
         const mailOptions: any = {
             from: `"Minor Project Management" <${fromAddress}>`,
