@@ -38,13 +38,9 @@ jobs:
       - name: Sync to client folder
         run: |
           set -e
-          TARGET=$HOME/minor_management/client
+          TARGET=$HOME/minor_project_management
           mkdir -p "$TARGET"
-          rsync -a --delete \
-            --exclude '.git' \
-            --exclude '.github' \
-            --exclude 'node_modules' \
-            ./client/ "$TARGET/"
+          rsync -a --delete ./client/dist/ "$TARGET/"
 
       - name: Reload Nginx
         run: sudo nginx -t && sudo systemctl reload nginx
@@ -62,7 +58,7 @@ jobs:
       - name: Sync to server folder
         run: |
           set -e
-          TARGET=$HOME/minor_management/server
+          TARGET=$HOME/minor_project_management_server
           mkdir -p "$TARGET"
           rsync -a --delete \
             --exclude '.git' \
@@ -70,16 +66,17 @@ jobs:
             --exclude 'node_modules' \
             ./server/ "$TARGET/"
 
-      - name: Install production dependencies
-        run: npm ci --omit=dev --prefix $HOME/minor_management/server
+      - name: Install dependencies
+        run: npm ci --prefix $HOME/minor_project_management_server
+
+      - name: Build TypeScript
+        run: npm run build --prefix $HOME/minor_project_management_server
 
       - name: Deploy with PM2
         run: |
           set -e
-          TARGET=$HOME/minor_management/server
-          cd "$TARGET"
+          cd $HOME/minor_project_management_server
           sudo fuser -k -9 3000/tcp || true
-          ENTRY=$(node -p "require('./package.json').main || 'index.js'")
-          pm2 start "$ENTRY" --name minor-management-server --update-env \
-            || pm2 restart minor-management-server --update-env
+          pm2 restart minor_project_management_server --update-env \
+            || pm2 start npm --name minor_project_management_server -- start
           pm2 save
