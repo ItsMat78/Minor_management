@@ -1,0 +1,39 @@
+---
+- name: Get runner service name
+  slurp:
+    src: "{{ github_runner_install_dir }}/.service"
+  register: runner_service_file
+
+- name: Set runner service name fact
+  set_fact:
+    github_runner_service_name: "{{ runner_service_file.content | b64decode | trim }}"
+
+- name: Deploy startup shell script
+  template:
+    src: startup.sh.j2
+    dest: "{{ startup_script_path }}"
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Deploy startup systemd service unit
+  template:
+    src: startup.service.j2
+    dest: "/etc/systemd/system/{{ startup_service_name }}.service"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Reload systemd daemon
+  systemd:
+    daemon_reload: yes
+
+- name: Enable startup service
+  systemd:
+    name: "{{ startup_service_name }}"
+    enabled: yes
+
+- name: Start startup service
+  systemd:
+    name: "{{ startup_service_name }}"
+    state: started

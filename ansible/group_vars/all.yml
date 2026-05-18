@@ -1,0 +1,37 @@
+---
+ansible_user: minor                         # SSH user on the target server
+ansible_python_interpreter: /usr/bin/python3
+
+project_title: minor-project
+
+deployment_group: iiitnr
+app_root: "/home/{{ ansible_user }}/{{ project_title }}"
+
+nginx_server_name: minor-project.iiitnr.ac.in
+nginx_config_path: /etc/nginx/sites-available
+nginx_enabled_path: /etc/nginx/sites-enabled
+api_port: 3000
+ssl_cert_dir: "/home/{{ ansible_user }}/ssl_certificates"
+ssl_cert_file: "{{ ssl_cert_dir }}/certificate.crt"
+ssl_key_file: "{{ ssl_cert_dir }}/key.key"
+
+local_ssl_cert_path: ./ssl/certificate.crt
+local_ssl_key_path: ./ssl/key.key
+
+nodejs_version: "20"
+
+pm2_startup_user: "{{ ansible_user }}"
+
+github_runner_version: "2.315.0"
+github_runner_install_dir: "/home/{{ ansible_user }}/actions-runner"
+github_runner_name: "{{ project_title }}-runner"
+github_runner_labels: "{{ project_title }},self-hosted,Linux"
+github_runner_repo_url: "https://github.com/PraveenBajpai123/Minor_management"
+
+startup_script_path: /usr/local/bin/project-startup.sh
+startup_service_name: "{{ project_title }}-startup"
+
+# Bastion / jump host (SSH args are in ansible.cfg [ssh_connection] ssh_args)
+bastion_host: "1.6.33.107"
+bastion_user: admission
+bastion_port: 22

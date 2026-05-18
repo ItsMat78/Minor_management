@@ -1,0 +1,13 @@
+[Unit]
+Description={{ startup_service_name }}
+After=network.target network-online.target {{ github_runner_service_name }}
+Wants=network-online.target
+Requires={{ github_runner_service_name }}
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart={{ startup_script_path }}
+
+[Install]
+WantedBy=multi-user.target

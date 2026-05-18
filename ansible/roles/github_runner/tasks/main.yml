@@ -1,0 +1,56 @@
+---
+- name: Create GitHub Actions runner install directory
+  file:
+    path: "{{ github_runner_install_dir }}"
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ deployment_group }}"
+    mode: "0755"
+
+- name: Download GitHub Actions runner tarball
+  get_url:
+    url: "https://github.com/actions/runner/releases/download/v{{ github_runner_version }}/actions-runner-linux-x64-{{ github_runner_version }}.tar.gz"
+    dest: "/tmp/actions-runner-{{ github_runner_version }}.tar.gz"
+    mode: "0644"
+
+- name: Extract GitHub Actions runner
+  unarchive:
+    src: "/tmp/actions-runner-{{ github_runner_version }}.tar.gz"
+    dest: "{{ github_runner_install_dir }}"
+    remote_src: yes
+    creates: "{{ github_runner_install_dir }}/config.sh"
+  become: yes
+  become_user: "{{ ansible_user }}"
+
+- name: Configure GitHub Actions runner
+  command: >
+    ./config.sh
+    --url {{ github_runner_repo_url }}
+    --token {{ vault_github_runner_token }}
+    --name {{ github_runner_name }}
+    --labels {{ github_runner_labels }}
+    --unattended
+    --replace
+  args:
+    chdir: "{{ github_runner_install_dir }}"
+    creates: "{{ github_runner_install_dir }}/.runner"
+  become: yes
+  become_user: "{{ ansible_user }}"
+
+- name: Install runner as systemd service
+  command: "./svc.sh install {{ ansible_user }}"
+  args:
+    chdir: "{{ github_runner_install_dir }}"
+    creates: "{{ github_runner_install_dir }}/.service"
+
+- name: Get runner service name
+  slurp:
+    src: "{{ github_runner_install_dir }}/.service"
+  register: runner_service_file
+
+- name: Enable and start GitHub Actions runner service
+  systemd:
+    name: "{{ runner_service_file.content | b64decode | trim }}"
+    enabled: yes
+    state: started
+    daemon_reload: yes
