@@ -35,7 +35,8 @@
       "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\('localStorage:', d.get\\('origins',[]\\)[0].get\\('localStorage',[]\\) if d.get\\('origins'\\) else 'no origins'\\); print\\('sessionStorage:', d.get\\('origins',[]\\)[0].get\\('sessionStorage','N/A'\\) if d.get\\('origins'\\) else 'N/A'\\)\")",
       "Bash(python3 -c \"import json; d=json.load\\(open\\('E:/Projects/Minor_management/e2e/.auth/student.json'\\)\\); print\\(json.dumps\\(d, indent=2\\)\\)\")",
       "PowerShell(netstat *)",
-      "PowerShell(mongosh *)"
+      "PowerShell(mongosh *)",
+      "Bash(npm run *)"
     ]
   }
 }

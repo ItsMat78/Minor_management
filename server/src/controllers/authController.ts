@@ -149,10 +149,7 @@ export const forgotPassword = async (req: Request, res: Response) => {
         const { email } = req.body;
         const user = await User.findOne({ email });
 
-        // Always respond the same way to avoid leaking whether an email is registered
-        const genericOk = () => res.json({ message: 'If that email is registered, an OTP has been sent.' });
-
-        if (!user) return genericOk();
+        if (!user) return res.status(404).json({ message: 'No account found with that email address.' });
 
         // 60-second cooldown (same logic as resendOtp)
         if (user.otpExpires) {
@@ -185,7 +182,7 @@ export const forgotPassword = async (req: Request, res: Response) => {
             console.error(`[AuthController] Failed to send forgot-password OTP to ${user.email}:`, err)
         );
 
-        return genericOk();
+        return res.json({ message: 'OTP sent to your email.' });
     } catch (error) {
         res.status(500).json({ message: 'Server error', error });
     }

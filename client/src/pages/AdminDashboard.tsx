@@ -134,7 +134,7 @@ const AdminDashboard: React.FC = () => {
     const [showCreateAdmin, setShowCreateAdmin] = useState(false);
     const [adminForm, setAdminForm] = useState({ name: '', email: '', password: '' });
     const [showCreateUser, setShowCreateUser] = useState(false);
-    const [createUserForm, setCreateUserForm] = useState({ name: '', email: '', role: 'Student', rollNumber: '', branch: 'CSE', semester: '', department: 'CSE', expertise: '' });
+    const [createUserForm, setCreateUserForm] = useState({ name: '', email: '', role: 'Student', rollNumber: '', branch: 'CSE', semester: '', department: 'CSE', expertise: '', isParticipating: true });
     const [createUserError, setCreateUserError] = useState<string | null>(null);
     const [createUserSuccess, setCreateUserSuccess] = useState<string | null>(null);
 
@@ -865,7 +865,7 @@ const AdminDashboard: React.FC = () => {
     const handleUpdateStudentBatch = async (newBatch: string, isParticipating: boolean) => {
         if (!configStudentBatch) return;
         try {
-            await api.put(`/users/${configStudentBatch._id}`, { 
+            await api.put(`/users/${configStudentBatch._id}`, {
                 targetBatch: newBatch,
                 isParticipating: isParticipating
             });
@@ -1155,6 +1155,28 @@ const AdminDashboard: React.FC = () => {
             const res = await api.get('/users/faculty');
             setFaculty(Array.isArray(res.data) ? res.data : []);
         } catch { alert('Failed to update faculty verification.'); }
+    };
+
+    // Auto-derive branch & semester from a student roll number
+    const deriveStudentFields = (rollNumber: string) => {
+        const derived: { branch?: string; semester?: string } = {};
+        if (rollNumber.length >= 2) {
+            const batchYear = 2000 + parseInt(rollNumber.substring(0, 2));
+            if (!isNaN(batchYear)) {
+                const now = new Date();
+                let sem = (now.getFullYear() - batchYear) * 2;
+                if (now.getMonth() >= 5) sem += 1; // June onwards = odd semester
+                if (sem < 1) sem = 1;
+                if (sem > 8) sem = 8;
+                derived.semester = String(sem);
+            }
+        }
+        if (rollNumber.length >= 5) {
+            const branchMap: Record<string, string> = { '0': 'CSE', '1': 'ECE', '2': 'DSAI' };
+            const branchDigit = rollNumber[4];
+            if (branchMap[branchDigit]) derived.branch = branchMap[branchDigit];
+        }
+        return derived;
     };
 
     const handleEditUser = (user: any) => {
@@ -1580,7 +1602,7 @@ const AdminDashboard: React.FC = () => {
                                                         </div>
                                                     </button>
                                                     <button
-                                                        onClick={() => { setCreateUserError(null); setCreateUserSuccess(null); setCreateUserForm({ name: '', email: '', role: 'Student', rollNumber: '', branch: 'CSE', semester: '', department: 'CSE', expertise: '' }); setShowCreateUser(true); }}
+                                                        onClick={() => { setCreateUserError(null); setCreateUserSuccess(null); setCreateUserForm({ name: '', email: '', role: 'Student', rollNumber: '', branch: 'CSE', semester: '', department: 'CSE', expertise: '', isParticipating: true }); setShowCreateUser(true); }}
                                                         className="flex items-center gap-3 p-4 rounded-2xl border border-neutral-200 hover:border-green-300 hover:bg-green-50 hover:text-green-700 transition-all text-left group"
                                                     >
                                                         <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center text-green-600 group-hover:scale-110 transition-transform">
@@ -1715,23 +1737,23 @@ const AdminDashboard: React.FC = () => {
                                                                                 onClick={e => e.stopPropagation()}
                                                                             >
                                                                                 <button
-                                                                                    onClick={() => { 
-                                                                            setConfigStudentBatch(student); 
-                                                                            setStudentParticipationOverride(student.isParticipating ?? true);
-                                                                            setStudentBatchMenuOpen(null); 
-                                                                        }}
+                                                                                    onClick={() => {
+                                                                                        setConfigStudentBatch(student);
+                                                                                        setStudentParticipationOverride(student.isParticipating ?? true);
+                                                                                        setStudentBatchMenuOpen(null);
+                                                                                    }}
                                                                                     className="w-full text-left px-4 py-2 text-sm text-neutral-700 hover:bg-indigo-50 hover:text-indigo-600 flex items-center gap-2 transition-colors"
                                                                                 >
                                                                                     <AlertCircle className="w-4 h-4" /> Override batch
                                                                                 </button>
                                                                                 <button
-                                                                                    onClick={() => { handleEditUser(student); setStudentBatchMenuOpen(null); }}
+                                                                                    onClick={() => { handleEditUser({ ...student, role: 'Student' }); setStudentBatchMenuOpen(null); }}
                                                                                     className="w-full text-left px-4 py-2 text-sm text-neutral-700 hover:bg-amber-50 hover:text-amber-600 flex items-center gap-2 transition-colors"
                                                                                 >
                                                                                     <Pencil className="w-4 h-4" /> Edit student
                                                                                 </button>
                                                                                 <button
-                                                                                    onClick={() => { setDeleteConfirm(student); setStudentBatchMenuOpen(null); }}
+                                                                                    onClick={() => { setDeleteConfirm({ ...student, role: 'Student' }); setStudentBatchMenuOpen(null); }}
                                                                                     className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 transition-colors"
                                                                                 >
                                                                                     <Trash2 className="w-4 h-4" /> Delete student
@@ -3521,21 +3543,7 @@ const AdminDashboard: React.FC = () => {
                                         <label className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Roll Number</label>
                                         <input className="border border-neutral-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-300" value={editUserForm.rollNumber} onChange={e => setEditUserForm((f: any) => ({ ...f, rollNumber: e.target.value }))} />
                                     </div>
-                                    <div className="flex flex-col gap-1">
-                                        <label className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Branch</label>
-                                        <select className="border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" value={editUserForm.branch} onChange={e => setEditUserForm((f: any) => ({ ...f, branch: e.target.value }))}>
-                                            <option>CSE</option><option>ECE</option><option>DSAI</option>
-                                        </select>
-                                    </div>
-                                    <div className="flex flex-col gap-1">
-                                        <label className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Target Batch (Override)</label>
-                                        <select className="border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" value={editUserForm.targetBatch} onChange={e => setEditUserForm((f: any) => ({ ...f, targetBatch: e.target.value }))}>
-                                            <option value="">No Override</option>
-                                            {[...participatingBatchYears].reverse().map(year => (
-                                                <option key={year} value={year}>{year}</option>
-                                            ))}
-                                        </select>
-                                    </div>
+
                                     <div className="flex items-center justify-between p-3 bg-neutral-50 rounded-xl border border-neutral-100">
                                         <div>
                                             <p className="text-sm font-bold text-neutral-800">Participating</p>
@@ -3572,7 +3580,7 @@ const AdminDashboard: React.FC = () => {
                                 <div className="w-9 h-9 rounded-full bg-red-100 flex items-center justify-center shrink-0">
                                     <Trash2 className="w-5 h-5 text-red-600" />
                                 </div>
-                                <h3 className="text-lg font-bold text-neutral-900">Delete {deleteConfirm.role === 'Student' ? 'Student' : 'Faculty'}?</h3>
+                                <h3 className="text-lg font-bold text-neutral-900">Delete {deleteConfirm?.role === 'Student' ? 'Student' : 'Faculty'}?</h3>
                             </div>
                             <div className="px-6 py-5">
                                 <p className="text-sm text-neutral-600">You are about to permanently delete <span className="font-semibold text-neutral-900">{deleteConfirm.name}</span> ({deleteConfirm.email}).</p>
@@ -4183,7 +4191,7 @@ const AdminDashboard: React.FC = () => {
                                     <div className="space-y-4">
                                         <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-sm text-green-800">{createUserSuccess}</div>
                                         <div className="flex justify-end gap-3">
-                                            <button onClick={() => { setCreateUserSuccess(null); setCreateUserForm({ name: '', email: '', role: 'Student', rollNumber: '', branch: 'CSE', semester: '', department: 'CSE', expertise: '' }); }} className="px-4 py-2 text-sm font-bold text-indigo-600 hover:bg-indigo-50 rounded-xl transition-colors">Create Another</button>
+                                            <button onClick={() => { setCreateUserSuccess(null); setCreateUserForm({ name: '', email: '', role: 'Student', rollNumber: '', branch: 'CSE', semester: '', department: 'CSE', expertise: '', isParticipating: true }); }} className="px-4 py-2 text-sm font-bold text-indigo-600 hover:bg-indigo-50 rounded-xl transition-colors">Create Another</button>
                                             <button onClick={() => { setShowCreateUser(false); setCreateUserSuccess(null); }} className="px-4 py-2 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-colors">Done</button>
                                         </div>
                                     </div>
@@ -4214,28 +4222,38 @@ const AdminDashboard: React.FC = () => {
                                             <input required type="email" value={createUserForm.email} onChange={e => setCreateUserForm(p => ({ ...p, email: e.target.value }))} className="w-full px-4 py-2.5 rounded-xl border border-neutral-200 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all text-sm" placeholder="user@iiitnr.edu.in" />
                                         </div>
                                         {createUserForm.role === 'Student' && (<>
+                                            <div>
+                                                <label className="block text-sm font-bold text-neutral-700 mb-1.5">Roll Number</label>
+                                                <input required type="text" value={createUserForm.rollNumber} onChange={e => { const rn = e.target.value; setCreateUserForm(p => ({ ...p, rollNumber: rn, ...deriveStudentFields(rn) })); }} className="w-full px-4 py-2.5 rounded-xl border border-neutral-200 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all text-sm" placeholder="24100XXXX" />
+                                            </div>
                                             <div className="grid grid-cols-2 gap-3">
                                                 <div>
-                                                    <label className="block text-sm font-bold text-neutral-700 mb-1.5">Roll Number</label>
-                                                    <input required type="text" value={createUserForm.rollNumber} onChange={e => setCreateUserForm(p => ({ ...p, rollNumber: e.target.value }))} className="w-full px-4 py-2.5 rounded-xl border border-neutral-200 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all text-sm" placeholder="24100XXXX" />
-                                                </div>
-                                                <div>
-                                                    <label className="block text-sm font-bold text-neutral-700 mb-1.5">Semester</label>
+                                                    <label className="block text-sm font-bold text-neutral-700 mb-1.5">Semester <span className="font-normal text-neutral-400 text-xs">(auto-filled)</span></label>
                                                     <select value={createUserForm.semester} onChange={e => setCreateUserForm(p => ({ ...p, semester: e.target.value }))} className="w-full px-4 py-2.5 rounded-xl border border-neutral-200 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none text-sm">
                                                         <option value="">—</option>
                                                         {[1, 2, 3, 4, 5, 6, 7, 8].map(s => <option key={s} value={s}>Sem {s}</option>)}
                                                     </select>
                                                 </div>
+                                                <div>
+                                                    <label className="block text-sm font-bold text-neutral-700 mb-1.5">Branch <span className="font-normal text-neutral-400 text-xs">(auto-filled)</span></label>
+                                                    <select value={createUserForm.branch} onChange={e => setCreateUserForm(p => ({ ...p, branch: e.target.value }))} className="w-full px-4 py-2.5 rounded-xl border border-neutral-200 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none text-sm">
+                                                        <option value="CSE">CSE</option>
+                                                        <option value="ECE">ECE</option>
+                                                        <option value="DSAI">DSAI</option>
+                                                    </select>
+                                                </div>
                                             </div>
-                                            <div>
-                                                <label className="block text-sm font-bold text-neutral-700 mb-1.5">Branch</label>
-                                                <select value={createUserForm.branch} onChange={e => setCreateUserForm(p => ({ ...p, branch: e.target.value }))} className="w-full px-4 py-2.5 rounded-xl border border-neutral-200 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none text-sm">
-                                                    <option value="CSE">CSE</option>
-                                                    <option value="ECE">ECE</option>
-                                                    <option value="DSAI">DSAI</option>
-                                                </select>
+                                            <div className="flex items-center justify-between p-3 bg-neutral-50 rounded-xl border border-neutral-100">
+                                                <div>
+                                                    <p className="text-sm font-bold text-neutral-800">Participating</p>
+                                                    <p className="text-[10px] text-neutral-500">Include in this semester's minor project cohort</p>
+                                                </div>
+                                                <button type="button" onClick={() => setCreateUserForm(p => ({ ...p, isParticipating: !p.isParticipating }))} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${createUserForm.isParticipating ? 'bg-indigo-600' : 'bg-neutral-300'}`}>
+                                                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${createUserForm.isParticipating ? 'translate-x-6' : 'translate-x-1'}`} />
+                                                </button>
                                             </div>
                                         </>)}
+
                                         {createUserForm.role === 'Faculty' && (<>
                                             <div>
                                                 <label className="block text-sm font-bold text-neutral-700 mb-1.5">Department</label>
