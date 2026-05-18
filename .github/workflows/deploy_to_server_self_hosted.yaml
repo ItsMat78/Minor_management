@@ -38,7 +38,7 @@ jobs:
       - name: Sync to client folder
         run: |
           set -e
-          TARGET=$HOME/minor_management/client
+          TARGET=$HOME/minor_project_management
           mkdir -p "$TARGET"
           rsync -a --delete \
             --exclude '.git' \
@@ -62,7 +62,7 @@ jobs:
       - name: Sync to server folder
         run: |
           set -e
-          TARGET=$HOME/minor_management/server
+          TARGET=$HOME/minor_project_management_server
           mkdir -p "$TARGET"
           rsync -a --delete \
             --exclude '.git' \
@@ -71,15 +71,15 @@ jobs:
             ./server/ "$TARGET/"
 
       - name: Install production dependencies
-        run: npm ci --omit=dev --prefix $HOME/minor_management/server
+        run: npm ci --omit=dev --prefix $HOME/minor_project_management_server
 
       - name: Deploy with PM2
         run: |
           set -e
-          TARGET=$HOME/minor_management/server
+          TARGET=$HOME/minor_project_management_server
           cd "$TARGET"
           sudo fuser -k -9 3000/tcp || true
           ENTRY=$(node -p "require('./package.json').main || 'index.js'")
-          pm2 start "$ENTRY" --name minor-management-server --update-env \
-            || pm2 restart minor-management-server --update-env
+          pm2 start "$ENTRY" --name minor_project_management_server --update-env \
+            || pm2 restart minor_project_management_server --update-env
           pm2 save
