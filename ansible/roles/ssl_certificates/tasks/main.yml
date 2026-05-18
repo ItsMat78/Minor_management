@@ -23,6 +23,22 @@
     group: "{{ deployment_group }}"
     mode: "0640"
 
+- name: Allow www-data to read SSL certificate
+  acl:
+    path: "{{ ssl_cert_file }}"
+    entity: www-data
+    etype: user
+    permissions: r
+    state: present
+
+- name: Allow www-data to read SSL private key
+  acl:
+    path: "{{ ssl_key_file }}"
+    entity: www-data
+    etype: user
+    permissions: r
+    state: present
+
 - name: Verify SSL certificate is readable
   command: "openssl x509 -noout -subject -in {{ ssl_cert_file }}"
   changed_when: false

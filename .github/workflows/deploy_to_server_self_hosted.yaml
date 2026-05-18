@@ -76,10 +76,8 @@ jobs:
       - name: Deploy with PM2
         run: |
           set -e
-          TARGET=$HOME/minor_project_management_server
-          cd "$TARGET"
+          cd $HOME/minor_project_management_server
           sudo fuser -k -9 3000/tcp || true
-          ENTRY=$(node -p "require('./package.json').main || 'index.js'")
-          pm2 start "$ENTRY" --name minor_project_management_server --update-env \
-            || pm2 restart minor_project_management_server --update-env
+          pm2 restart minor_project_management_server --update-env \
+            || pm2 start npm --name minor_project_management_server -- start
           pm2 save
