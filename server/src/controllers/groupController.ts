@@ -341,7 +341,7 @@ export const getAllGroups = async (req: Request, res: Response) => {
             .populate({
                 path: 'project',
                 populate: { path: 'faculty', select: 'name email department photoUrl' },
-                select: 'title description status tags semester attachments feedback hasNewUpdate updates faculty midTermEvaluation endTermEvaluation finalReportEvaluation studentFeedback'
+                select: 'title description status tags semester attachments feedback hasNewUpdate updates faculty midTermEvaluation endTermEvaluation finalReportEvaluation studentFeedback studentEvaluations'
             })
             .sort({ createdAt: -1 });
 
