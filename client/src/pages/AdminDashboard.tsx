@@ -184,9 +184,6 @@ const AdminDashboard: React.FC = () => {
     type EvalStudentEntry = { stars: number; attendance: 'present' | 'absent'; guide: Record<string, number | ''>; panel1: Record<string, number | ''>; panel2: Record<string, number | ''>; };
     const [evaluatingProject, setEvaluatingProject] = useState<any>(null);
     const [evaluationRemarks, setEvaluationRemarks] = useState<string>('');
-    const [evaluationType] = useState<'end-term'>('end-term');
-    const [evaluationFeedback, setEvaluationFeedback] = useState<string>('');
-    const [savingFeedback, setSavingFeedback] = useState(false);
     const [studentEvalData, setStudentEvalData] = useState<Record<string, EvalStudentEntry>>({});
     const [studentMidData, setStudentMidData] = useState<Record<string, EvalStudentEntry> | null>(null);
     const [manualMarksMode, setManualMarksMode] = useState(false);
@@ -246,7 +243,6 @@ const AdminDashboard: React.FC = () => {
         setEvaluatingProject(group);
         const projectData = group.project || group;
         setEvaluationRemarks(projectData?.endTermEvaluation?.remarks || '');
-        setEvaluationFeedback(projectData?.feedback || '');
         setManualMarksMode(false);
 
         const members = group.members || [];
@@ -414,21 +410,7 @@ const AdminDashboard: React.FC = () => {
 
 
 
-    const handleAdminSaveEvaluationFeedback = async () => {
-        if (!evaluatingProject) return;
-        const projectData = evaluatingProject.project || evaluatingProject;
-        const projectId = projectData._id;
-        setSavingFeedback(true);
-        try {
-            await api.put(`/projects/${projectId}/feedback`, { feedback: evaluationFeedback });
-            await refreshGroups();
-        } catch (error) {
-            console.error('Failed to save feedback', error);
-            alert('Failed to save feedback.');
-        } finally {
-            setSavingFeedback(false);
-        }
-    };
+
 
     const handleAdminSubmitEvaluation = async () => {
         if (!evaluatingProject) return;
