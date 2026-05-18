@@ -2,7 +2,7 @@
 ansible_user: minor                         # SSH user on the target server
 ansible_python_interpreter: /usr/bin/python3
 
-project_title: minor-project
+project_title: minor_project_management
 
 deployment_group: iiitnr
 app_root: "/home/{{ ansible_user }}/{{ project_title }}"
