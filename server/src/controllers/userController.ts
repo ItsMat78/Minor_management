@@ -97,7 +97,7 @@ export const getFaculty = async (req: Request, res: Response) => {
         res.json(populatedFaculty);
     } catch (error) {
         console.error("getFaculty error:", error);
-        res.status(500).json({ message: 'Server error', error });
+        res.status(500).json({ message: 'Server error' });
     }
 };
 
@@ -212,22 +212,30 @@ export const getAllStudents = async (req: Request, res: Response) => {
         }
     } catch (error) {
         console.error("Error in getAllStudents:", error);
-        res.status(500).json({ message: 'Server error', error });
+        res.status(500).json({ message: 'Server error' });
     }
 };
+
+const ALLOWED_UPDATE_FIELDS = [
+    'name', 'branch', 'semester', 'department', 'expertise',
+    'maxStudents', 'maxGroups', 'batchConfigs', 'targetBatch',
+    'isParticipating', 'isVerified', 'photoUrl'
+];
 
 export const updateUser = async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
-        const updates = req.body;
+        const safeUpdates = Object.fromEntries(
+            Object.entries(req.body).filter(([key]) => ALLOWED_UPDATE_FIELDS.includes(key))
+        );
 
-        const user = await User.findByIdAndUpdate(id, updates, { new: true }).select('-password');
+        const user = await User.findByIdAndUpdate(id, safeUpdates, { new: true }).select('-password');
         if (!user) return res.status(404).json({ message: 'User not found' });
 
         res.json(user);
     } catch (error) {
         console.error("Error updating user:", error);
-        res.status(500).json({ message: 'Server error', error });
+        res.status(500).json({ message: 'Server error' });
     }
 };
 
@@ -256,7 +264,7 @@ export const exportFaculty = async (req: Request, res: Response) => {
         res.send(buf);
     } catch (error) {
         console.error("Error exporting faculty:", error);
-        res.status(500).json({ message: 'Server error', error });
+        res.status(500).json({ message: 'Server error' });
     }
 };
 
@@ -273,7 +281,7 @@ export const deleteUser = async (req: Request, res: Response) => {
         res.json({ message: 'User deleted' });
     } catch (error) {
         console.error('Error deleting user:', error);
-        res.status(500).json({ message: 'Server error', error });
+        res.status(500).json({ message: 'Server error' });
     }
 };
 
@@ -289,7 +297,7 @@ export const uploadProfilePhoto = async (req: Request, res: Response) => {
         res.json({ photoUrl });
     } catch (error) {
         console.error("Error uploading profile photo:", error);
-        res.status(500).json({ message: 'Server error', error });
+        res.status(500).json({ message: 'Server error' });
     }
 };
 
@@ -365,7 +373,7 @@ export const exportStudents = async (req: Request, res: Response) => {
 
     } catch (error) {
         console.error("Error exporting students:", error);
-        res.status(500).json({ message: 'Server error', error });
+        res.status(500).json({ message: 'Server error' });
     }
 };
 
@@ -458,7 +466,7 @@ export const previewImport = async (req: Request, res: Response) => {
         });
     } catch (error) {
         console.error("Error previewing import:", error);
-        res.status(500).json({ message: 'Server error parsing file', error });
+        res.status(500).json({ message: 'Server error parsing file' });
     }
 };
 
@@ -508,6 +516,6 @@ export const commitImport = async (req: Request, res: Response) => {
         });
     } catch (error) {
         console.error("Error committing import:", error);
-        res.status(500).json({ message: 'Server error importing data', error });
+        res.status(500).json({ message: 'Server error importing data' });
     }
 };

@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import User, { IUser, UserRole } from '../models/User';
 import { sendEmail } from '../utils/emailService';
 
@@ -21,7 +22,7 @@ export const login = async (req: Request, res: Response) => {
         }
 
         if (user.isVerified === false) {
-            const otp = Math.floor(100000 + Math.random() * 900000).toString();
+            const otp = crypto.randomInt(100000, 1000000).toString();
             user.otp = otp;
             user.otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 mins
             await user.save();
@@ -54,7 +55,7 @@ export const login = async (req: Request, res: Response) => {
 
         res.json({ token, user: userObj });
     } catch (error) {
-        res.status(500).json({ message: 'Server error', error });
+        res.status(500).json({ message: 'Server error' });
     }
 };
 
@@ -67,7 +68,7 @@ export const getMe = async (req: Request, res: Response) => {
         }
         res.json(user);
     } catch (error) {
-        res.status(500).json({ message: 'Server error', error });
+        res.status(500).json({ message: 'Server error' });
     }
 };
 
@@ -95,7 +96,7 @@ export const verifyOtp = async (req: Request, res: Response) => {
 
         res.json({ token, user: userObj, message: 'Account activated successfully' });
     } catch (error) {
-        res.status(500).json({ message: 'Server error', error });
+        res.status(500).json({ message: 'Server error' });
     }
 };
 
@@ -119,7 +120,7 @@ export const resendOtp = async (req: Request, res: Response) => {
             }
         }
 
-        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+        const otp = crypto.randomInt(100000, 1000000).toString();
         user.otp = otp;
         user.otpExpires = new Date(Date.now() + 10 * 60 * 1000);
         await user.save();
@@ -140,7 +141,7 @@ export const resendOtp = async (req: Request, res: Response) => {
 
         res.json({ message: 'OTP resent to your email.' });
     } catch (error) {
-        res.status(500).json({ message: 'Server error', error });
+        res.status(500).json({ message: 'Server error' });
     }
 };
 
@@ -162,7 +163,7 @@ export const forgotPassword = async (req: Request, res: Response) => {
             }
         }
 
-        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+        const otp = crypto.randomInt(100000, 1000000).toString();
         user.otp = otp;
         user.otpExpires = new Date(Date.now() + 10 * 60 * 1000);
         await user.save();
@@ -184,7 +185,7 @@ export const forgotPassword = async (req: Request, res: Response) => {
 
         return res.json({ message: 'OTP sent to your email.' });
     } catch (error) {
-        res.status(500).json({ message: 'Server error', error });
+        res.status(500).json({ message: 'Server error' });
     }
 };
 
@@ -212,7 +213,7 @@ export const verifyForgotPasswordOtp = async (req: Request, res: Response) => {
 
         res.json({ token, user: userObj });
     } catch (error) {
-        res.status(500).json({ message: 'Server error', error });
+        res.status(500).json({ message: 'Server error' });
     }
 };
 
@@ -238,6 +239,6 @@ export const changePassword = async (req: Request, res: Response) => {
 
         res.json({ message: 'Password updated successfully' });
     } catch (error) {
-        res.status(500).json({ message: 'Server error', error });
+        res.status(500).json({ message: 'Server error' });
     }
 };
