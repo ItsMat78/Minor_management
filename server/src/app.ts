@@ -13,8 +13,14 @@ import importRoutes from './routes/importRoutes';
 
 const app = express();
 
+const allowedOrigins = [
+    'https://minor-management.vercel.app',
+    'http://localhost:5173',
+    'http://minor-project.iiitnr.ac.in',
+    'https://minor-project.iiitnr.ac.in',
+];
 app.use(cors({
-    origin: ['https://minor-management.vercel.app', 'http://localhost:5173'],
+    origin: allowedOrigins,
     credentials: true
 }));
 app.use(express.json({ limit: '50mb' }));
