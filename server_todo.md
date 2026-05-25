@@ -92,14 +92,14 @@ sudo ufw enable
 ## 7. Email (Resend)
 
 1. Sign up at resend.com
-2. Domains → Add Domain → `minor.iiitnr.ac.in`
+2. Domains → Add Domain → `minor-project.iiitnr.ac.in`
 3. Ask IT admin to add these DNS records:
 
 | Type | Name | Value |
 |---|---|---|
-| TXT | `minor.iiitnr.ac.in` | `v=spf1 include:amazonses.com ~all` |
-| TXT | `resend._domainkey.minor.iiitnr.ac.in` | *(value shown in Resend dashboard)* |
-| TXT | `_dmarc.minor.iiitnr.ac.in` | `v=DMARC1; p=quarantine; rua=mailto:admin@iiitnr.ac.in` |
+| TXT | `minor-project.iiitnr.ac.in` | `v=spf1 include:amazonses.com ~all` |
+| TXT | `resend._domainkey.minor-project.iiitnr.ac.in` | *(value shown in Resend dashboard)* |
+| TXT | `_dmarc.minor-project.iiitnr.ac.in` | `v=DMARC1; p=quarantine; rua=mailto:admin@iiitnr.ac.in` |
 
 4. API Keys → Create API Key → copy the `re_...` value
 5. `.env`:
