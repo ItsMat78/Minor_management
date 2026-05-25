@@ -3,7 +3,7 @@ import { io, Socket } from 'socket.io-client';
 import { useAuth } from '../context/AuthContext';
 import { Send, MessageSquare, Paperclip, ChevronRight, X } from 'lucide-react';
 
-const socket: Socket = io(import.meta.env.VITE_API_URL ?? 'http://localhost:5000', {
+const socket: Socket = io(import.meta.env.VITE_API_URL ?? window.location.origin, {
     auth: { token: localStorage.getItem('token') }
 });
 
