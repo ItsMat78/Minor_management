@@ -45,6 +45,10 @@ export const sendEmail = async (to: string | string[], subject: string, text: st
 // ---------------------------------------------------------
 
 export const sendEventNotificationEmail = async (emails: string[], eventTitle: string, eventType: string, deadline: Date) => {
+    if (process.env.EMAIL_EVENT_NOTIFICATIONS !== 'true') {
+        console.log(`[EmailService] Event notifications disabled — skipping blast for "${eventTitle}" (${emails.length} recipients)`);
+        return;
+    }
     const subject = `New Event Scheduled: ${eventTitle}`;
     const text = `A new event "${eventTitle}" of type "${eventType}" has been scheduled. The deadline is ${new Date(deadline).toLocaleString()}. Please log in to the portal for more details.`;
     const html = `
