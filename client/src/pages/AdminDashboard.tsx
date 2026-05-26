@@ -34,8 +34,8 @@ export const getOriginalGroupBatchYear = (group: any) => {
 const AdminDashboard: React.FC = () => {
     const { user, logout } = useAuth();
     const [searchParams, setSearchParams] = useSearchParams();
-    const initialAdminTab = searchParams.get('tab') as 'overview' | 'students' | 'groups' | 'faculty' | 'events' | 'exports' | 'panels' | 'archive' | null;
-    const [activeTab, setActiveTab] = useState<'overview' | 'students' | 'groups' | 'faculty' | 'events' | 'exports' | 'panels' | 'archive'>(initialAdminTab || 'overview');
+    const initialAdminTab = searchParams.get('tab') as 'overview' | 'students' | 'groups' | 'faculty' | 'events' | 'exports' | 'panels' | 'archive' | 'evaluations' | null;
+    const [activeTab, setActiveTab] = useState<'overview' | 'students' | 'groups' | 'faculty' | 'events' | 'exports' | 'panels' | 'archive' | 'evaluations'>(initialAdminTab || 'overview');
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
     // Participating batches from server (active GF event), used for all batch dropdowns
@@ -186,7 +186,24 @@ const AdminDashboard: React.FC = () => {
     const [evaluationRemarks, setEvaluationRemarks] = useState<string>('');
     const [studentEvalData, setStudentEvalData] = useState<Record<string, EvalStudentEntry>>({});
     const [studentMidData, setStudentMidData] = useState<Record<string, EvalStudentEntry> | null>(null);
-    const [manualMarksMode, setManualMarksMode] = useState(false);
+    const [manualMarksMode, setManualMarksMode] = useState(true);
+    const [adminEvalModalType, setAdminEvalModalType] = useState<'mid-term' | 'end-term' | null>(null);
+
+    // === Admin Evaluations Tab State ===
+    const [adminEvalSubTab, setAdminEvalSubTab] = useState<'mid-term' | 'end-term'>('mid-term');
+    const [adminEvalBatch, setAdminEvalBatch] = useState<string>('');
+    const [adminEvalPanelGroups, setAdminEvalPanelGroups] = useState<any[]>([]);
+    const [adminEvalLoading, setAdminEvalLoading] = useState(false);
+    const [adminEvalImportingPanelId, setAdminEvalImportingPanelId] = useState<string | null>(null);
+    const [adminEvalImportErrors, setAdminEvalImportErrors] = useState<{ row: number; message: string }[]>([]);
+    const [adminEvalImportSuccess, setAdminEvalImportSuccess] = useState<string | null>(null);
+    const [adminEvalLastImportedPanelId, setAdminEvalLastImportedPanelId] = useState<string | null>(null);
+    const [adminEvalManualMarksMode, setAdminEvalManualMarksMode] = useState(true);
+    const [adminEvalCollapsedFaculties, setAdminEvalCollapsedFaculties] = useState<Record<string, boolean>>({});
+    const [adminBatchImporting, setAdminBatchImporting] = useState(false);
+    const [adminBatchImportErrors, setAdminBatchImportErrors] = useState<{ row: number; message: string }[]>([]);
+    const [adminBatchImportSuccess, setAdminBatchImportSuccess] = useState<string | null>(null);
+    const [adminEvalSearchQuery, setAdminEvalSearchQuery] = useState('');
 
     const ADMIN_RUBRIC_CONFIG: any = {
         'mid-term': {
@@ -239,11 +256,11 @@ const AdminDashboard: React.FC = () => {
         return ADMIN_RUBRIC_CONFIG[type];
     };
 
-    const handleAdminOpenEvaluation = (group: any) => {
+    const handleAdminOpenEvaluation = (group: any, evalType?: 'mid-term' | 'end-term') => {
         setEvaluatingProject(group);
+        setAdminEvalModalType(evalType || null);
         const projectData = group.project || group;
-        setEvaluationRemarks(projectData?.endTermEvaluation?.remarks || '');
-        setManualMarksMode(false);
+        setManualMarksMode(true);
 
         const members = group.members || [];
         const allEvals = projectData?.studentEvaluations || [];
@@ -270,8 +287,15 @@ const AdminDashboard: React.FC = () => {
             return result;
         };
 
-        setStudentEvalData(buildData(endEvals, 'end-term'));
-        setStudentMidData(buildData(midEvals, 'mid-term'));
+        if (evalType === 'mid-term') {
+            setEvaluationRemarks(projectData?.midTermEvaluation?.remarks || '');
+            setStudentEvalData(buildData(midEvals, 'mid-term'));
+            setStudentMidData(null);
+        } else {
+            setEvaluationRemarks(projectData?.endTermEvaluation?.remarks || '');
+            setStudentEvalData(buildData(endEvals, 'end-term'));
+            setStudentMidData(buildData(midEvals, 'mid-term'));
+        }
     };
 
     const [isCompleteExporting, setIsCompleteExporting] = useState(false);
@@ -434,20 +458,24 @@ const AdminDashboard: React.FC = () => {
                     panel2: sanitize(data.panel2),
                 }));
 
+            const evalTypeForSubmit = adminEvalModalType || 'end-term';
+            const isEndTerm = evalTypeForSubmit === 'end-term';
             const students = mapEntries(studentEvalData);
-            const midStudents = studentMidData ? mapEntries(studentMidData) : undefined;
+            const midStudents = (isEndTerm && studentMidData) ? mapEntries(studentMidData) : undefined;
 
             await api.put(`/projects/${projectId}/evaluation`, {
-                type: 'end-term',
+                type: evalTypeForSubmit,
                 remarks: evaluationRemarks,
                 students,
                 ...(midStudents ? { midStudents } : {}),
             });
 
             await refreshGroups();
+            if (adminEvalBatch) await fetchAdminEvalPanelGroups(adminEvalBatch, true);
             setEvaluatingProject(null);
+            setAdminEvalModalType(null);
             setEvaluationRemarks('');
-            setManualMarksMode(false);
+            setManualMarksMode(true);
             setStudentEvalData({});
             setStudentMidData(null);
         } catch (error) {
@@ -529,6 +557,14 @@ const AdminDashboard: React.FC = () => {
     useEffect(() => {
         setSortOption('Default');
     }, [activeTab]);
+
+    // Fetch admin eval panel groups when batch changes
+    useEffect(() => {
+        if (activeTab === 'evaluations' && adminEvalBatch) {
+            fetchAdminEvalPanelGroups(adminEvalBatch);
+        }
+        setAdminEvalSearchQuery('');
+    }, [adminEvalBatch, activeTab]);
 
 
     const handleAutoCreateClick = () => {
@@ -707,6 +743,134 @@ const AdminDashboard: React.FC = () => {
             setGroups(Array.isArray(res.data) ? res.data : []);
         } catch (error) {
             console.error("Failed to refresh groups", error);
+        }
+    };
+
+    const fetchAdminEvalPanelGroups = async (batch: string, silent = false) => {
+        if (!batch) return;
+        if (!silent) setAdminEvalLoading(true);
+        try {
+            const res = await api.get(`/panels/admin-eval-panels?batchYear=${batch}`);
+            setAdminEvalPanelGroups(Array.isArray(res.data) ? res.data : []);
+        } catch (error) {
+            console.error('Failed to fetch admin eval panels', error);
+        } finally {
+            if (!silent) setAdminEvalLoading(false);
+        }
+    };
+
+    const handleAdminEvalDownloadTemplate = async (panelId: string, mode: string) => {
+        try {
+            const panelData = adminEvalPanelGroups.find((p: any) => p.panel._id === panelId);
+            const panelNum = panelData?.panelNumber || 'Unknown';
+            const batchYr = panelData?.panel?.batchYear || 'Unknown';
+            const dateStr = new Date().toISOString().split('T')[0];
+            const res = await api.get(`/panels/${panelId}/evaluation-template?evalType=${adminEvalSubTab}&marksMode=${mode}`, { responseType: 'blob' });
+            const url = URL.createObjectURL(new Blob([res.data]));
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `Panel_${panelNum}_Batch_${batchYr}_${adminEvalSubTab}_Template_${dateStr}.xlsx`;
+            a.click();
+            URL.revokeObjectURL(url);
+        } catch {
+            alert('Failed to download template.');
+        }
+    };
+
+    const handleAdminEvalImportTemplate = async (panelId: string, file: File, mode: string) => {
+        setAdminEvalImportingPanelId(panelId);
+        setAdminEvalLastImportedPanelId(panelId);
+        setAdminEvalImportErrors([]);
+        setAdminEvalImportSuccess(null);
+        const formData = new FormData();
+        formData.append('file', file);
+        try {
+            const res = await api.post(`/panels/${panelId}/evaluation-import?evalType=${adminEvalSubTab}&marksMode=${mode}`, formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
+            setAdminEvalImportSuccess(`Successfully updated ${res.data.updatedGroups} group(s).`);
+            await fetchAdminEvalPanelGroups(adminEvalBatch);
+        } catch (err: any) {
+            const data = err.response?.data;
+            if (data?.errors) {
+                setAdminEvalImportErrors(data.errors);
+            } else {
+                setAdminEvalImportErrors([{ row: 0, message: data?.message || 'Import failed.' }]);
+            }
+        } finally {
+            setAdminEvalImportingPanelId(null);
+        }
+    };
+
+    const handleAdminEvalExportFinalSheet = async (panelId: string) => {
+        try {
+            const panelData = adminEvalPanelGroups.find((p: any) => p.panel._id === panelId);
+            const panelNum = panelData?.panelNumber || 'Unknown';
+            const batchYr = panelData?.panel?.batchYear || 'Unknown';
+            const dateStr = new Date().toISOString().split('T')[0];
+            const res = await api.get(`/panels/${panelId}/export-final?evalType=full`, { responseType: 'blob' });
+            const url = URL.createObjectURL(new Blob([res.data]));
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `Panel_${panelNum}_Batch_${batchYr}_Full_FinalMarks_${dateStr}.xlsx`;
+            a.click();
+            URL.revokeObjectURL(url);
+        } catch {
+            alert('Failed to export final sheet.');
+        }
+    };
+
+    const handleAdminBatchDownload = async (mode: string) => {
+        try {
+            const dateStr = new Date().toISOString().split('T')[0];
+            const res = await api.get(`/panels/admin-eval-batch-template?batchYear=${adminEvalBatch}&evalType=${adminEvalSubTab}&marksMode=${mode}`, { responseType: 'blob' });
+            const url = URL.createObjectURL(new Blob([res.data]));
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `Batch_${adminEvalBatch}_${adminEvalSubTab}_AllPanels_Template_${dateStr}.xlsx`;
+            a.click();
+            URL.revokeObjectURL(url);
+        } catch {
+            alert('Failed to download batch template.');
+        }
+    };
+
+    const handleAdminBatchImport = async (file: File, mode: string) => {
+        setAdminBatchImporting(true);
+        setAdminBatchImportErrors([]);
+        setAdminBatchImportSuccess(null);
+        const formData = new FormData();
+        formData.append('file', file);
+        try {
+            const res = await api.post(`/panels/admin-eval-batch-import?batchYear=${adminEvalBatch}&evalType=${adminEvalSubTab}&marksMode=${mode}`, formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
+            setAdminBatchImportSuccess(`Successfully updated ${res.data.updatedGroups} group(s).`);
+            await fetchAdminEvalPanelGroups(adminEvalBatch, true);
+        } catch (err: any) {
+            const data = err.response?.data;
+            if (data?.errors) {
+                setAdminBatchImportErrors(data.errors);
+            } else {
+                setAdminBatchImportErrors([{ row: 0, message: data?.message || 'Import failed.' }]);
+            }
+        } finally {
+            setAdminBatchImporting(false);
+        }
+    };
+
+    const handleAdminBatchExportFinal = async () => {
+        try {
+            const dateStr = new Date().toISOString().split('T')[0];
+            const res = await api.get(`/panels/admin-eval-batch-final?batchYear=${adminEvalBatch}&evalType=full`, { responseType: 'blob' });
+            const url = URL.createObjectURL(new Blob([res.data]));
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `Batch_${adminEvalBatch}_AllPanels_FinalMarks_${dateStr}.xlsx`;
+            a.click();
+            URL.revokeObjectURL(url);
+        } catch {
+            alert('Failed to export batch final sheet.');
         }
     };
 
@@ -1255,6 +1419,12 @@ const AdminDashboard: React.FC = () => {
                         onClick={() => setActiveTab('exports')}
                     />
                     <SidebarItem
+                        icon={<FileText className="w-5 h-5" />}
+                        label="Evaluations"
+                        active={activeTab === 'evaluations'}
+                        onClick={() => setActiveTab('evaluations')}
+                    />
+                    <SidebarItem
                         icon={<ArchiveIcon className="w-5 h-5" />}
                         label="Archive"
                         active={activeTab === 'archive'}
@@ -1301,6 +1471,7 @@ const AdminDashboard: React.FC = () => {
                             {activeTab === 'panels' && 'Evaluation Panels'}
                             {activeTab === 'events' && 'Setup Events'}
                             {activeTab === 'exports' && 'Data — Imports & Exports'}
+                            {activeTab === 'evaluations' && 'Evaluations — All Panels & Groups'}
                             {activeTab === 'archive' && 'Archive — Past Semesters'}
                         </h1>
                     </div>
@@ -2774,6 +2945,292 @@ const AdminDashboard: React.FC = () => {
                                                 </button>
                                             </div>
                                         </div>
+                                    </div>
+                                )}
+
+                                {activeTab === 'evaluations' && (
+                                    <div className="space-y-6 pb-20">
+                                        {/* Batch selector + sub-tabs row */}
+                                        <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                                            <div className="flex items-center gap-3">
+                                                <label className="text-xs font-semibold text-neutral-500 uppercase tracking-wide whitespace-nowrap">Filter by batch</label>
+                                                <select
+                                                    value={adminEvalBatch}
+                                                    onChange={(e) => setAdminEvalBatch(e.target.value)}
+                                                    className="px-3 py-2 bg-white rounded-xl border border-neutral-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer hover:border-indigo-300 transition-colors"
+                                                >
+                                                    <option value="">Select batch…</option>
+                                                    {participatingBatchYears.map(year => (
+                                                        <option key={year} value={year}>{year}–{parseInt(year) + 4}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                            <div className="flex gap-1 bg-white rounded-xl border border-neutral-200 p-1 w-fit shadow-sm">
+                                                <button
+                                                    onClick={() => setAdminEvalSubTab('mid-term')}
+                                                    className={`px-4 py-1.5 rounded-lg font-bold text-sm transition-colors ${adminEvalSubTab === 'mid-term' ? 'bg-indigo-600 text-white shadow-sm' : 'text-neutral-600 hover:bg-neutral-100'}`}
+                                                >
+                                                    Mid-Term Eval
+                                                </button>
+                                                <button
+                                                    onClick={() => setAdminEvalSubTab('end-term')}
+                                                    className={`px-4 py-1.5 rounded-lg font-bold text-sm transition-colors ${adminEvalSubTab === 'end-term' ? 'bg-indigo-600 text-white shadow-sm' : 'text-neutral-600 hover:bg-neutral-100'}`}
+                                                >
+                                                    End-Term Eval
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {/* Content */}
+                                        {!adminEvalBatch ? (
+                                            <div className="text-center py-20 bg-white rounded-3xl border border-indigo-100 shadow-sm">
+                                                <div className="w-16 h-16 bg-indigo-50 rounded-full flex items-center justify-center mx-auto mb-4 text-indigo-400">
+                                                    <Users className="w-8 h-8" />
+                                                </div>
+                                                <h3 className="text-xl font-black text-indigo-900 mb-2">Select a Batch Year</h3>
+                                                <p className="text-neutral-500 max-w-md mx-auto text-sm">Please set the batch dropdown above to view and evaluate all panels for a specific year.</p>
+                                            </div>
+                                        ) : adminEvalLoading ? (
+                                            <div className="text-center py-20">
+                                                <div className="w-8 h-8 border-2 border-indigo-300 border-t-indigo-600 rounded-full animate-spin mx-auto" />
+                                            </div>
+                                        ) : adminEvalPanelGroups.filter((p: any) => p.groups.length > 0).length === 0 ? (
+                                            <div className="text-center py-20 bg-white rounded-3xl border border-neutral-200">
+                                                <FileText className="w-8 h-8 text-neutral-300 mx-auto mb-4" />
+                                                <h3 className="text-lg font-bold text-neutral-900 mb-2">No Evaluation Room Configured</h3>
+                                                <p className="text-sm text-neutral-500 max-w-sm mx-auto">There are currently no panels with assigned groups for this batch.</p>
+                                            </div>
+                                        ) : (
+                                            <div className="space-y-5">
+                                                {/* Context bar: eval type title + counter + search */}
+                                                {(() => {
+                                                    const total = adminEvalPanelGroups.reduce((s: number, p: any) => s + p.groups.length, 0);
+                                                    const evaled = adminEvalPanelGroups.reduce((s: number, p: any) =>
+                                                        s + p.groups.filter((g: any) =>
+                                                            (g.project?.studentEvaluations || []).some((e: any) =>
+                                                                e.evalType === adminEvalSubTab && (e.marks ?? 0) > 0
+                                                            )
+                                                        ).length, 0);
+                                                    const pct = total > 0 ? Math.round((evaled / total) * 100) : 0;
+                                                    const isComplete = total > 0 && evaled === total;
+                                                    return (
+                                                        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                                                            <div className="flex items-center gap-3 flex-wrap">
+                                                                <h2 className="text-xl font-black text-neutral-900">
+                                                                    {adminEvalSubTab === 'mid-term' ? 'Mid-Term' : 'End-Term'} Evaluations
+                                                                </h2>
+                                                                <span className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${isComplete ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                                                                    <span className={`w-1.5 h-1.5 rounded-full ${isComplete ? 'bg-green-500' : 'bg-amber-500'}`} />
+                                                                    {evaled} / {total} evaluated{total > 0 ? ` (${pct}%)` : ''}
+                                                                </span>
+                                                            </div>
+                                                            <div className="relative sm:ml-auto">
+                                                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400 pointer-events-none" />
+                                                                <input
+                                                                    type="text"
+                                                                    placeholder="Search groups, projects, members…"
+                                                                    value={adminEvalSearchQuery}
+                                                                    onChange={(e) => setAdminEvalSearchQuery(e.target.value)}
+                                                                    className="pl-9 pr-8 py-2 bg-white border border-neutral-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-300 w-72 max-w-full"
+                                                                />
+                                                                {adminEvalSearchQuery && (
+                                                                    <button onClick={() => setAdminEvalSearchQuery('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600">
+                                                                        <X className="w-3.5 h-3.5" />
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })()}
+
+                                                {/* Single batch toolbar */}
+                                                <div className="flex flex-col sm:flex-row sm:items-center gap-3 p-4 bg-indigo-50/50 border border-indigo-100 rounded-2xl">
+                                                    <div className="flex items-center gap-3 mr-auto flex-wrap">
+                                                        <span className="text-xs font-bold text-indigo-700 uppercase tracking-wider">EVALUATIONS</span>
+                                                        <div className="flex items-center gap-2 border-l border-indigo-200 pl-3">
+                                                            <button
+                                                                onClick={() => setAdminEvalManualMarksMode(!adminEvalManualMarksMode)}
+                                                                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${adminEvalManualMarksMode ? 'bg-indigo-600' : 'bg-neutral-300'}`}
+                                                            >
+                                                                <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${adminEvalManualMarksMode ? 'translate-x-4.5' : 'translate-x-1'}`} />
+                                                            </button>
+                                                            <span className="text-[10px] font-bold text-neutral-600 select-none cursor-pointer uppercase tracking-wider" onClick={() => setAdminEvalManualMarksMode(!adminEvalManualMarksMode)}>
+                                                                {adminEvalManualMarksMode ? 'Direct Mode' : 'Rubric Mode'}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex flex-wrap items-center gap-3">
+                                                        <button
+                                                            onClick={() => handleAdminBatchDownload(adminEvalManualMarksMode ? 'direct' : 'rubric')}
+                                                            className="flex items-center gap-2 px-4 py-2 bg-white border border-indigo-200 text-indigo-700 rounded-lg text-xs font-bold hover:bg-indigo-50 transition-colors shadow-sm"
+                                                        >
+                                                            <Download className="w-3.5 h-3.5" /> Download All Templates
+                                                        </button>
+                                                        <label className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold cursor-pointer shadow-sm transition-colors ${adminBatchImporting ? 'bg-neutral-100 text-neutral-400 border border-neutral-200' : 'bg-white border border-emerald-200 text-emerald-700 hover:bg-emerald-50'}`}>
+                                                            <Upload className="w-3.5 h-3.5" />
+                                                            {adminBatchImporting ? 'Uploading…' : 'Upload All Evaluations'}
+                                                            <input
+                                                                type="file"
+                                                                accept=".xlsx"
+                                                                className="hidden"
+                                                                disabled={adminBatchImporting}
+                                                                onChange={(e) => {
+                                                                    const f = e.target.files?.[0];
+                                                                    if (f) handleAdminBatchImport(f, adminEvalManualMarksMode ? 'direct' : 'rubric');
+                                                                    e.target.value = '';
+                                                                }}
+                                                            />
+                                                        </label>
+                                                        <button
+                                                            onClick={handleAdminBatchExportFinal}
+                                                            className="flex items-center gap-2 px-4 py-2 bg-white border border-amber-200 text-amber-700 rounded-lg text-xs font-bold hover:bg-amber-50 transition-colors shadow-sm"
+                                                        >
+                                                            <FileText className="w-3.5 h-3.5" /> Export Final Sheet
+                                                        </button>
+                                                    </div>
+                                                </div>
+
+                                                {/* Batch import feedback */}
+                                                {adminBatchImportSuccess && (
+                                                    <div className="flex items-center gap-2 px-4 py-3 bg-emerald-50 border border-emerald-200 rounded-xl text-sm text-emerald-700 font-medium">
+                                                        <CheckCircle className="w-4 h-4 shrink-0" /> {adminBatchImportSuccess}
+                                                    </div>
+                                                )}
+                                                {adminBatchImportErrors.length > 0 && (
+                                                    <div className="p-4 bg-red-50 border border-red-200 rounded-xl">
+                                                        <div className="flex items-center gap-2 text-red-700 font-bold text-sm mb-2">
+                                                            <AlertCircle className="w-4 h-4" /> {adminBatchImportErrors.length} error(s) found — no data was saved
+                                                        </div>
+                                                        <div className="max-h-40 overflow-y-auto space-y-1">
+                                                            {adminBatchImportErrors.map((e, i) => (
+                                                                <p key={i} className="text-xs text-red-600">{e.row > 0 ? `Row ${e.row}: ` : ''}{e.message}</p>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {/* Panel sections */}
+                                                {adminEvalPanelGroups.map((pData: any, idx: number) => {
+                                                    const searchQ = adminEvalSearchQuery.toLowerCase().trim();
+                                                    const visibleGroups = searchQ
+                                                        ? pData.groups.filter((g: any) => {
+                                                            const pd = g.project || g;
+                                                            return (pd?.title || '').toLowerCase().includes(searchQ)
+                                                                || (g.name || '').toLowerCase().includes(searchQ)
+                                                                || (g.members || []).some((m: any) =>
+                                                                    (m.name || '').toLowerCase().includes(searchQ) ||
+                                                                    (m.rollNumber || '').toLowerCase().includes(searchQ)
+                                                                );
+                                                        })
+                                                        : pData.groups;
+                                                    if (visibleGroups.length === 0) return null;
+
+                                                    const facultyGroups: Record<string, { name: string; photoUrl?: string; groups: any[] }> = {};
+                                                    visibleGroups.forEach((g: any) => {
+                                                        const facId = typeof g.project?.faculty === 'string' ? g.project.faculty : g.project?.faculty?._id;
+                                                        const facName = typeof g.project?.faculty === 'string' ? 'Unknown' : (g.project?.faculty?.name || 'Unknown');
+                                                        const facPhoto = typeof g.project?.faculty === 'string' ? undefined : g.project?.faculty?.photoUrl;
+                                                        if (!facultyGroups[facId]) facultyGroups[facId] = { name: facName, photoUrl: facPhoto, groups: [] };
+                                                        facultyGroups[facId].groups.push(g);
+                                                    });
+
+                                                    return (
+                                                        <div key={idx} className="rounded-3xl overflow-hidden border border-neutral-200 shadow-sm">
+                                                            {/* Embedded panel info header */}
+                                                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-5 py-3 bg-indigo-600">
+                                                                <div className="flex items-center gap-3">
+                                                                    <Users className="w-4 h-4 text-indigo-200 shrink-0" />
+                                                                    <span className="text-white font-bold text-sm">Panel {pData.panelNumber}</span>
+                                                                    {pData.panel?.room && (
+                                                                        <span className="px-2 py-0.5 bg-indigo-500 text-indigo-100 rounded text-xs font-bold">Room {pData.panel.room}</span>
+                                                                    )}
+                                                                </div>
+                                                                <div className="flex flex-wrap items-center gap-3">
+                                                                    {pData.panel.faculty?.map((fac: any, fIdx: number) => (
+                                                                        <div key={fIdx} className="flex items-center gap-1.5">
+                                                                            {fac.photoUrl ? (
+                                                                                <img src={fac.photoUrl} alt={fac.name} className="w-6 h-6 rounded-full object-cover border border-indigo-300 shrink-0" />
+                                                                            ) : (
+                                                                                <div className="w-6 h-6 rounded-full bg-indigo-500 text-white flex items-center justify-center font-bold text-[10px] shrink-0">
+                                                                                    {fac.name?.charAt(0) || '?'}
+                                                                                </div>
+                                                                            )}
+                                                                            <span className="text-indigo-100 text-xs font-medium leading-tight">{fac.name}</span>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+
+                                                            {/* Faculty sections */}
+                                                            <div className="divide-y divide-neutral-100 bg-white">
+                                                                {Object.values(facultyGroups).map((facInfo: any, fIdx: number) => {
+                                                                    const sectionKey = `admin-eval-${idx}-${fIdx}`;
+                                                                    const isCollapsed = adminEvalCollapsedFaculties[sectionKey] || false;
+                                                                    return (
+                                                                        <div key={fIdx}>
+                                                                            <div
+                                                                                className="bg-neutral-50 px-6 py-3 flex items-center justify-between border-b border-neutral-100 cursor-pointer hover:bg-neutral-100 transition-colors group"
+                                                                                onClick={() => setAdminEvalCollapsedFaculties(prev => ({ ...prev, [sectionKey]: !prev[sectionKey] }))}
+                                                                            >
+                                                                                <h5 className="font-bold text-neutral-700 flex items-center gap-2 text-sm group-hover:text-indigo-700 transition-colors">
+                                                                                    {facInfo.photoUrl ? (
+                                                                                        <img src={facInfo.photoUrl} alt={facInfo.name} className="w-7 h-7 rounded-full object-cover border border-indigo-200 shrink-0" />
+                                                                                    ) : (
+                                                                                        <div className="w-7 h-7 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs shrink-0">
+                                                                                            {facInfo.name?.charAt(0)}
+                                                                                        </div>
+                                                                                    )}
+                                                                                    {facInfo.name}'s Group
+                                                                                    {isCollapsed ? <ChevronDown className="w-3.5 h-3.5 text-neutral-400" /> : <ChevronUp className="w-3.5 h-3.5 text-neutral-400" />}
+                                                                                </h5>
+                                                                                <span className="text-[10px] font-bold bg-neutral-200 text-neutral-600 px-2 py-0.5 rounded-full uppercase tracking-wider">{facInfo.groups.length} Teams</span>
+                                                                            </div>
+                                                                            {!isCollapsed && (
+                                                                                <div className="divide-y divide-neutral-100">
+                                                                                    {facInfo.groups.map((item: any) => {
+                                                                                        const projectData = item.project || item;
+                                                                                        const members = item.members || [];
+                                                                                        const studentEvals = (projectData?.studentEvaluations || []).filter((e: any) => e.evalType === adminEvalSubTab);
+                                                                                        const isEvaluated = studentEvals.some((e: any) => (e.marks ?? 0) > 0);
+                                                                                        const isDropper = item.targetBatch && item.targetBatch !== getOriginalGroupBatchYear(item);
+                                                                                        return (
+                                                                                            <div key={item._id} className={`flex items-center gap-3 px-3 py-2 hover:bg-neutral-50/80 transition-colors ${isDropper ? 'bg-red-50 border-l-2 border-l-red-400' : ''}`}>
+                                                                                                <div className="shrink-0 w-10 text-center">
+                                                                                                    <span className={`text-[10px] font-black uppercase tracking-wider ${isDropper ? 'text-red-500' : 'text-neutral-400'}`}>G{item.name}</span>
+                                                                                                </div>
+                                                                                                <div className="flex-1 min-w-0">
+                                                                                                    <p className="text-sm font-bold text-neutral-900 truncate leading-tight" title={projectData?.title}>
+                                                                                                        {projectData?.title || 'Untitled Project'}
+                                                                                                    </p>
+                                                                                                    <div className="flex flex-wrap gap-1 mt-0.5">
+                                                                                                        {members.map((m: any, mIdx: number) => (
+                                                                                                            <span key={mIdx} className="text-[10px] text-neutral-500 bg-neutral-100 px-1.5 py-0 rounded">{m.name}</span>
+                                                                                                        ))}
+                                                                                                    </div>
+                                                                                                </div>
+                                                                                                <div className="flex items-center gap-2 shrink-0">
+                                                                                                    {isEvaluated && <CheckCircle className="w-4 h-4 text-green-500 shrink-0" />}
+                                                                                                    <button
+                                                                                                        onClick={() => handleAdminOpenEvaluation(item, adminEvalSubTab)}
+                                                                                                        className={`px-3 py-1 rounded-md text-xs font-bold transition-colors whitespace-nowrap ${isEvaluated ? 'bg-white border border-neutral-200 text-neutral-600 hover:border-indigo-300 hover:text-indigo-600' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}
+                                                                                                    >
+                                                                                                        {isEvaluated ? 'Edit' : 'Evaluate'}
+                                                                                                    </button>
+                                                                                                </div>
+                                                                                            </div>
+                                                                                        );
+                                                                                    })}
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
                                     </div>
                                 )}
 
@@ -5285,7 +5742,7 @@ const AdminDashboard: React.FC = () => {
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between px-6 py-4 border-b border-neutral-100 shrink-0 gap-4">
                             <div>
                                 <Dialog.Title className="text-lg font-bold text-neutral-900 flex items-center gap-3">
-                                    Edit Evaluations
+                                    {adminEvalModalType === 'mid-term' ? 'Mid-Term Evaluation' : adminEvalModalType === 'end-term' ? 'End-Term Evaluation' : 'Edit Evaluations'}
                                     <span className="text-xs font-bold uppercase tracking-wider text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-100">Admin Override</span>
                                     {evaluatingProject && (
                                         <span className="text-sm font-normal text-neutral-500">
@@ -5488,8 +5945,8 @@ const AdminDashboard: React.FC = () => {
 
                                 return (
                                     <>
-                                        {studentMidData && renderEvalTable('Mid-Term Scores', 'mid-term', studentMidData, fn => setStudentMidData(p => fn(p!)))}
-                                        {renderEvalTable('End-Term Scores', 'end-term', studentEvalData, setStudentEvalData)}
+                                        {adminEvalModalType !== 'mid-term' && studentMidData && renderEvalTable('Mid-Term Scores (editable)', 'mid-term', studentMidData, fn => setStudentMidData(p => fn(p!)))}
+                                        {renderEvalTable(adminEvalModalType === 'mid-term' ? 'Mid-Term Scores' : 'End-Term Scores', adminEvalModalType === 'mid-term' ? 'mid-term' : 'end-term', studentEvalData, setStudentEvalData)}
                                     </>
                                 );
                             })()}

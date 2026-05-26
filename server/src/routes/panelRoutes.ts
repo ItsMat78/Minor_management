@@ -1,5 +1,5 @@
 import express from 'express';
-import { createPanel, getPanels, deletePanel, getMyPanelEvaluationGroups, exportPanels, updatePanel, exportEvaluations, downloadEvaluationTemplate, importEvaluationTemplate, exportPanelFinalSheet, downloadPanelTemplate, previewPanelImport, exportOfficialFormat, exportPanelsAsTemplate } from '../controllers/panelController';
+import { createPanel, getPanels, deletePanel, getMyPanelEvaluationGroups, getAllPanelEvaluationGroups, exportPanels, updatePanel, exportEvaluations, downloadEvaluationTemplate, importEvaluationTemplate, exportPanelFinalSheet, downloadPanelTemplate, previewPanelImport, exportOfficialFormat, exportPanelsAsTemplate, downloadBatchEvaluationTemplate, importBatchEvaluationTemplate, exportBatchFinalSheet } from '../controllers/panelController';
 import { auth } from '../middleware/authMiddleware';
 import { UserRole } from '../models/User';
 import { upload } from '../middleware/uploadMiddleware';
@@ -31,6 +31,10 @@ router.get('/upload/template', auth, adminAuth, downloadPanelTemplate);
 router.get('/export-template', auth, adminAuth, exportPanelsAsTemplate);
 router.post('/upload/preview', auth, adminAuth, upload.single('file'), previewPanelImport);
 router.get('/my-panels', auth, facultyAuth, getMyPanelEvaluationGroups);
+router.get('/admin-eval-panels', auth, adminAuth, getAllPanelEvaluationGroups);
+router.get('/admin-eval-batch-template', auth, adminAuth, downloadBatchEvaluationTemplate);
+router.post('/admin-eval-batch-import', auth, adminAuth, upload.single('file'), importBatchEvaluationTemplate);
+router.get('/admin-eval-batch-final', auth, adminAuth, exportBatchFinalSheet);
 router.delete('/:id', auth, adminAuth, deletePanel);
 router.put('/:id', auth, adminAuth, updatePanel);
 router.get('/:panelId/evaluation-template', auth, facultyAuth, downloadEvaluationTemplate);
