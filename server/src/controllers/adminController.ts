@@ -343,6 +343,9 @@ export const semesterRollover = async (req: Request, res: Response) => {
         // Reset faculty capacity counters
         await User.updateMany({ role: 'Faculty' }, { $set: { currentStudents: 0, currentGroups: 0 } });
 
+        // Reset all students to not participating (next GF event will re-select batches)
+        await User.updateMany({ role: 'Student' }, { $set: { isParticipating: false } });
+
         // ── 2. Wipe uploaded files from disk (avatars are kept) ─────────────
 
         const uploadDir = process.env.UPLOAD_DIR
