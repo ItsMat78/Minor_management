@@ -67,3 +67,25 @@ export const upload = multer({
     limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
     fileFilter: fileFilter
 });
+
+/**
+ * Delete a file from disk given its public URL.
+ * Silently no-ops if the URL is empty, external, or the file is already gone.
+ */
+export const deleteFileByUrl = (url: string | null | undefined): void => {
+    if (!url) return;
+    try {
+        const localBase = process.env.UPLOAD_DIR
+            ? path.resolve(process.env.UPLOAD_DIR)
+            : path.join(__dirname, '../../uploads');
+        const match = url.match(/\/uploads\/(.+)$/);
+        if (!match) return;
+        const filePath = path.join(localBase, match[1]);
+        if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+            console.log(`[Storage] Deleted: ${filePath}`);
+        }
+    } catch (err) {
+        console.error(`[Storage] Failed to delete ${url}:`, err);
+    }
+};

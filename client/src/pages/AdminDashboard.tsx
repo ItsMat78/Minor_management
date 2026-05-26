@@ -31,6 +31,67 @@ export const getOriginalGroupBatchYear = (group: any) => {
     return 'Unknown';
 };
 
+const SemesterRolloverButton: React.FC = () => {
+    const [phase, setPhase] = useState<'idle' | 'confirm' | 'running' | 'done' | 'error'>('idle');
+    const [result, setResult] = useState<{ filesDeleted: number } | null>(null);
+    const [error, setError] = useState('');
+
+    const handleRollover = async () => {
+        setPhase('running');
+        try {
+            const res = await api.post('/admin/semester-rollover', { confirm: 'ROLLOVER' });
+            setResult(res.data);
+            setPhase('done');
+        } catch (err: any) {
+            setError(err.response?.data?.message || 'Rollover failed');
+            setPhase('error');
+        }
+    };
+
+    if (phase === 'idle') return (
+        <button
+            onClick={() => setPhase('confirm')}
+            className="px-6 py-2.5 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 transition-colors flex items-center gap-2"
+        >
+            <Trash2 className="w-4 h-4" /> Start Semester Rollover
+        </button>
+    );
+
+    if (phase === 'confirm') return (
+        <div className="bg-white border border-red-300 rounded-xl p-4 space-y-3">
+            <p className="text-sm font-bold text-red-800">⚠ This will permanently delete all uploaded files. This cannot be undone. Are you sure?</p>
+            <div className="flex gap-3">
+                <button onClick={handleRollover} className="px-5 py-2 bg-red-600 text-white rounded-lg font-bold hover:bg-red-700 transition-colors text-sm">
+                    Yes, wipe all uploads
+                </button>
+                <button onClick={() => setPhase('idle')} className="px-5 py-2 bg-neutral-100 text-neutral-700 rounded-lg font-bold hover:bg-neutral-200 transition-colors text-sm">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    );
+
+    if (phase === 'running') return (
+        <div className="flex items-center gap-3 text-red-700 font-medium text-sm">
+            <div className="w-5 h-5 border-2 border-red-300 border-t-red-600 rounded-full animate-spin" />
+            Wiping files...
+        </div>
+    );
+
+    if (phase === 'done') return (
+        <div className="bg-white border border-green-200 rounded-xl p-4 text-sm text-green-800 font-medium">
+            ✓ Rollover complete — {result?.filesDeleted} files deleted. All evaluations and records are preserved.
+        </div>
+    );
+
+    return (
+        <div className="bg-white border border-red-200 rounded-xl p-4 text-sm text-red-800 font-medium">
+            ✗ {error}
+            <button onClick={() => setPhase('idle')} className="ml-3 underline">Try again</button>
+        </div>
+    );
+};
+
 const AdminDashboard: React.FC = () => {
     const { user, logout } = useAuth();
     const [searchParams, setSearchParams] = useSearchParams();
@@ -2849,6 +2910,30 @@ const AdminDashboard: React.FC = () => {
                                                     <><Download className="w-5 h-5" /> Download ZIP</>
                                                 )}
                                             </button>
+                                        </div>
+
+                                        {/* ── Semester Rollover ────────────────────────────────── */}
+                                        <div className="flex items-center gap-4 py-2">
+                                            <div className="flex-1 h-px bg-red-200" />
+                                            <span className="text-xs font-bold text-red-400 uppercase tracking-widest">End of Semester</span>
+                                            <div className="flex-1 h-px bg-red-200" />
+                                        </div>
+
+                                        <div className="bg-red-50 border border-red-200 rounded-2xl p-6">
+                                            <div className="flex items-start gap-4 mb-4">
+                                                <div className="h-12 w-12 bg-red-100 rounded-xl flex items-center justify-center text-red-600 shrink-0">
+                                                    <Trash2 className="w-6 h-6" />
+                                                </div>
+                                                <div>
+                                                    <h3 className="text-lg font-bold text-red-900">Semester Rollover — Wipe Uploads</h3>
+                                                    <p className="text-sm text-red-700 mt-1">
+                                                        Permanently deletes <strong>all uploaded files</strong> (submissions, proposals, avatars, updates) from the server.
+                                                        All textual data — evaluations, grades, student records, groups, projects — is <strong>preserved in full</strong>.
+                                                        Run this <strong>after archiving the semester</strong>.
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <SemesterRolloverButton />
                                         </div>
 
                                         {/* ── Divider ──────────────────────────────────────────── */}

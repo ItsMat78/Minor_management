@@ -1,5 +1,5 @@
 import express from 'express';
-import { getStats, createAdmin, createUser, getArchive } from '../controllers/adminController';
+import { getStats, createAdmin, createUser, getArchive, semesterRollover } from '../controllers/adminController';
 import { auth } from '../middleware/authMiddleware';
 import { UserRole } from '../models/User';
 
@@ -20,5 +20,6 @@ router.get('/stats', getStats);
 router.get('/archive', getArchive);
 router.post('/create', createAdmin);
 router.post('/create-user', createUser);
+router.post('/semester-rollover', semesterRollover);
 
 export default router;

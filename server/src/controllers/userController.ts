@@ -6,7 +6,7 @@ import Project from '../models/Project';
 import * as XLSX from 'xlsx';
 import fs from 'fs';
 import bcrypt from 'bcryptjs';
-import { publicUrlFor } from '../middleware/uploadMiddleware';
+import { publicUrlFor, deleteFileByUrl } from '../middleware/uploadMiddleware';
 import Event, { EventType } from '../models/Event';
 
 /** Returns the participatingBatches of the current active GF event, or [] if none. */
@@ -273,6 +273,9 @@ export const deleteUser = async (req: Request, res: Response) => {
         const { id } = req.params;
         const user = await User.findById(id);
         if (!user) return res.status(404).json({ message: 'User not found' });
+
+        // Delete avatar from disk
+        deleteFileByUrl(user.photoUrl);
 
         // Remove from groups
         await Group.updateMany({ members: user._id }, { $pull: { members: user._id } });

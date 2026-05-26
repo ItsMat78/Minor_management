@@ -4,7 +4,7 @@ import Group from '../models/Group';
 import User, { UserRole } from '../models/User';
 import mongoose from 'mongoose';
 import { sendProposalStatusEmail, sendProposalSubmissionEmail, sendEmail } from '../utils/emailService';
-import { publicUrlFor } from '../middleware/uploadMiddleware';
+import { publicUrlFor, deleteFileByUrl } from '../middleware/uploadMiddleware';
 import Panel from '../models/Panel';
 
 // ... (imports)
@@ -211,6 +211,14 @@ export const updateProjectStatus = async (req: Request, res: Response) => {
             if (status === 'Approved') {
                 group.status = 'Approved';
                 group.project = project._id; // Ensure group points to the approved project
+
+                // Delete files for competing proposals before removing them
+                const competing = await Project.find({
+                    group: project.group,
+                    _id: { $ne: project._id },
+                    status: { $in: ['Draft', 'Pending', 'Rejected'] }
+                }).select('attachments');
+                competing.forEach(p => (p.attachments || []).forEach(url => deleteFileByUrl(url)));
 
                 // Permanently delete all other proposals for this group
                 await Project.deleteMany(
@@ -547,6 +555,9 @@ export const deleteProject = async (req: Request, res: Response) => {
             return res.status(400).json({ message: 'Cannot delete a project that is not Pending or Draft' });
         }
 
+        // Delete all attachment files from disk
+        (project.attachments || []).forEach(url => deleteFileByUrl(url));
+
         await Project.findByIdAndDelete(id);
 
         if (group.project && group.project.toString() === id) {
@@ -690,13 +701,13 @@ export const uploadSubmissions = async (req: Request, res: Response) => {
         const urlOf = (f: Express.Multer.File) => publicUrlFor(req, f);
 
         if (evalType === 'mid_term_evaluation') {
-            if (files?.report) project.submissions.midTermReport = urlOf(files.report[0]);
-            if (files?.ppt) project.submissions.midTermPPT = urlOf(files.ppt[0]);
-            if (files?.plagiarismReport) project.submissions.midTermPlagiarism = urlOf(files.plagiarismReport[0]);
+            if (files?.report) { deleteFileByUrl(project.submissions.midTermReport); project.submissions.midTermReport = urlOf(files.report[0]); }
+            if (files?.ppt) { deleteFileByUrl(project.submissions.midTermPPT); project.submissions.midTermPPT = urlOf(files.ppt[0]); }
+            if (files?.plagiarismReport) { deleteFileByUrl(project.submissions.midTermPlagiarism); project.submissions.midTermPlagiarism = urlOf(files.plagiarismReport[0]); }
         } else if (evalType === 'end_term_evaluation') {
-            if (files?.report) project.submissions.endTermReport = urlOf(files.report[0]);
-            if (files?.ppt) project.submissions.endTermPPT = urlOf(files.ppt[0]);
-            if (files?.plagiarismReport) project.submissions.endTermPlagiarism = urlOf(files.plagiarismReport[0]);
+            if (files?.report) { deleteFileByUrl(project.submissions.endTermReport); project.submissions.endTermReport = urlOf(files.report[0]); }
+            if (files?.ppt) { deleteFileByUrl(project.submissions.endTermPPT); project.submissions.endTermPPT = urlOf(files.ppt[0]); }
+            if (files?.plagiarismReport) { deleteFileByUrl(project.submissions.endTermPlagiarism); project.submissions.endTermPlagiarism = urlOf(files.plagiarismReport[0]); }
         } else {
             return res.status(400).json({ message: 'Invalid evaluation type for submission' });
         }

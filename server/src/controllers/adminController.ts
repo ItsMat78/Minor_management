@@ -1,5 +1,7 @@
 import { Request, Response } from 'express';
 import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
 import User, { UserRole } from '../models/User';
 import Group from '../models/Group';
 import Project from '../models/Project';
@@ -254,6 +256,69 @@ export const getArchive = async (req: Request, res: Response) => {
     } catch (error: any) {
         console.error('getArchive error:', error);
         res.status(500).json({ message: 'Server error fetching archive', error: error.message });
+    }
+};
+
+/**
+ * Semester Rollover — wipes all uploaded files from disk and clears file URL
+ * fields in the database. All textual data (evaluations, grades, groups,
+ * projects, students, faculty) is preserved intact for the archive.
+ *
+ * Requires body: { confirm: "ROLLOVER" }
+ */
+export const semesterRollover = async (req: Request, res: Response) => {
+    try {
+        if (req.body.confirm !== 'ROLLOVER') {
+            return res.status(400).json({ message: 'Send { confirm: "ROLLOVER" } to proceed.' });
+        }
+
+        const uploadDir = process.env.UPLOAD_DIR
+            ? path.resolve(process.env.UPLOAD_DIR)
+            : path.join(__dirname, '../../uploads');
+
+        // 1. Wipe every file from every upload bucket
+        let filesDeleted = 0;
+        const buckets = ['submissions', 'proposals', 'updates', 'avatars', 'imports', 'misc'];
+        for (const bucket of buckets) {
+            const bucketPath = path.join(uploadDir, bucket);
+            if (!fs.existsSync(bucketPath)) continue;
+            for (const file of fs.readdirSync(bucketPath)) {
+                try {
+                    fs.unlinkSync(path.join(bucketPath, file));
+                    filesDeleted++;
+                } catch (e) {
+                    console.error(`[Rollover] Could not delete ${file}:`, e);
+                }
+            }
+        }
+
+        // 2. Clear all file URL fields from the database
+        await User.updateMany({}, { $unset: { photoUrl: '' } });
+        await Project.updateMany({}, {
+            $set: {
+                attachments: [],
+                'submissions.midTermReport': null,
+                'submissions.midTermPPT': null,
+                'submissions.midTermPlagiarism': null,
+                'submissions.endTermReport': null,
+                'submissions.endTermPPT': null,
+                'submissions.endTermPlagiarism': null,
+            }
+        });
+        // Clear file attachments from all project updates
+        await Project.updateMany(
+            { 'updates.0': { $exists: true } },
+            { $set: { 'updates.$[].attachments': [] } }
+        );
+
+        console.log(`[Rollover] Complete — ${filesDeleted} files deleted from disk.`);
+        res.json({
+            message: 'Semester rollover complete. All uploaded files have been wiped. All textual data and evaluations are preserved.',
+            filesDeleted,
+        });
+    } catch (error) {
+        console.error('[Rollover] Error:', error);
+        res.status(500).json({ message: 'Server error during rollover' });
     }
 };
 
