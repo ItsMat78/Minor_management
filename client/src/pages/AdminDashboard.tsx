@@ -33,13 +33,15 @@ export const getOriginalGroupBatchYear = (group: any) => {
 
 const SemesterRolloverButton: React.FC = () => {
     const [phase, setPhase] = useState<'idle' | 'confirm' | 'running' | 'done' | 'error'>('idle');
+    const [password, setPassword] = useState('');
     const [result, setResult] = useState<{ filesDeleted: number; groupsArchived: number; projectsArchived: number } | null>(null);
     const [error, setError] = useState('');
 
     const handleRollover = async () => {
+        if (!password) return;
         setPhase('running');
         try {
-            const res = await api.post('/admin/semester-rollover', { confirm: 'ROLLOVER' });
+            const res = await api.post('/admin/semester-rollover', { confirm: 'ROLLOVER', password });
             setResult(res.data);
             setPhase('done');
         } catch (err: any) {
@@ -50,7 +52,7 @@ const SemesterRolloverButton: React.FC = () => {
 
     if (phase === 'idle') return (
         <button
-            onClick={() => setPhase('confirm')}
+            onClick={() => { setPassword(''); setPhase('confirm'); }}
             className="px-6 py-2.5 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 transition-colors flex items-center gap-2"
         >
             <Trash2 className="w-4 h-4" /> Start Semester Rollover
@@ -69,8 +71,21 @@ const SemesterRolloverButton: React.FC = () => {
                 <li>Avatar photos are <strong>not</strong> deleted</li>
             </ul>
             <p className="text-sm text-red-600">Only do this at the end of the semester once everything has been evaluated and exported.</p>
+            <input
+                type="password"
+                placeholder="Enter your admin password to confirm"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && password && handleRollover()}
+                className="w-full px-3 py-2 border border-red-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-400/30"
+                autoFocus
+            />
             <div className="flex gap-3">
-                <button onClick={handleRollover} className="px-5 py-2 bg-red-600 text-white rounded-lg font-bold hover:bg-red-700 transition-colors text-sm">
+                <button
+                    onClick={handleRollover}
+                    disabled={!password}
+                    className="px-5 py-2 bg-red-600 text-white rounded-lg font-bold hover:bg-red-700 transition-colors text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+                >
                     Yes, archive &amp; wipe
                 </button>
                 <button onClick={() => setPhase('idle')} className="px-5 py-2 bg-neutral-100 text-neutral-700 rounded-lg font-bold hover:bg-neutral-200 transition-colors text-sm">

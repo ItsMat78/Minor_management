@@ -9,6 +9,13 @@ import Panel from '../models/Panel';
 import Event, { EventType } from '../models/Event';
 import bcrypt from 'bcryptjs';
 
+const verifyAdminPassword = async (userId: string, passwordToVerify: string) => {
+    if (!passwordToVerify) return false;
+    const admin = await User.findById(userId);
+    if (!admin) return false;
+    return bcrypt.compare(passwordToVerify, admin.password);
+};
+
 /** Returns the participatingBatches of the current active GF event, or [] if none. */
 async function getParticipatingBatches(): Promise<string[]> {
     const now = new Date();
@@ -268,21 +275,33 @@ export const getArchive = async (req: Request, res: Response) => {
  */
 export const semesterRollover = async (req: Request, res: Response) => {
     try {
-        if (req.body.confirm !== 'ROLLOVER') {
+        const { confirm, password } = req.body;
+        const adminId = (req as any).user?.id;
+
+        if (confirm !== 'ROLLOVER') {
             return res.status(400).json({ message: 'Send { confirm: "ROLLOVER" } to proceed.' });
+        }
+
+        if (!await verifyAdminPassword(adminId, password)) {
+            return res.status(401).json({ message: 'Invalid admin password provided.' });
         }
 
         // ── 1. Archive all active Groups, Projects, and Panels ──────────────
 
-        // Denormalize and archive active projects (snapshot group/mentor info)
+        // Fetch active groups with members fully populated for denormalization
+        const activeGroups = await Group.find({ isArchived: { $ne: true } })
+            .populate('members', 'name email rollNumber branch')
+            .lean();
+        const groupMap = new Map(activeGroups.map(g => [String(g._id), g]));
+
+        // Fetch active projects with faculty (mentor) populated
         const activeProjects = await Project.find({ isArchived: { $ne: true } })
-            .populate<{ group: any }>('group', 'name targetBatch members')
-            .populate<{ mentor: any }>('mentor', 'name')
+            .populate('faculty', 'name')
             .lean();
 
         for (const p of activeProjects) {
-            const g = p.group as any;
-            const mentor = p.mentor as any;
+            const g = groupMap.get(String((p as any).group)) as any;
+            const faculty = (p as any).faculty as any;
 
             // Derive batch year from group.targetBatch or first member's roll number
             let archivedBatch: string | undefined;
@@ -296,7 +315,7 @@ export const semesterRollover = async (req: Request, res: Response) => {
             await Project.findByIdAndUpdate(p._id, {
                 isArchived: true,
                 archivedGroupName: g?.name ?? null,
-                archivedMentorName: mentor?.name ?? null,
+                archivedMentorName: faculty?.name ?? null,
                 archivedBatch: archivedBatch ?? null,
                 archivedMembers: Array.isArray(g?.members)
                     ? g.members.map((m: any) => ({
