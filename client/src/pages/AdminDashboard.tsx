@@ -2670,6 +2670,30 @@ const AdminDashboard: React.FC = () => {
                                                 })}
                                             </div>
                                         )}
+
+                                        {/* ── Semester Rollover ────────────────────────────────── */}
+                                        <div className="flex items-center gap-4 py-2">
+                                            <div className="flex-1 h-px bg-red-200" />
+                                            <span className="text-xs font-bold text-red-400 uppercase tracking-widest">End of Semester</span>
+                                            <div className="flex-1 h-px bg-red-200" />
+                                        </div>
+
+                                        <div className="bg-red-50 border border-red-200 rounded-2xl p-6">
+                                            <div className="flex items-start gap-4 mb-4">
+                                                <div className="h-12 w-12 bg-red-100 rounded-xl flex items-center justify-center text-red-600 shrink-0">
+                                                    <Trash2 className="w-6 h-6" />
+                                                </div>
+                                                <div>
+                                                    <h3 className="text-lg font-bold text-red-900">Semester Rollover</h3>
+                                                    <p className="text-sm text-red-700 mt-1">
+                                                        Archives all active groups, projects, and panels, then permanently deletes all uploaded files (submissions, proposals, updates) from the server.
+                                                        All evaluations, grades, and student records are <strong>preserved in full</strong>. Avatar photos are <strong>not</strong> deleted.
+                                                        Run this <strong>at the end of the semester</strong> once everything has been evaluated and exported.
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <SemesterRolloverButton />
+                                        </div>
                                     </div>
                                 )}
 
@@ -2923,30 +2947,6 @@ const AdminDashboard: React.FC = () => {
                                                     <><Download className="w-5 h-5" /> Download ZIP</>
                                                 )}
                                             </button>
-                                        </div>
-
-                                        {/* ── Semester Rollover ────────────────────────────────── */}
-                                        <div className="flex items-center gap-4 py-2">
-                                            <div className="flex-1 h-px bg-red-200" />
-                                            <span className="text-xs font-bold text-red-400 uppercase tracking-widest">End of Semester</span>
-                                            <div className="flex-1 h-px bg-red-200" />
-                                        </div>
-
-                                        <div className="bg-red-50 border border-red-200 rounded-2xl p-6">
-                                            <div className="flex items-start gap-4 mb-4">
-                                                <div className="h-12 w-12 bg-red-100 rounded-xl flex items-center justify-center text-red-600 shrink-0">
-                                                    <Trash2 className="w-6 h-6" />
-                                                </div>
-                                                <div>
-                                                    <h3 className="text-lg font-bold text-red-900">Semester Rollover — Wipe Uploads</h3>
-                                                    <p className="text-sm text-red-700 mt-1">
-                                                        Permanently deletes <strong>all uploaded files</strong> (submissions, proposals, avatars, updates) from the server.
-                                                        All textual data — evaluations, grades, student records, groups, projects — is <strong>preserved in full</strong>.
-                                                        Run this <strong>after archiving the semester</strong>.
-                                                    </p>
-                                                </div>
-                                            </div>
-                                            <SemesterRolloverButton />
                                         </div>
 
                                         {/* ── Divider ──────────────────────────────────────────── */}
