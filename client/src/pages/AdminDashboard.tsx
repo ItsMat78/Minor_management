@@ -33,7 +33,7 @@ export const getOriginalGroupBatchYear = (group: any) => {
 
 const SemesterRolloverButton: React.FC = () => {
     const [phase, setPhase] = useState<'idle' | 'confirm' | 'running' | 'done' | 'error'>('idle');
-    const [result, setResult] = useState<{ filesDeleted: number } | null>(null);
+    const [result, setResult] = useState<{ filesDeleted: number; groupsArchived: number; projectsArchived: number } | null>(null);
     const [error, setError] = useState('');
 
     const handleRollover = async () => {
@@ -59,10 +59,19 @@ const SemesterRolloverButton: React.FC = () => {
 
     if (phase === 'confirm') return (
         <div className="bg-white border border-red-300 rounded-xl p-4 space-y-3">
-            <p className="text-sm font-bold text-red-800">⚠ This will permanently delete all uploaded files. This cannot be undone. Are you sure?</p>
+            <p className="text-sm font-bold text-red-800">⚠ WARNING — This action cannot be undone.</p>
+            <ul className="text-sm text-red-700 list-disc list-inside space-y-1">
+                <li>All current groups will be <strong>archived</strong> and dissolved</li>
+                <li>All current projects will be <strong>archived</strong> (evaluations &amp; grades preserved)</li>
+                <li>All panels will be archived</li>
+                <li>All uploaded files (reports, proposals, submissions) will be <strong>permanently deleted</strong></li>
+                <li>Faculty mentor counters will be reset to zero</li>
+                <li>Avatar photos are <strong>not</strong> deleted</li>
+            </ul>
+            <p className="text-sm text-red-600">Only do this at the end of the semester once everything has been evaluated and exported.</p>
             <div className="flex gap-3">
                 <button onClick={handleRollover} className="px-5 py-2 bg-red-600 text-white rounded-lg font-bold hover:bg-red-700 transition-colors text-sm">
-                    Yes, wipe all uploads
+                    Yes, archive &amp; wipe
                 </button>
                 <button onClick={() => setPhase('idle')} className="px-5 py-2 bg-neutral-100 text-neutral-700 rounded-lg font-bold hover:bg-neutral-200 transition-colors text-sm">
                     Cancel
@@ -74,13 +83,17 @@ const SemesterRolloverButton: React.FC = () => {
     if (phase === 'running') return (
         <div className="flex items-center gap-3 text-red-700 font-medium text-sm">
             <div className="w-5 h-5 border-2 border-red-300 border-t-red-600 rounded-full animate-spin" />
-            Wiping files...
+            Archiving records and wiping files…
         </div>
     );
 
     if (phase === 'done') return (
-        <div className="bg-white border border-green-200 rounded-xl p-4 text-sm text-green-800 font-medium">
-            ✓ Rollover complete — {result?.filesDeleted} files deleted. All evaluations and records are preserved.
+        <div className="bg-white border border-green-200 rounded-xl p-4 text-sm text-green-800 font-medium space-y-1">
+            <p>✓ Semester rollover complete.</p>
+            <p className="text-green-700 font-normal">
+                {result?.groupsArchived} groups archived · {result?.projectsArchived} projects archived · {result?.filesDeleted} files deleted.
+                All evaluations and avatar photos are preserved.
+            </p>
         </div>
     );
 

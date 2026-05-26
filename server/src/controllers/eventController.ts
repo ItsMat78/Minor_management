@@ -110,7 +110,7 @@ export const createEvent = async (req: Request, res: Response) => {
             }
         }
 
-        // Archiving + participation reset for Group Formation
+        // Participation reset for Group Formation (archiving is handled by Semester Rollover)
         let normalizedBatches: string[] | undefined;
         if (type === EventType.GROUP_FORMATION_AND_PROJECT_PROPOSAL) {
             if (!Array.isArray(participatingBatches) || participatingBatches.length === 0) {
@@ -124,50 +124,6 @@ export const createEvent = async (req: Request, res: Response) => {
             if (normalizedBatches.length === 0) {
                 return res.status(400).json({ message: 'participatingBatches must contain 4-digit year strings (e.g. "2024").' });
             }
-
-            // Archive all current Groups
-            await Group.updateMany(
-                { isArchived: { $ne: true } },
-                { $set: { isArchived: true, status: 'Dissolved' } }
-            );
-
-            // Archive all current Projects; denormalize mentor, group name, batch, and members
-            // so each archived project is self-contained for future export/import cycles.
-            const activeProjects = await Project.find({ isArchived: { $ne: true } })
-                .populate('faculty', 'name')
-                .populate({ path: 'group', populate: { path: 'members', select: 'name email rollNumber branch' } });
-            for (const project of activeProjects) {
-                const mentorName = project.faculty ? (project.faculty as any).name : undefined;
-                const grp: any = project.group;
-                const members = (grp?.members || []).map((m: any) => ({
-                    name: m.name,
-                    email: m.email,
-                    rollNumber: m.rollNumber,
-                    branch: m.branch
-                }));
-                await Project.findByIdAndUpdate(project._id, {
-                    $set: {
-                        isArchived: true,
-                        archivedMentorName: mentorName,
-                        archivedGroupName: grp?.name,
-                        archivedBatch: grp?.targetBatch,
-                        archivedMembers: members,
-                        faculty: null // Detach current mentor
-                    }
-                });
-            }
-
-            // Archive all current Panels (they are per-semester)
-            await Panel.updateMany(
-                { isArchived: { $ne: true } },
-                { $set: { isArchived: true } }
-            );
-
-            // Reset faculty capacity counters so the new semester starts at zero load
-            await User.updateMany(
-                { role: 'Faculty' },
-                { $set: { currentStudents: 0, currentGroups: 0 } }
-            );
 
             // Reset student participation, then flip on for selected batches
             await User.updateMany(

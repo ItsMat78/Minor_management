@@ -272,13 +272,66 @@ export const semesterRollover = async (req: Request, res: Response) => {
             return res.status(400).json({ message: 'Send { confirm: "ROLLOVER" } to proceed.' });
         }
 
+        // ── 1. Archive all active Groups, Projects, and Panels ──────────────
+
+        // Denormalize and archive active projects (snapshot group/mentor info)
+        const activeProjects = await Project.find({ isArchived: { $ne: true } })
+            .populate<{ group: any }>('group', 'name targetBatch members')
+            .populate<{ mentor: any }>('mentor', 'name')
+            .lean();
+
+        for (const p of activeProjects) {
+            const g = p.group as any;
+            const mentor = p.mentor as any;
+
+            // Derive batch year from group.targetBatch or first member's roll number
+            let archivedBatch: string | undefined;
+            if (g?.targetBatch) {
+                archivedBatch = String(g.targetBatch);
+            } else if (Array.isArray(g?.members) && g.members[0]?.rollNumber) {
+                const roll = String(g.members[0].rollNumber);
+                if (/^\d{2}/.test(roll)) archivedBatch = '20' + roll.substring(0, 2);
+            }
+
+            await Project.findByIdAndUpdate(p._id, {
+                isArchived: true,
+                archivedGroupName: g?.name ?? null,
+                archivedMentorName: mentor?.name ?? null,
+                archivedBatch: archivedBatch ?? null,
+                archivedMembers: Array.isArray(g?.members)
+                    ? g.members.map((m: any) => ({
+                        name: m.name,
+                        email: m.email,
+                        rollNumber: m.rollNumber,
+                        branch: m.branch,
+                    }))
+                    : [],
+            });
+        }
+
+        const projectsArchived = activeProjects.length;
+
+        // Archive all active groups
+        const groupsArchivedResult = await Group.updateMany(
+            { isArchived: { $ne: true } },
+            { $set: { isArchived: true, status: 'Dissolved' } }
+        );
+        const groupsArchived = groupsArchivedResult.modifiedCount;
+
+        // Archive all active panels
+        await Panel.updateMany({ isArchived: { $ne: true } }, { $set: { isArchived: true } });
+
+        // Reset faculty capacity counters
+        await User.updateMany({ role: 'Faculty' }, { $set: { currentStudents: 0, currentGroups: 0 } });
+
+        // ── 2. Wipe uploaded files from disk (avatars are kept) ─────────────
+
         const uploadDir = process.env.UPLOAD_DIR
             ? path.resolve(process.env.UPLOAD_DIR)
             : path.join(__dirname, '../../uploads');
 
-        // 1. Wipe every file from every upload bucket
         let filesDeleted = 0;
-        const buckets = ['submissions', 'proposals', 'updates', 'avatars', 'imports', 'misc'];
+        const buckets = ['submissions', 'proposals', 'updates', 'imports', 'misc'];
         for (const bucket of buckets) {
             const bucketPath = path.join(uploadDir, bucket);
             if (!fs.existsSync(bucketPath)) continue;
@@ -292,8 +345,8 @@ export const semesterRollover = async (req: Request, res: Response) => {
             }
         }
 
-        // 2. Clear all file URL fields from the database
-        await User.updateMany({}, { $unset: { photoUrl: '' } });
+        // ── 3. Clear file URL fields from the database (keep photoUrl/avatars) ──
+
         await Project.updateMany({}, {
             $set: {
                 attachments: [],
@@ -305,15 +358,16 @@ export const semesterRollover = async (req: Request, res: Response) => {
                 'submissions.endTermPlagiarism': null,
             }
         });
-        // Clear file attachments from all project updates
         await Project.updateMany(
             { 'updates.0': { $exists: true } },
             { $set: { 'updates.$[].attachments': [] } }
         );
 
-        console.log(`[Rollover] Complete — ${filesDeleted} files deleted from disk.`);
+        console.log(`[Rollover] Complete — ${groupsArchived} groups, ${projectsArchived} projects archived; ${filesDeleted} files deleted from disk.`);
         res.json({
-            message: 'Semester rollover complete. All uploaded files have been wiped. All textual data and evaluations are preserved.',
+            message: 'Semester rollover complete. All groups and projects have been archived, and uploaded files have been wiped. Evaluations, grades, and avatar photos are preserved.',
+            groupsArchived,
+            projectsArchived,
             filesDeleted,
         });
     } catch (error) {
