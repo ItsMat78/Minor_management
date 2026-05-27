@@ -36,7 +36,12 @@
       "Bash(python3 -c \"import json; d=json.load\\(open\\('E:/Projects/Minor_management/e2e/.auth/student.json'\\)\\); print\\(json.dumps\\(d, indent=2\\)\\)\")",
       "PowerShell(netstat *)",
       "PowerShell(mongosh *)",
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "WebFetch(domain:github.com)",
+      "Bash(Get-ChildItem -Path \"E:\\\\Projects\\\\journaladvisory\" -Recurse -Force -ErrorAction SilentlyContinue)",
+      "Bash(Select-Object FullName)",
+      "Bash(Sort-Object FullName)",
+      "Bash(cd /e/Projects/journaladvisory && find . -type f -o -type d | head -200)"
     ]
   }
 }
