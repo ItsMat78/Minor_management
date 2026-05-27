@@ -6,9 +6,9 @@ import { auth } from '../middleware/authMiddleware';
 const router = express.Router();
 
 const authLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 10,
-    message: { message: 'Too many attempts, please try again after 15 minutes.' },
+    windowMs: 60 * 1000,
+    max: 30,
+    message: { message: 'Too many attempts, please try again after 1 minute.' },
     standardHeaders: true,
     legacyHeaders: false,
 });

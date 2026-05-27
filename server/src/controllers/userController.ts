@@ -217,7 +217,7 @@ export const getAllStudents = async (req: Request, res: Response) => {
 };
 
 const ALLOWED_UPDATE_FIELDS = [
-    'name', 'branch', 'semester', 'department', 'expertise',
+    'name', 'email', 'rollNumber', 'branch', 'semester', 'department', 'expertise',
     'maxStudents', 'maxGroups', 'batchConfigs', 'targetBatch',
     'isParticipating', 'isVerified', 'photoUrl'
 ];
@@ -450,12 +450,28 @@ export const previewImport = async (req: Request, res: Response) => {
 
             newEmails.add(cleanEmail);
 
+            let resolvedBranch = branch;
+            if (importType === 'student' && !resolvedBranch) {
+                if (!rollNumber || rollNumber.length < 5) {
+                    invalidRows.push({ rowNumber: index + 2, data: row, reason: 'Roll Number too short to derive branch (must be ≥ 5 characters)' });
+                    return;
+                }
+                const d = rollNumber[4];
+                if (d === '0') resolvedBranch = 'CSE';
+                else if (d === '1') resolvedBranch = 'ECE';
+                else if (d === '2') resolvedBranch = 'DSAI';
+                else {
+                    invalidRows.push({ rowNumber: index + 2, data: row, reason: `Invalid roll number — 5th digit '${d}' is not a recognised branch code (0=CSE, 1=ECE, 2=DSAI)` });
+                    return;
+                }
+            }
+
             validRows.push({
                 name,
                 email: cleanEmail,
                 role: importType === 'student' ? 'Student' : 'Faculty',
                 rollNumber,
-                branch: branch || 'CSE',
+                branch: resolvedBranch,
                 semester: importType === 'student' ? Number(semester) || 1 : undefined,
                 department: importType === 'faculty' ? branch || 'Computer Science' : undefined,
                 expertise: importType === 'faculty' ? getVal('expertise') || 'General' : undefined
