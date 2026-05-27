@@ -4227,25 +4227,6 @@ const AdminDashboard: React.FC = () => {
                                     </select>
 
                                     {eventForm.type === 'group_formation_project_proposal' && (
-                                        <div className="mt-3 p-4 bg-red-50 border-2 border-red-200 rounded-xl animate-in fade-in slide-in-from-top-1 duration-300">
-                                            <div className="flex items-start gap-3">
-                                                <div className="h-10 w-10 rounded-full bg-red-100 flex items-center justify-center shrink-0">
-                                                    <AlertTriangle className="w-6 h-6 text-red-600" />
-                                                </div>
-                                                <div>
-                                                    <h4 className="text-sm font-black text-red-800 uppercase tracking-wider">Critical Warning</h4>
-                                                    <p className="text-xs text-red-700 mt-1 font-bold leading-relaxed">
-                                                        This will <span className="bg-red-200 px-1 rounded">archive all groups, projects, and panels</span>,
-                                                        reset faculty capacity counters, and mark only the selected batches as participating this semester.
-                                                        All other students (freshers, graduated, non-participating repeaters) will stop receiving notifications.
-                                                        This action is irreversible.
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {eventForm.type === 'group_formation_project_proposal' && (
                                         <div className="mt-3">
                                             <label className="block text-sm font-medium text-gray-700 mb-1.5">
                                                 Participating Batches <span className="text-red-500">*</span>
