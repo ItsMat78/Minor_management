@@ -47,10 +47,12 @@ export const getFaculty = async (req: Request, res: Response) => {
 
         // Dynamically calculate counts for EACH faculty for THIS specific batch
         const populatedFaculty = await Promise.all(facultyList.map(async (faculty: any) => {
-            // Fetch all approved projects for this faculty
+            // Fetch all approved projects for this faculty (current semester only —
+            // archived projects from past semesters must not count toward the load).
             const approvedProjects = await Project.find({
                 faculty: faculty._id,
-                status: 'Approved'
+                status: 'Approved',
+                isArchived: { $ne: true }
             }).populate({
                 path: 'group',
                 populate: { path: 'members', select: 'rollNumber' }
@@ -320,14 +322,9 @@ export const exportStudents = async (req: Request, res: Response) => {
             ];
         }
 
-        console.log('[exportStudents] batch param:', batch);
-        console.log('[exportStudents] query:', JSON.stringify(query, null, 2));
-
         const students = await User.find(query)
             .select('name email rollNumber branch semester role isVerified targetBatch')
             .sort({ rollNumber: 1 });
-
-        console.log('[exportStudents] found', students.length, 'students');
 
         if (students.length === 0) {
             return res.status(204).end();
@@ -367,7 +364,6 @@ export const exportStudents = async (req: Request, res: Response) => {
 
         // Generate Buffer
         const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
-        console.log('[exportStudents] buffer size (bytes):', buf.length, '| data rows:', data.length);
 
         // Set Headers
         res.setHeader('Content-Disposition', `attachment; filename="students_${batch || 'all'}.xlsx"`);

@@ -6,6 +6,7 @@ import mongoose from 'mongoose';
 import { sendProposalStatusEmail, sendProposalSubmissionEmail, sendEmail } from '../utils/emailService';
 import { publicUrlFor, deleteFileByUrl } from '../middleware/uploadMiddleware';
 import Panel from '../models/Panel';
+import Event, { EventType } from '../models/Event';
 
 // ... (imports)
 
@@ -150,6 +151,7 @@ export const updateProjectStatus = async (req: Request, res: Response) => {
                         const approvedProjects = await Project.find({
                             faculty: facultyId,
                             status: 'Approved',
+                            isArchived: { $ne: true }, // current semester only — ignore past-semester archives
                             _id: { $ne: project._id } // Exclude current one
                         }).populate({
                             path: 'group',
@@ -707,6 +709,28 @@ export const uploadSubmissions = async (req: Request, res: Response) => {
         const isMember = group.members.some(member => String(member) === userId);
         if (!isMember && (req as any).user.role !== 'Admin') {
             return res.status(403).json({ message: 'Not authorized to submit for this project' });
+        }
+
+        // Gate uploads to the matching evaluation window (admins may submit anytime).
+        // evalType ('mid_term_evaluation' | 'end_term_evaluation') maps directly to EventType.
+        if ((req as any).user.role !== 'Admin') {
+            if (evalType !== EventType.MID_TERM_EVALUATION && evalType !== EventType.END_TERM_EVALUATION) {
+                return res.status(400).json({ message: 'Invalid evaluation type for submission' });
+            }
+            const now = new Date();
+            const activeWindow = await Event.findOne({
+                type: evalType,
+                isActive: true,
+                startDate: { $lte: now },
+                $or: [
+                    { extensionDate: { $exists: true, $ne: null, $gte: now } },
+                    { extensionDate: { $exists: false }, endDate: { $gte: now } },
+                    { extensionDate: null, endDate: { $gte: now } }
+                ]
+            });
+            if (!activeWindow) {
+                return res.status(403).json({ message: 'Submissions are closed — the evaluation window is not currently open.' });
+            }
         }
 
         const files = req.files as { [fieldname: string]: Express.Multer.File[] };

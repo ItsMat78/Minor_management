@@ -6,6 +6,20 @@ import Project from '../models/Project';
 import Event, { EventType } from '../models/Event';
 import { sendGroupCreationEmail, sendGroupInviteEmail, sendGroupInviteResponseEmail } from '../utils/emailService';
 
+// The Group Formation event that is active right now, or null.
+const findActiveGFEvent = async () => {
+    const now = new Date();
+    return Event.findOne({
+        type: EventType.GROUP_FORMATION_AND_PROJECT_PROPOSAL,
+        isActive: true,
+        startDate: { $lte: now },
+        $or: [
+            { extensionDate: { $exists: true, $ne: null, $gte: now } },
+            { extensionDate: { $exists: false }, endDate: { $gte: now } },
+            { extensionDate: null, endDate: { $gte: now } }
+        ]
+    });
+};
 
 export const createGroup = async (req: Request, res: Response) => {
     try {
@@ -142,8 +156,11 @@ export const createGroup = async (req: Request, res: Response) => {
 export const getMyGroup = async (req: Request, res: Response) => {
     try {
         const userId = (req as any).user.id;
-        const group = await Group.findOne({ members: userId })
-            .sort({ isArchived: 1, createdAt: -1 })
+        // Only the student's *current* (non-archived) group. Past semesters' groups are
+        // archived at rollover and surfaced separately via /projects/archived — returning
+        // them here would hide the Student Directory and block forming a new group.
+        const group = await Group.findOne({ members: userId, isArchived: { $ne: true } })
+            .sort({ createdAt: -1 })
             .populate('members', 'name email role branch rollNumber photoUrl')
             .populate('pendingMembers', 'name email rollNumber photoUrl branch')
             .populate({
@@ -191,6 +208,21 @@ export const acceptInvite = async (req: Request, res: Response) => {
         if (group.isArchived) return res.status(400).json({ message: 'Group is archived' });
         if (!group.pendingMembers.map(m => m.toString()).includes(userId)) {
             return res.status(403).json({ message: 'No pending invite for this user' });
+        }
+
+        // Re-enforce the same-branch rule at accept time (it may have been enabled, or the
+        // accepter's branch changed, after the invite was sent).
+        const activeGF = await findActiveGFEvent();
+        if (activeGF?.branchRestricted) {
+            const [accepter, creator] = await Promise.all([
+                User.findById(userId).select('branch'),
+                group.createdBy ? User.findById(group.createdBy).select('branch') : null
+            ]);
+            if (creator && accepter && accepter.branch !== creator.branch) {
+                return res.status(400).json({
+                    message: `This semester groups must be single-branch. You (${accepter.branch}) cannot join a ${creator.branch} group.`
+                });
+            }
         }
 
         group.pendingMembers = group.pendingMembers.filter(m => m.toString() !== userId) as any;

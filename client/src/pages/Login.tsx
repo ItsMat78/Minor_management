@@ -314,6 +314,9 @@ const Login: React.FC = () => {
                                             Forgot password?
                                         </button>
                                     </div>
+                                    <p className="text-xs text-gray-400 text-center">
+                                        First time signing in? Use &ldquo;Forgot password&rdquo; to set your password.
+                                    </p>
                                 </>
                             ) : (
                                 <>

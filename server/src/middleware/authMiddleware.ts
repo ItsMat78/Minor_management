@@ -19,7 +19,8 @@ export const auth = (req: AuthRequest, res: Response, next: NextFunction) => {
         req.user = decoded;
         next();
     } catch (e) {
-        res.status(400).json({ message: 'Token is not valid' });
+        // 401 (not 400) so the client can treat an expired/invalid token as "log out & re-auth".
+        res.status(401).json({ message: 'Token is not valid' });
     }
 };
 

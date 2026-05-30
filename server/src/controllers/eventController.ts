@@ -137,8 +137,14 @@ export const createEvent = async (req: Request, res: Response) => {
                 {
                     role: 'Student',
                     $or: [
+                        // Students moved INTO a participating batch (droppers).
                         { targetBatch: { $in: normalizedBatches } },
-                        { rollNumber: { $regex: prefixRegex } }
+                        // Original cohort by roll prefix, but NOT those moved out to a
+                        // different (non-selected) batch. $in:[null,...] also matches missing.
+                        {
+                            rollNumber: { $regex: prefixRegex },
+                            targetBatch: { $in: [null, '', ...normalizedBatches] }
+                        }
                     ]
                 },
                 { $set: { isParticipating: true } }

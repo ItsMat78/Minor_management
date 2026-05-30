@@ -126,6 +126,11 @@ const Dashboard: React.FC = () => {
             alert('Please select at least one file to submit.');
             return;
         }
+        const approved = ((group?.projects || (group?.project ? [group.project] : [])) as any[]).find((p: any) => p.status === 'Approved');
+        if (!approved?._id) {
+            alert('No approved project to submit to.');
+            return;
+        }
         setIsSubmittingFiles(true);
         const formData = new FormData();
         formData.append('evalType', submitEvalType);
@@ -134,7 +139,7 @@ const Dashboard: React.FC = () => {
         if (submitPlagiarism) formData.append('plagiarismReport', submitPlagiarism);
 
         try {
-            await api.put(`/projects/${group?.projects?.[0]?._id}/submissions`, formData, {
+            await api.put(`/projects/${approved._id}/submissions`, formData, {
                 headers: { 'Content-Type': 'multipart/form-data' }
             });
             alert('Files submitted successfully!');

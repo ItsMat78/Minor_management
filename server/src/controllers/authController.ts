@@ -150,7 +150,10 @@ export const forgotPassword = async (req: Request, res: Response) => {
         const { email } = req.body;
         const user = await User.findOne({ email });
 
-        if (!user) return res.status(404).json({ message: 'No account found with that email address.' });
+        // Don't reveal whether an account exists — always return the same generic response.
+        if (!user) {
+            return res.json({ message: 'If that email is registered, an OTP has been sent.' });
+        }
 
         // 60-second cooldown (same logic as resendOtp)
         if (user.otpExpires) {
@@ -183,7 +186,7 @@ export const forgotPassword = async (req: Request, res: Response) => {
             console.error(`[AuthController] Failed to send forgot-password OTP to ${user.email}:`, err)
         );
 
-        return res.json({ message: 'OTP sent to your email.' });
+        return res.json({ message: 'If that email is registered, an OTP has been sent.' });
     } catch (error) {
         res.status(500).json({ message: 'Server error' });
     }
@@ -205,6 +208,10 @@ export const verifyForgotPasswordOtp = async (req: Request, res: Response) => {
         user.otp = undefined;
         user.otpExpires = undefined;
         if (!user.isVerified) user.isVerified = true;
+        // The user reached this flow because they don't know their password — force them to
+        // set a new one (the change-password screen skips the current-password check when this
+        // is true). Without this they could never establish a known password again.
+        user.mustChangePassword = true;
         await user.save();
 
         const token = jwt.sign({ id: user._id, role: user.role }, JWT_SECRET, { expiresIn: '1d' });
