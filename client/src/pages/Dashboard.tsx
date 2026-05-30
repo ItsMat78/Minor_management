@@ -15,6 +15,7 @@ interface Group {
     _id: string;
     name: string;
     members: any[];
+    pendingMembers?: any[];
     status: string;
     project?: any;
     projects?: any[];
@@ -327,16 +328,22 @@ const Dashboard: React.FC = () => {
         }
     };
 
+    // Branch restriction: if the active GF event has branchRestricted=true, only show same-branch students
+    const activeGFEvent = activeEvents?.find((e: any) => e.type === 'group_formation_project_proposal');
+    const isBranchRestricted = !!(activeGFEvent as any)?.branchRestricted;
+
     const filteredStudents = students.filter(student => {
-        const matchesSearch = student.name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+        const matchesSearch = student.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                              student.rollNumber?.toLowerCase().includes(searchTerm.toLowerCase());
-        
+
         // Trust server-side batch/cohort filtering.
         // Client only filters locally by search and grouping status (if needed later)
         const matchesStatus = filterStatus === 'all' || (filterStatus === 'available' ? !student.isGrouped : student.isGrouped);
         const matchesBranch = filterBranch === 'all' || student.branch === filterBranch;
+        // When the active GF event is branch-restricted, filter out students from other branches
+        const matchesBranchRestriction = !isBranchRestricted || student.branch === user?.branch;
 
-        return matchesSearch && matchesStatus && matchesBranch;
+        return matchesSearch && matchesStatus && matchesBranch && matchesBranchRestriction;
     }).sort((a, b) => (a.rollNumber || '').localeCompare(b.rollNumber || ''));
 
     if (loading) {
@@ -649,6 +656,13 @@ const Dashboard: React.FC = () => {
                                     >
                                         View Project →
                                     </button>
+                                </div>
+                            )}
+
+                            {isBranchRestricted && !group && (
+                                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center gap-3 text-sm text-amber-800">
+                                    <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600" />
+                                    <span><strong>Branch restriction active:</strong> Only {user?.branch} students are shown. Groups must be single-branch this semester.</span>
                                 </div>
                             )}
 
@@ -1128,19 +1142,39 @@ const Dashboard: React.FC = () => {
                                                                 <h3 className="text-xl font-bold text-neutral-900">Project Proposals</h3>
                                                                 <p className="text-sm text-neutral-500 mt-1">Manage your drafts and sent proposals</p>
                                                             </div>
-                                                            <button
-                                                                onClick={() => {
-                                                                    if (allGroupProjects.filter(p => p.status !== 'Rejected' && p.status !== 'Archived').length > 0) {
-                                                                        setIsProposalWarningOpen(true);
-                                                                    } else {
-                                                                        navigate('/project/propose');
-                                                                    }
-                                                                }}
-                                                                className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 active:scale-95 flex items-center gap-2 w-fit"
-                                                            >
-                                                                <Plus className="w-5 h-5" />
-                                                                Create New Proposal
-                                                            </button>
+                                                            {(() => {
+                                                                const hasActivePending = allGroupProjects.some(p => p.status === 'Pending' || p.status === 'Approved');
+                                                                const hasPendingMembers = (group.pendingMembers ?? []).length > 0;
+                                                                const isDisabled = hasActivePending || hasPendingMembers;
+                                                                const disabledReason = hasActivePending
+                                                                    ? 'One proposal is already pending or approved.'
+                                                                    : hasPendingMembers
+                                                                    ? 'All invited members must accept or decline first.'
+                                                                    : '';
+                                                                return isDisabled ? (
+                                                                    <div
+                                                                        title={disabledReason}
+                                                                        className="px-6 py-2.5 bg-neutral-100 text-neutral-400 rounded-xl font-bold cursor-not-allowed flex items-center gap-2 w-fit border border-neutral-200 text-sm"
+                                                                    >
+                                                                        <Plus className="w-5 h-5" />
+                                                                        {hasActivePending ? 'Proposal Already Pending' : 'Invites Pending'}
+                                                                    </div>
+                                                                ) : (
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            if (allGroupProjects.filter(p => p.status !== 'Rejected' && p.status !== 'Archived').length > 0) {
+                                                                                setIsProposalWarningOpen(true);
+                                                                            } else {
+                                                                                navigate('/project/propose');
+                                                                            }
+                                                                        }}
+                                                                        className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 active:scale-95 flex items-center gap-2 w-fit"
+                                                                    >
+                                                                        <Plus className="w-5 h-5" />
+                                                                        Create New Proposal
+                                                                    </button>
+                                                                );
+                                                            })()}
                                                         </div>
 
                                                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
@@ -1428,6 +1462,42 @@ const Dashboard: React.FC = () => {
                                                     </div>
                                                 ))}
                                             </div>
+
+                                            {/* Pending (invited) members */}
+                                            {(group.pendingMembers ?? []).length > 0 && (
+                                                <div className="mt-6">
+                                                    <h3 className="text-sm font-black text-amber-500 uppercase tracking-[0.2em] mb-3 ml-1">Invited — Awaiting Response</h3>
+                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                        {(group.pendingMembers ?? []).map((m: any) => (
+                                                            <div key={m._id} className="relative bg-amber-50 p-4 rounded-2xl border border-amber-200 opacity-80">
+                                                                <div className="flex items-center gap-3">
+                                                                    {m.photoUrl ? (
+                                                                        <img src={m.photoUrl} alt={m.name} className="w-11 h-11 rounded-xl object-cover border border-amber-200" />
+                                                                    ) : (
+                                                                        <div className="w-11 h-11 rounded-xl bg-amber-200 text-amber-700 flex items-center justify-center text-lg font-black">
+                                                                            {m.name?.charAt(0) || '?'}
+                                                                        </div>
+                                                                    )}
+                                                                    <div className="flex-1 min-w-0">
+                                                                        <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                                                                            <p className="font-bold text-neutral-800 truncate text-sm">{m.name}</p>
+                                                                            <span className="shrink-0 text-[9px] font-black bg-amber-400 text-white px-2 py-0.5 rounded-full uppercase tracking-widest">
+                                                                                Pending
+                                                                            </span>
+                                                                        </div>
+                                                                        <p className="text-xs text-neutral-500 truncate">{m.email}</p>
+                                                                        <p className="text-[10px] font-bold font-mono text-neutral-400">{m.rollNumber}</p>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                    <p className="mt-2 text-xs text-amber-700 font-medium flex items-center gap-1.5">
+                                                        <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                                                        Proposal submission is blocked until all invites are resolved.
+                                                    </p>
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
 
@@ -1441,6 +1511,11 @@ const Dashboard: React.FC = () => {
                                                 If you are the last member, the group will be dissolved.
                                             </p>
                                             
+                                            {group.status === 'Approved' || (group.projects ?? []).some((p: any) => p.status === 'Approved') ? (
+                                                <div className="w-full py-4 rounded-2xl font-black text-xs uppercase tracking-widest bg-neutral-50 text-neutral-400 border-2 border-neutral-100 text-center cursor-not-allowed select-none">
+                                                    Locked — project proposal accepted
+                                                </div>
+                                            ) : (
                                             <button
                                                 onClick={() => setIsLeaveDialogOpen(true)}
                                                 disabled={!activeEvents?.some(e => e.type === 'group_formation_project_proposal' && new Date(e.extensionDate || e.endDate) > new Date())}
@@ -1452,6 +1527,7 @@ const Dashboard: React.FC = () => {
                                             >
                                                 Leave Group
                                             </button>
+                                            )}
                                         </div>
 
                                         {/* Pro-tip Card */}

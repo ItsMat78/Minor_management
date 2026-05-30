@@ -7,6 +7,7 @@ import Group from '../models/Group';
 import Project from '../models/Project';
 import Panel from '../models/Panel';
 import Event, { EventType } from '../models/Event';
+import { getGlobalSettings } from '../models/Settings';
 import bcrypt from 'bcryptjs';
 
 const verifyAdminPassword = async (userId: string, passwordToVerify: string) => {
@@ -88,6 +89,63 @@ export const getStats = async (req: Request, res: Response) => {
     }
 };
 
+// Return the global default mentorship limits used for new faculty.
+export const getDefaultFacultyLimits = async (req: Request, res: Response) => {
+    try {
+        const settings = await getGlobalSettings();
+        res.json({
+            maxStudents: settings.defaultMaxStudents,
+            maxGroups: settings.defaultMaxGroups,
+        });
+    } catch (error) {
+        res.status(500).json({ message: 'Server error', error });
+    }
+};
+
+// Set the global default mentorship limits. Optionally apply them to every
+// existing faculty member at once (the "set default limit for all faculties" action).
+export const setDefaultFacultyLimits = async (req: Request, res: Response) => {
+    try {
+        const { maxStudents, maxGroups, applyToExisting } = req.body;
+
+        const normalize = (val: any): number | undefined => {
+            if (val === undefined || val === null || val === '') return undefined;
+            const n = Number(val);
+            if (!Number.isFinite(n) || n < 0) return undefined;
+            return Math.floor(n);
+        };
+
+        const newMaxStudents = normalize(maxStudents);
+        const newMaxGroups = normalize(maxGroups);
+
+        if (newMaxStudents === undefined && newMaxGroups === undefined) {
+            return res.status(400).json({ message: 'Provide a valid maxStudents and/or maxGroups (non-negative numbers).' });
+        }
+
+        const settings = await getGlobalSettings();
+        if (newMaxStudents !== undefined) settings.defaultMaxStudents = newMaxStudents;
+        if (newMaxGroups !== undefined) settings.defaultMaxGroups = newMaxGroups;
+        await settings.save();
+
+        let updatedFaculty = 0;
+        if (applyToExisting) {
+            const update: any = {};
+            if (newMaxStudents !== undefined) update.maxStudents = settings.defaultMaxStudents;
+            if (newMaxGroups !== undefined) update.maxGroups = settings.defaultMaxGroups;
+            const result = await User.updateMany({ role: UserRole.FACULTY }, { $set: update });
+            updatedFaculty = (result as any).modifiedCount ?? (result as any).nModified ?? 0;
+        }
+
+        res.json({
+            maxStudents: settings.defaultMaxStudents,
+            maxGroups: settings.defaultMaxGroups,
+            updatedFaculty,
+        });
+    } catch (error) {
+        res.status(500).json({ message: 'Server error', error });
+    }
+};
+
 export const createUser = async (req: Request, res: Response) => {
     try {
         const { name, email, role, rollNumber, branch, semester, department, expertise } = req.body;
@@ -108,6 +166,9 @@ export const createUser = async (req: Request, res: Response) => {
 
         const defaultPassword = await bcrypt.hash(crypto.randomBytes(12).toString('hex'), 10);
 
+        // New faculty inherit the current global default mentorship limits.
+        const settings = role === 'Faculty' ? await getGlobalSettings() : null;
+
         // For students: check if a GF event is active and their batch is participating
         let isParticipating = role === 'Faculty'; // faculty always participate
         if (role === 'Student') {
@@ -125,6 +186,8 @@ export const createUser = async (req: Request, res: Response) => {
             semester:    role === 'Student' ? (Number(semester) || undefined) : undefined,
             department:  role === 'Faculty' ? (department || 'CSE') : undefined,
             expertise:   role === 'Faculty' ? expertise : undefined,
+            maxStudents: settings ? settings.defaultMaxStudents : undefined,
+            maxGroups:   settings ? settings.defaultMaxGroups : undefined,
             isVerified:  role === 'Faculty',   // faculty active immediately
             isParticipating,
             mustChangePassword: true,

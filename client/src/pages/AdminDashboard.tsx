@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
-import { Search, Users, Clock, CheckCircle, FileText, X, LogOut, ChevronDown, ChevronUp, Settings, Menu, Calendar, Download, AlertCircle, AlertTriangle, Save, Pencil, LayoutGrid, MoreVertical, Plus, Edit3, Power, Info, Trash2, Upload, Mail, Copy, Check, UserCheck, UserX, ShieldCheck, ShieldOff, Archive as ArchiveIcon } from 'lucide-react';
+import { Search, Users, Clock, CheckCircle, FileText, X, LogOut, ChevronDown, ChevronUp, ChevronRight, Settings, Menu, Calendar, Download, AlertCircle, AlertTriangle, Save, Pencil, LayoutGrid, MoreVertical, Plus, Edit3, Power, Info, Trash2, Upload, Mail, Copy, Check, UserCheck, UserX, ShieldCheck, ShieldOff, Archive as ArchiveIcon } from 'lucide-react';
 import { motion } from 'framer-motion';
 import MenteeGroupDetails from '../components/MenteeGroupDetails';
 import AutoCreatePanelsModal from '../components/AutoCreatePanelsModal';
@@ -201,6 +201,16 @@ const AdminDashboard: React.FC = () => {
         rubricParams: '' // For JSON stringified rubric
     });
     const [participatingBatches, setParticipatingBatches] = useState<string[]>([]);
+    const [eventBranchRestricted, setEventBranchRestricted] = useState(false);
+    // Default mentorship limits applied to every faculty for the new semester (Group Formation modal).
+    const [eventDefaultMaxGroups, setEventDefaultMaxGroups] = useState(7);
+    const [eventDefaultMaxStudents, setEventDefaultMaxStudents] = useState(21);
+    // "Set default mentorship limit for all faculties" modal (Faculty Directory).
+    const [showDefaultLimitsModal, setShowDefaultLimitsModal] = useState(false);
+    const [defaultLimitsMaxGroups, setDefaultLimitsMaxGroups] = useState(7);
+    const [defaultLimitsMaxStudents, setDefaultLimitsMaxStudents] = useState(21);
+    const [defaultLimitsSaving, setDefaultLimitsSaving] = useState(false);
+    const [defaultLimitsMsg, setDefaultLimitsMsg] = useState('');
 
     // Archive tab state
     const [archiveYear, setArchiveYear] = useState<string>('All');
@@ -993,6 +1003,40 @@ const AdminDashboard: React.FC = () => {
             }
         });
         setBatchLimits(initialBatchLimits);
+    };
+
+    const openDefaultLimitsModal = async () => {
+        setDefaultLimitsMsg('');
+        setShowDefaultLimitsModal(true);
+        try {
+            const res = await api.get('/admin/default-faculty-limits');
+            if (typeof res.data?.maxStudents === 'number') setDefaultLimitsMaxStudents(res.data.maxStudents);
+            if (typeof res.data?.maxGroups === 'number') setDefaultLimitsMaxGroups(res.data.maxGroups);
+        } catch {
+            /* keep the current 21 / 7 defaults */
+        }
+    };
+
+    const handleSaveDefaultLimits = async () => {
+        setDefaultLimitsSaving(true);
+        setDefaultLimitsMsg('');
+        try {
+            const res = await api.put('/admin/default-faculty-limits', {
+                maxStudents: defaultLimitsMaxStudents,
+                maxGroups: defaultLimitsMaxGroups,
+                applyToExisting: true,
+            });
+            const updated = res.data?.updatedFaculty ?? 0;
+            const facRes = await api.get('/users/faculty');
+            setFaculty(Array.isArray(facRes.data) ? facRes.data : []);
+            setDefaultLimitsMsg(`Saved. Applied to ${updated} faculty.`);
+            setTimeout(() => setShowDefaultLimitsModal(false), 1000);
+        } catch (err) {
+            console.error('Failed to save default limits', err);
+            setDefaultLimitsMsg('Failed to save default limits.');
+        } finally {
+            setDefaultLimitsSaving(false);
+        }
     };
 
     const handleSaveLimits = async () => {
@@ -1994,6 +2038,22 @@ const AdminDashboard: React.FC = () => {
                                 )}
 
                                 {activeTab === 'faculty' && (
+                                    <div className="space-y-4">
+                                    <button
+                                        onClick={openDefaultLimitsModal}
+                                        className="w-full flex items-center justify-between px-6 py-4 bg-white rounded-xl border border-indigo-200 shadow-sm hover:border-indigo-400 hover:shadow-md transition-all group"
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-9 h-9 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                                                <Settings className="w-5 h-5" />
+                                            </div>
+                                            <div className="text-left">
+                                                <p className="font-bold text-neutral-900 text-sm">Set Default Mentorship Limit for All Faculty</p>
+                                                <p className="text-xs text-neutral-500 mt-0.5">Apply a global max-groups and max-students cap to every faculty member instantly.</p>
+                                            </div>
+                                        </div>
+                                        <ChevronRight className="w-5 h-5 text-neutral-400 group-hover:text-indigo-600 transition-colors" />
+                                    </button>
                                     <div className="bg-white rounded-xl border border-neutral-200 shadow-sm overflow-visible">
                                         <table className="w-full text-left text-sm">
                                             <thead className="bg-neutral-50 border-b border-neutral-200">
@@ -2080,6 +2140,7 @@ const AdminDashboard: React.FC = () => {
                                                 )}
                                             </tbody>
                                         </table>
+                                    </div>
                                     </div>
                                 )}
 
@@ -2602,6 +2663,9 @@ const AdminDashboard: React.FC = () => {
                                                                                     rubricParams: ev.rubricParams ? JSON.stringify(ev.rubricParams, null, 2) : ''
                                                                                 });
                                                                                 setParticipatingBatches(Array.isArray(ev.participatingBatches) ? ev.participatingBatches.map(String) : []);
+                                                                                setEventBranchRestricted(!!ev.branchRestricted);
+                                                                                if (typeof ev.defaultMaxGroups === 'number') setEventDefaultMaxGroups(ev.defaultMaxGroups);
+                                                                                if (typeof ev.defaultMaxStudents === 'number') setEventDefaultMaxStudents(ev.defaultMaxStudents);
                                                                                 setRubricMode('builder');
                                                                                 initRubricForType(ev.type, ev.rubricParams);
                                                                                 setShowCreateEvent(true);
@@ -4114,6 +4178,62 @@ const AdminDashboard: React.FC = () => {
                     </div>
                 )}
 
+                {/* Default Faculty Limits Modal */}
+                {showDefaultLimitsModal && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm">
+                        <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden flex flex-col animate-in fade-in zoom-in duration-200">
+                            <div className="px-6 py-4 border-b border-neutral-100 flex items-center justify-between">
+                                <h3 className="text-lg font-bold text-neutral-900 flex items-center gap-2">
+                                    <Settings className="w-5 h-5 text-indigo-600" /> Default Mentorship Limits
+                                </h3>
+                                <button onClick={() => setShowDefaultLimitsModal(false)} className="p-1.5 rounded-lg hover:bg-neutral-100 text-neutral-400"><X className="w-5 h-5" /></button>
+                            </div>
+                            <div className="px-6 py-5 space-y-4">
+                                <p className="text-xs text-neutral-500 leading-relaxed">These limits are applied immediately to every faculty member. New faculty added later will inherit these defaults.</p>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="flex flex-col gap-1">
+                                        <label className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Max Groups</label>
+                                        <input
+                                            type="number"
+                                            min={0}
+                                            value={defaultLimitsMaxGroups}
+                                            onChange={(e) => setDefaultLimitsMaxGroups(parseInt(e.target.value) || 0)}
+                                            className="border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                                        />
+                                    </div>
+                                    <div className="flex flex-col gap-1">
+                                        <label className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Max Students</label>
+                                        <input
+                                            type="number"
+                                            min={0}
+                                            value={defaultLimitsMaxStudents}
+                                            onChange={(e) => setDefaultLimitsMaxStudents(parseInt(e.target.value) || 0)}
+                                            className="border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                                        />
+                                    </div>
+                                </div>
+                                {defaultLimitsMsg && (
+                                    <p className={`text-sm font-medium ${defaultLimitsMsg.startsWith('Failed') ? 'text-red-600' : 'text-emerald-600'}`}>{defaultLimitsMsg}</p>
+                                )}
+                            </div>
+                            <div className="px-6 py-4 border-t border-neutral-100 flex justify-end gap-3">
+                                <button onClick={() => setShowDefaultLimitsModal(false)} className="px-4 py-2 rounded-lg border border-neutral-200 text-sm font-medium text-neutral-600 hover:bg-neutral-50">Cancel</button>
+                                <button
+                                    onClick={handleSaveDefaultLimits}
+                                    disabled={defaultLimitsSaving}
+                                    className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold disabled:opacity-50 flex items-center gap-2"
+                                >
+                                    {defaultLimitsSaving ? (
+                                        <><div className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Saving...</>
+                                    ) : (
+                                        <><Save className="w-3.5 h-3.5" /> Save &amp; Apply</>
+                                    )}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 {configStudentBatch && (
                     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm">
                         <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden flex flex-col animate-in fade-in zoom-in duration-200">
@@ -4207,6 +4327,7 @@ const AdminDashboard: React.FC = () => {
                                     setRubricSections([]); setRubricPanelAggregation('average');
                                     setEventForm({ type: 'group_formation_project_proposal', endDate: '', extensionDate: '', batchYear: '', rubricParams: '' });
                                     setParticipatingBatches([]);
+                                    setEventBranchRestricted(false);
                                 }} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
                             </div>
                             <div className="p-6 space-y-5 overflow-y-auto">
@@ -4254,6 +4375,51 @@ const AdminDashboard: React.FC = () => {
                                             {participatingBatches.length === 0 && (
                                                 <p className="text-[11px] text-red-500 font-semibold">At least one batch must be selected.</p>
                                             )}
+                                        </div>
+                                    )}
+
+                                    {eventForm.type === 'group_formation_project_proposal' && (
+                                        <div className="mt-3 flex items-center justify-between p-3 bg-neutral-50 border border-neutral-200 rounded-xl">
+                                            <div>
+                                                <p className="text-sm font-bold text-neutral-800">Restrict groups to same branch</p>
+                                                <p className="text-[11px] text-neutral-500 mt-0.5">CSE / DSAI / ECE students cannot mix in a group this semester.</p>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => setEventBranchRestricted(v => !v)}
+                                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${eventBranchRestricted ? 'bg-indigo-600' : 'bg-neutral-300'}`}
+                                            >
+                                                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${eventBranchRestricted ? 'translate-x-6' : 'translate-x-1'}`} />
+                                            </button>
+                                        </div>
+                                    )}
+
+                                    {eventForm.type === 'group_formation_project_proposal' && (
+                                        <div className="mt-3">
+                                            <label className="block text-sm font-medium text-gray-700 mb-1.5">Default Mentorship Limits (per faculty)</label>
+                                            <p className="text-[11px] text-neutral-500 mb-2">Applied to every faculty for this semester. Faculty added later this semester inherit these. You can still fine-tune individual faculty afterwards.</p>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div>
+                                                    <label className="block text-[11px] text-neutral-500 mb-1">Max Groups</label>
+                                                    <input
+                                                        type="number"
+                                                        min={0}
+                                                        value={eventDefaultMaxGroups}
+                                                        onChange={(e) => setEventDefaultMaxGroups(parseInt(e.target.value) || 0)}
+                                                        className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-[11px] text-neutral-500 mb-1">Max Students</label>
+                                                    <input
+                                                        type="number"
+                                                        min={0}
+                                                        value={eventDefaultMaxStudents}
+                                                        onChange={(e) => setEventDefaultMaxStudents(parseInt(e.target.value) || 0)}
+                                                        className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20"
+                                                    />
+                                                </div>
+                                            </div>
                                         </div>
                                     )}
 
@@ -4393,7 +4559,7 @@ const AdminDashboard: React.FC = () => {
                                 </div>
                             </div>
                             <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-3">
-                                <button onClick={() => { setShowCreateEvent(false); setEditingEvent(null); setAdminPassword(''); setRubricSections([]); setRubricPanelAggregation('average'); setParticipatingBatches([]); }} className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition">Cancel</button>
+                                <button onClick={() => { setShowCreateEvent(false); setEditingEvent(null); setAdminPassword(''); setRubricSections([]); setRubricPanelAggregation('average'); setParticipatingBatches([]); setEventBranchRestricted(false); }} className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition">Cancel</button>
                                 <button onClick={async () => {
                                     try {
                                         if (!eventForm.endDate || !adminPassword) {
@@ -4454,6 +4620,9 @@ const AdminDashboard: React.FC = () => {
                                         };
                                         if (eventForm.type === 'group_formation_project_proposal') {
                                             payload.participatingBatches = participatingBatches;
+                                            payload.defaultMaxStudents = eventDefaultMaxStudents;
+                                            payload.defaultMaxGroups = eventDefaultMaxGroups;
+                                            payload.branchRestricted = eventBranchRestricted;
                                         }
                                         if (editingEvent) {
                                             await api.put(`/events/${editingEvent._id}`, payload);
@@ -4464,6 +4633,7 @@ const AdminDashboard: React.FC = () => {
                                         setEditingEvent(null);
                                         setAdminPassword('');
                                         setParticipatingBatches([]);
+                                        setEventBranchRestricted(false);
                                         const res = await api.get('/events');
                                         setEvents(Array.isArray(res.data) ? res.data : []);
                                     } catch (e: any) {

@@ -5,6 +5,7 @@ import User from '../models/User';
 import Group from '../models/Group';
 import Project from '../models/Project';
 import Panel from '../models/Panel';
+import { getGlobalSettings } from '../models/Settings';
 import { sendEventNotificationEmail } from '../utils/emailService';
 
 const verifyAdminPassword = async (userId: string, passwordToVerify: string) => {
@@ -74,7 +75,7 @@ export const getActiveEvents = async (req: Request, res: Response) => {
 // Create a new event
 export const createEvent = async (req: Request, res: Response) => {
     try {
-        const { type, endDate, extensionDate, batchYear, password, rubricParams, participatingBatches } = req.body;
+        const { type, endDate, extensionDate, batchYear, password, rubricParams, participatingBatches, defaultMaxStudents, defaultMaxGroups, branchRestricted } = req.body;
         const adminId = (req as any).user?.id;
 
         if (!await verifyAdminPassword(adminId, password)) {
@@ -142,6 +143,25 @@ export const createEvent = async (req: Request, res: Response) => {
                 },
                 { $set: { isParticipating: true } }
             );
+
+            // Set the semester's default mentorship limits. These become the global
+            // defaults (inherited by faculty created later this semester) and are
+            // applied to every existing faculty member now.
+            const normalizeLimit = (val: any, fallback: number): number => {
+                if (val === undefined || val === null || val === '') return fallback;
+                const n = Number(val);
+                if (!Number.isFinite(n) || n < 0) return fallback;
+                return Math.floor(n);
+            };
+            const settings = await getGlobalSettings();
+            settings.defaultMaxStudents = normalizeLimit(defaultMaxStudents, settings.defaultMaxStudents);
+            settings.defaultMaxGroups = normalizeLimit(defaultMaxGroups, settings.defaultMaxGroups);
+            await settings.save();
+
+            await User.updateMany(
+                { role: 'Faculty' },
+                { $set: { maxStudents: settings.defaultMaxStudents, maxGroups: settings.defaultMaxGroups } }
+            );
         }
 
         const newEvent = new Event({
@@ -150,6 +170,7 @@ export const createEvent = async (req: Request, res: Response) => {
             extensionDate: extensionDate ? new Date(extensionDate) : undefined,
             batchYear: batchYear || undefined,
             participatingBatches: normalizedBatches,
+            branchRestricted: type === EventType.GROUP_FORMATION_AND_PROJECT_PROPOSAL ? !!branchRestricted : false,
             isActive: true,
             rubricParams,
             createdBy: adminId

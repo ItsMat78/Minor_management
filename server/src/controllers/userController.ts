@@ -8,6 +8,7 @@ import fs from 'fs';
 import bcrypt from 'bcryptjs';
 import { publicUrlFor, deleteFileByUrl } from '../middleware/uploadMiddleware';
 import Event, { EventType } from '../models/Event';
+import { getGlobalSettings } from '../models/Settings';
 
 /** Returns the participatingBatches of the current active GF event, or [] if none. */
 async function getActiveParticipatingBatches(): Promise<string[]> {
@@ -501,6 +502,9 @@ export const commitImport = async (req: Request, res: Response) => {
         // Determine participating batches once for this import run
         const activeBatches = await getActiveParticipatingBatches();
 
+        // Imported faculty inherit the current global default mentorship limits.
+        const settings = await getGlobalSettings();
+
         let created = 0;
         const errors: { email: string; name: string; reason: string }[] = [];
 
@@ -511,8 +515,13 @@ export const commitImport = async (req: Request, res: Response) => {
                     ? true
                     : studentBatchParticipates(row.rollNumber, activeBatches);
 
+                const facultyLimits = row.role === 'Faculty'
+                    ? { maxStudents: settings.defaultMaxStudents, maxGroups: settings.defaultMaxGroups }
+                    : {};
+
                 await User.create({
                     ...row,
+                    ...facultyLimits,
                     password: defaultPassword,
                     isParticipating,
                     isVerified: false,

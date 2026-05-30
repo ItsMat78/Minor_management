@@ -23,17 +23,16 @@ export const createProject = async (req: Request, res: Response) => {
             return res.status(400).json({ message: 'All invited members must accept before submitting a proposal.' });
         }
 
-        // Check if group already has a project pending or approved
-        // Allow multiple drafts, but only one Pending/Approved
+        // Check if group already has an active project (Pending or Approved)
+        // Allow multiple drafts, but only one Pending/Approved at a time
         if (status !== 'Draft') {
-            const existingApproved = await Project.findOne({
+            const existingActive = await Project.findOne({
                 group: group._id,
-                status: 'Approved'
+                status: { $in: ['Pending', 'Approved'] }
             });
-            if (existingApproved) {
-                return res.status(400).json({ message: 'Group already has an approved project' });
+            if (existingActive) {
+                return res.status(400).json({ message: 'Your group already has an active proposal. Withdraw or wait for it to be rejected before sending another.' });
             }
-            // Allow multiple Pending projects
         }
 
         // Validate faculty if provided
@@ -510,6 +509,16 @@ export const updateProject = async (req: Request, res: Response) => {
         // If status changes (e.g. back to Pending from Draft)
         if (status && status !== project.status) {
             if (status === 'Pending') {
+                // Only one active proposal at a time — block promoting a Draft to Pending
+                // while the group already has another Pending/Approved project.
+                const existingActive = await Project.findOne({
+                    group: group._id,
+                    _id: { $ne: project._id },
+                    status: { $in: ['Pending', 'Approved'] }
+                });
+                if (existingActive) {
+                    return res.status(400).json({ message: 'Your group already has an active proposal. Withdraw or wait for it to be rejected before sending another.' });
+                }
                 project.status = 'Pending';
                 group.status = 'ProposalPending';
                 group.project = project._id; // Ensure group points to the active proposal
@@ -519,8 +528,16 @@ export const updateProject = async (req: Request, res: Response) => {
             }
         }
 
-        // If it was Rejected, and now being updated, set to Pending?
+        // If it was Rejected, and now being updated, set to Pending — but only if no other Pending exists
         if (project.status === 'Rejected') {
+            const otherPending = await Project.findOne({
+                group: group._id,
+                _id: { $ne: project._id },
+                status: 'Pending'
+            });
+            if (otherPending) {
+                return res.status(400).json({ message: 'Your group already has an active proposal. Withdraw it before re-submitting this one.' });
+            }
             project.status = 'Pending';
             project.feedback = undefined; // Clear feedback
             group.status = 'ProposalPending';

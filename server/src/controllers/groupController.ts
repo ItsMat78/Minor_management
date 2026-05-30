@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import Group from '../models/Group';
 import User from '../models/User';
 import Project from '../models/Project';
+import Event, { EventType } from '../models/Event';
 import { sendGroupCreationEmail, sendGroupInviteEmail, sendGroupInviteResponseEmail } from '../utils/emailService';
 
 
@@ -47,6 +48,31 @@ export const createGroup = async (req: Request, res: Response) => {
                 if (memberGroup) return res.status(400).json({ message: `User ${member.name} is already in a group or has a pending invite` });
 
                 pendingMembers.push(memberId);
+            }
+        }
+
+        // Enforce branch restriction if the active GF event requires it
+        if (pendingMembers.length > 0) {
+            const now = new Date();
+            const activeGF = await Event.findOne({
+                type: EventType.GROUP_FORMATION_AND_PROJECT_PROPOSAL,
+                isActive: true,
+                startDate: { $lte: now },
+                $or: [
+                    { extensionDate: { $exists: true, $ne: null, $gte: now } },
+                    { extensionDate: { $exists: false }, endDate: { $gte: now } },
+                    { extensionDate: null, endDate: { $gte: now } }
+                ]
+            });
+            if (activeGF && activeGF.branchRestricted) {
+                for (const memberId of pendingMembers) {
+                    const member = await User.findById(memberId);
+                    if (member && member.branch !== user.branch) {
+                        return res.status(400).json({
+                            message: `This semester groups must be single-branch. ${member.name} (${member.branch}) cannot join a ${user.branch} group.`
+                        });
+                    }
+                }
             }
         }
 
@@ -119,6 +145,7 @@ export const getMyGroup = async (req: Request, res: Response) => {
         const group = await Group.findOne({ members: userId })
             .sort({ isArchived: 1, createdAt: -1 })
             .populate('members', 'name email role branch rollNumber photoUrl')
+            .populate('pendingMembers', 'name email rollNumber photoUrl branch')
             .populate({
                 path: 'project',
                 populate: { path: 'faculty', select: 'name department email photoUrl' }
@@ -235,6 +262,16 @@ export const leaveGroup = async (req: Request, res: Response) => {
         const group = await Group.findOne({ members: userId, isArchived: { $ne: true } });
         if (!group) return res.status(404).json({ message: 'Not in an active group' });
         if (group.isArchived) return res.status(403).json({ message: 'Cannot leave an archived group.' });
+
+        // Block leaving if the group's project has been approved
+        if (group.status === 'Approved') {
+            return res.status(403).json({ message: 'Cannot leave the group after a project proposal has been accepted.' });
+        }
+        // Defensive check: also query the project directly in case group.status lags
+        const approvedProject = await Project.findOne({ group: group._id, status: 'Approved' });
+        if (approvedProject) {
+            return res.status(403).json({ message: 'Cannot leave the group after a project proposal has been accepted.' });
+        }
 
         // Remove user from group
         group.members = group.members.filter(m => m.toString() !== userId);
