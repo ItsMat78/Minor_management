@@ -213,8 +213,8 @@ const AdminDashboard: React.FC = () => {
     const [defaultLimitsMsg, setDefaultLimitsMsg] = useState('');
 
     // Archive tab state
-    const [archiveYear, setArchiveYear] = useState<string>('All');
-    const [archiveData, setArchiveData] = useState<{ availableYears: string[]; groups: any[]; projects: any[]; participants: any[]; panels: any[] } | null>(null);
+    const [archiveSession, setArchiveSession] = useState<string>('All');
+    const [archiveData, setArchiveData] = useState<{ availableSessions: string[]; groups: any[]; projects: any[]; participants: any[]; panels: any[] } | null>(null);
     const [archiveLoading, setArchiveLoading] = useState(false);
     const [archiveSection, setArchiveSection] = useState<'projects' | 'participants' | 'panels'>('projects');
 
@@ -632,7 +632,7 @@ const AdminDashboard: React.FC = () => {
                 } else if (activeTab === 'archive') {
                     setArchiveLoading(true);
                     try {
-                        const qs = archiveYear && archiveYear !== 'All' ? `?year=${encodeURIComponent(archiveYear)}` : '';
+                        const qs = archiveSession && archiveSession !== 'All' ? `?session=${encodeURIComponent(archiveSession)}` : '';
                         const res = await api.get(`/admin/archive${qs}`);
                         setArchiveData(res.data || null);
                     } finally {
@@ -650,7 +650,7 @@ const AdminDashboard: React.FC = () => {
         if (activeTab === 'groups') {
             setViewGroup(null); // Reset detail view on tab change
         }
-    }, [activeTab, filterBatch, archiveYear, filterParticipationStatus]);
+    }, [activeTab, filterBatch, archiveSession, filterParticipationStatus]);
 
     // Reset sort when tab changes
     useEffect(() => {
@@ -3424,15 +3424,15 @@ const AdminDashboard: React.FC = () => {
                                                 </div>
                                             </div>
                                             <div className="flex items-center gap-3">
-                                                <label className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Batch</label>
+                                                <label className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Session</label>
                                                 <select
-                                                    value={archiveYear}
-                                                    onChange={(e) => setArchiveYear(e.target.value)}
+                                                    value={archiveSession}
+                                                    onChange={(e) => setArchiveSession(e.target.value)}
                                                     className="px-3 py-2 bg-white rounded-lg border border-neutral-300 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
                                                 >
-                                                    <option value="All">All years</option>
-                                                    {(archiveData?.availableYears || []).map((y) => (
-                                                        <option key={y} value={y}>{y}</option>
+                                                    <option value="All">All sessions</option>
+                                                    {(archiveData?.availableSessions || []).map((s) => (
+                                                        <option key={s} value={s}>{s}</option>
                                                     ))}
                                                 </select>
                                             </div>
@@ -3466,7 +3466,7 @@ const AdminDashboard: React.FC = () => {
                                                 {archiveSection === 'projects' && (
                                                     <div className="bg-white rounded-2xl border border-neutral-200 overflow-hidden shadow-sm">
                                                         {(archiveData.projects || []).length === 0 ? (
-                                                            <div className="p-10 text-center text-neutral-500 text-sm">No archived projects for this batch.</div>
+                                                            <div className="p-10 text-center text-neutral-500 text-sm">No archived projects for this session.</div>
                                                         ) : (
                                                             <table className="w-full text-sm">
                                                                 <thead className="bg-neutral-50 text-neutral-500 uppercase text-xs">
@@ -3474,6 +3474,7 @@ const AdminDashboard: React.FC = () => {
                                                                         <th className="text-left px-4 py-3">Title</th>
                                                                         <th className="text-left px-4 py-3">Group</th>
                                                                         <th className="text-left px-4 py-3">Batch</th>
+                                                                        <th className="text-left px-4 py-3">Session</th>
                                                                         <th className="text-left px-4 py-3">Mentor</th>
                                                                         <th className="text-left px-4 py-3">Mid</th>
                                                                         <th className="text-left px-4 py-3">End</th>
@@ -3494,6 +3495,7 @@ const AdminDashboard: React.FC = () => {
                                                                                 <td className="px-4 py-3 font-semibold text-neutral-900">{p.title || '—'}</td>
                                                                                 <td className="px-4 py-3 text-neutral-700">{groupName}</td>
                                                                                 <td className="px-4 py-3 text-neutral-700">{batch}</td>
+                                                                                <td className="px-4 py-3 text-neutral-700 whitespace-nowrap">{p.archivedSession || '—'}</td>
                                                                                 <td className="px-4 py-3 text-neutral-700">{p.archivedMentorName || '—'}</td>
                                                                                 <td className="px-4 py-3 text-neutral-700">{mid ?? '—'}</td>
                                                                                 <td className="px-4 py-3 text-neutral-700">{end ?? '—'}</td>
@@ -3510,7 +3512,7 @@ const AdminDashboard: React.FC = () => {
                                                 {archiveSection === 'participants' && (
                                                     <div className="bg-white rounded-2xl border border-neutral-200 overflow-hidden shadow-sm">
                                                         {(archiveData.participants || []).length === 0 ? (
-                                                            <div className="p-10 text-center text-neutral-500 text-sm">No archived participants for this batch.</div>
+                                                            <div className="p-10 text-center text-neutral-500 text-sm">No archived participants for this session.</div>
                                                         ) : (
                                                             <table className="w-full text-sm">
                                                                 <thead className="bg-neutral-50 text-neutral-500 uppercase text-xs">
@@ -3520,6 +3522,7 @@ const AdminDashboard: React.FC = () => {
                                                                         <th className="text-left px-4 py-3">Roll</th>
                                                                         <th className="text-left px-4 py-3">Branch</th>
                                                                         <th className="text-left px-4 py-3">Batch</th>
+                                                                        <th className="text-left px-4 py-3">Session</th>
                                                                         <th className="text-left px-4 py-3">Group</th>
                                                                         <th className="text-left px-4 py-3">Project</th>
                                                                         <th className="text-left px-4 py-3">Mentor</th>
@@ -3535,6 +3538,7 @@ const AdminDashboard: React.FC = () => {
                                                                             <td className="px-4 py-3 text-neutral-700">{m.rollNumber || '—'}</td>
                                                                             <td className="px-4 py-3 text-neutral-700">{m.branch || '—'}</td>
                                                                             <td className="px-4 py-3 text-neutral-700">{m.batchYear || '—'}</td>
+                                                                            <td className="px-4 py-3 text-neutral-700 whitespace-nowrap">{m.archivedSession || '—'}</td>
                                                                             <td className="px-4 py-3 text-neutral-700">{m.groupName || '—'}</td>
                                                                             <td className="px-4 py-3 text-neutral-700">{m.projectTitle || '—'}</td>
                                                                             <td className="px-4 py-3 text-neutral-700">{m.archivedMentorName || '—'}</td>
@@ -3551,7 +3555,7 @@ const AdminDashboard: React.FC = () => {
                                                 {archiveSection === 'panels' && (
                                                     <div className="space-y-4">
                                                         {(archiveData.panels || []).length === 0 ? (
-                                                            <div className="bg-white rounded-2xl border border-neutral-200 p-10 text-center text-neutral-500 text-sm shadow-sm">No archived panels for this batch.</div>
+                                                            <div className="bg-white rounded-2xl border border-neutral-200 p-10 text-center text-neutral-500 text-sm shadow-sm">No archived panels for this session.</div>
                                                         ) : (
                                                             Object.entries(
                                                                 (archiveData.panels as any[]).reduce<Record<string, any[]>>((acc, p) => {

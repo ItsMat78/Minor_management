@@ -8,6 +8,7 @@ import Project from '../models/Project';
 import Panel from '../models/Panel';
 import Event, { EventType } from '../models/Event';
 import { getGlobalSettings } from '../models/Settings';
+import { sessionLabelFor, sessionSortKey, resolveSession } from '../utils/session';
 import bcrypt from 'bcryptjs';
 
 const verifyAdminPassword = async (userId: string, passwordToVerify: string) => {
@@ -213,40 +214,40 @@ const groupBatchYear = (g: any): string | null => {
 
 export const getArchive = async (req: Request, res: Response) => {
     try {
-        const { year } = req.query as { year?: string };
+        const { session } = req.query as { session?: string };
 
-        const allYearsMode = !year || year === 'All';
-        const yearStr = allYearsMode ? null : String(year);
+        const allMode = !session || session === 'All';
+        const sel = allMode ? null : String(session);
 
-        // Archived groups with members populated (needed for participants + batch derivation)
-        const groupQuery: any = { isArchived: true };
-        if (yearStr) groupQuery.$or = [
-            { targetBatch: yearStr },
-            { targetBatch: { $in: [null, undefined, ''] } } // fall back to roll-derived match below
-        ];
-        const rawGroups = await Group.find(groupQuery)
+        // Archived groups with members populated (needed for participants + batch derivation).
+        // Session filtering is done in memory so legacy records (no archivedSession stamp)
+        // fall back to their archival date instead of being silently dropped.
+        const rawGroups = await Group.find({ isArchived: true })
             .populate('members', 'name email rollNumber branch department')
             .lean();
-
-        // Filter to only groups whose derived batch matches (handles targetBatch-missing case)
-        const groups = yearStr
-            ? rawGroups.filter(g => groupBatchYear(g) === yearStr)
-            : rawGroups;
+        const groups = sel ? rawGroups.filter(g => resolveSession(g) === sel) : rawGroups;
 
         const groupIds = groups.map(g => g._id);
 
-        // Archived projects: those linked to matched groups, plus snapshot-imported
-        // projects that have no live group reference (denormalized via archivedBatch /
-        // archivedMembers / archivedGroupName). Year filter applies to both sources.
+        // Archived projects: those linked to the (already session-filtered) groups, plus
+        // snapshot-imported projects with no live group reference (denormalized via
+        // archivedBatch / archivedMembers / archivedGroupName). Linked projects inherit
+        // their group's session; orphans are filtered by their own resolved session.
         const linkedProjects = await Project.find({ isArchived: true, group: { $in: groupIds } })
             .populate('group', 'name targetBatch members')
             .lean();
 
-        const orphanQuery: any = { isArchived: true, $or: [{ group: null }, { group: { $exists: false } }] };
-        if (yearStr) orphanQuery.archivedBatch = yearStr;
-        const orphanProjects = await Project.find(orphanQuery).lean();
+        const rawOrphans = await Project.find({
+            isArchived: true,
+            $or: [{ group: null }, { group: { $exists: false } }]
+        }).lean();
+        const orphanProjects = sel ? rawOrphans.filter(p => resolveSession(p) === sel) : rawOrphans;
 
-        const projects = [...linkedProjects, ...orphanProjects];
+        // Expose the resolved session on every project row (for the Session column).
+        const projects = [...linkedProjects, ...orphanProjects].map((p: any) => ({
+            ...p,
+            archivedSession: resolveSession(p)
+        }));
 
         // Participants flattened, each carrying a link to their group + project + evaluations
         const projectByGroupId = new Map(linkedProjects.map(p => [String((p.group as any)?._id || p.group), p]));
@@ -262,6 +263,7 @@ export const getArchive = async (req: Request, res: Response) => {
                     branch:     m.branch || m.department,
                     groupName:  g.name,
                     batchYear:  groupBatchYear(g),
+                    archivedSession: resolveSession(g),
                     projectTitle: p?.title,
                     archivedMentorName: p?.archivedMentorName,
                     midTermEvaluation:     p?.midTermEvaluation || null,
@@ -282,6 +284,7 @@ export const getArchive = async (req: Request, res: Response) => {
                     branch:     m.branch,
                     groupName:  p.archivedGroupName,
                     batchYear:  p.archivedBatch,
+                    archivedSession: resolveSession(p),
                     projectTitle: p.title,
                     archivedMentorName: p.archivedMentorName,
                     midTermEvaluation:     p.midTermEvaluation || null,
@@ -291,33 +294,21 @@ export const getArchive = async (req: Request, res: Response) => {
             }
         }
 
-        // Archived panels for the year
-        const panelQuery: any = { isArchived: true };
-        if (yearStr) panelQuery.batchYear = Number(yearStr);
-        const panels = await Panel.find(panelQuery).populate('faculty', 'name email department').lean();
+        // Archived panels for the session (filtered in memory like the others)
+        const rawPanels = await Panel.find({ isArchived: true })
+            .populate('faculty', 'name email department').lean();
+        const panels = sel ? rawPanels.filter(p => resolveSession(p) === sel) : rawPanels;
 
-        // List of distinct archived years for the filter dropdown
-        const allArchivedGroups = await Group.find({ isArchived: true })
-            .populate('members', 'rollNumber')
-            .select('targetBatch members')
-            .lean();
-        const yearSet = new Set<string>();
-        for (const g of allArchivedGroups) {
-            const y = groupBatchYear(g);
-            if (y) yearSet.add(y);
-        }
-        const panelYears = await Panel.distinct('batchYear', { isArchived: true });
-        panelYears.forEach((y: any) => yearSet.add(String(y)));
-        const orphanYears = await Project.distinct('archivedBatch', {
-            isArchived: true,
-            $or: [{ group: null }, { group: { $exists: false } }]
-        });
-        orphanYears.forEach((y: any) => { if (y) yearSet.add(String(y)); });
-        const availableYears = Array.from(yearSet).sort();
+        // Distinct archived sessions for the filter dropdown, newest first.
+        const sessionSet = new Set<string>();
+        for (const g of rawGroups) sessionSet.add(resolveSession(g));
+        for (const p of rawOrphans) sessionSet.add(resolveSession(p));
+        for (const p of rawPanels) sessionSet.add(resolveSession(p));
+        const availableSessions = Array.from(sessionSet).sort((a, b) => sessionSortKey(b) - sessionSortKey(a));
 
         res.json({
-            year: yearStr,
-            availableYears,
+            session: sel,
+            availableSessions,
             groups,
             projects,
             participants,
@@ -362,6 +353,10 @@ export const semesterRollover = async (req: Request, res: Response) => {
             .populate('faculty', 'name')
             .lean();
 
+        // Academic session this rollover belongs to — stamped on every archived record
+        // so the archive can be filtered by *when* the work happened, not by batch.
+        const archivedSession = sessionLabelFor(new Date());
+
         for (const p of activeProjects) {
             const g = groupMap.get(String((p as any).group)) as any;
             const faculty = (p as any).faculty as any;
@@ -380,6 +375,7 @@ export const semesterRollover = async (req: Request, res: Response) => {
                 archivedGroupName: g?.name ?? null,
                 archivedMentorName: faculty?.name ?? null,
                 archivedBatch: archivedBatch ?? null,
+                archivedSession,
                 archivedMembers: Array.isArray(g?.members)
                     ? g.members.map((m: any) => ({
                         name: m.name,
@@ -396,12 +392,12 @@ export const semesterRollover = async (req: Request, res: Response) => {
         // Archive all active groups
         const groupsArchivedResult = await Group.updateMany(
             { isArchived: { $ne: true } },
-            { $set: { isArchived: true, status: 'Dissolved' } }
+            { $set: { isArchived: true, status: 'Dissolved', archivedSession } }
         );
         const groupsArchived = groupsArchivedResult.modifiedCount;
 
         // Archive all active panels
-        await Panel.updateMany({ isArchived: { $ne: true } }, { $set: { isArchived: true } });
+        await Panel.updateMany({ isArchived: { $ne: true } }, { $set: { isArchived: true, archivedSession } });
 
         // Reset faculty capacity counters
         await User.updateMany({ role: 'Faculty' }, { $set: { currentStudents: 0, currentGroups: 0 } });

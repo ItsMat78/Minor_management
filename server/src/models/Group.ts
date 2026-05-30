@@ -11,6 +11,7 @@ export interface IGroup extends Document {
     createdAt: Date;
     targetBatch?: string;
     isArchived?: boolean;
+    archivedSession?: string; // Academic session the group was archived in, e.g. "Even 2025-26"
 }
 
 const GroupSchema: Schema = new Schema({
@@ -22,7 +23,8 @@ const GroupSchema: Schema = new Schema({
     status: { type: String, enum: ['Forming', 'ProposalPending', 'Approved', 'Dissolved'], default: 'Forming' },
     inviteCode: { type: String },
     targetBatch: { type: String },
-    isArchived: { type: Boolean, default: false }
+    isArchived: { type: Boolean, default: false },
+    archivedSession: { type: String }
 }, {
     timestamps: true
 });

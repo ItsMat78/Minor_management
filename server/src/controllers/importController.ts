@@ -8,6 +8,7 @@ import User, { UserRole } from '../models/User';
 import Group from '../models/Group';
 import Project from '../models/Project';
 import Event, { EventType } from '../models/Event';
+import { resolveSession } from '../utils/session';
 
 // ─── Participation helpers ───────────────────────────────────────────────────
 
@@ -450,6 +451,9 @@ export const exportSnapshot = async (_req: Request, res: Response) => {
                 archivedMentorName:    p.archivedMentorName || (p.faculty ? (p.faculty as any).name : undefined),
                 archivedGroupName:     p.archivedGroupName || grp?.name,
                 archivedBatch:         p.archivedBatch || grp?.targetBatch,
+                // Bake in the resolved session so snapshots stay filterable by semester
+                // even after re-import (legacy records derive it from their archival date).
+                archivedSession:       resolveSession(p),
                 archivedMembers:       (p.archivedMembers && p.archivedMembers.length) ? p.archivedMembers : fallbackMembers,
                 // New per-student evaluation array (primary source of eval data)
                 studentEvaluations:    p.studentEvaluations || [],
@@ -634,6 +638,7 @@ export const commitSnapshotImport = async (req: Request, res: Response) => {
                     archivedMentorName:    p.archivedMentorName,
                     archivedGroupName:     p.archivedGroupName,
                     archivedBatch:         p.archivedBatch,
+                    archivedSession:       p.archivedSession || resolveSession(p),
                     archivedMembers:       members,
                     feedback:              p.feedback,
                     // Restore per-student evaluations (new system)
