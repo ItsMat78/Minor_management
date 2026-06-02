@@ -236,9 +236,13 @@ export const updateProjectStatus = async (req: Request, res: Response) => {
                 );
 
             } else if (status === 'Rejected') {
-                group.status = 'Forming'; // Reset to Forming? Or allow re-proposal?
-                // If rejected, maybe back to 'Forming' or keep 'ProposalPending' but allow new?
-                // Let's set to 'Forming' so they can try again or edit.
+                // Reset to Forming so the group can resubmit or edit. Also drop the pointer to the
+                // rejected proposal if the group still references it — otherwise stale UI would treat
+                // the dead proposal (and its old faculty) as the group's current project.
+                group.status = 'Forming';
+                if (group.project && group.project.toString() === project._id.toString()) {
+                    group.project = undefined;
+                }
             }
             await group.save();
         }

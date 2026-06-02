@@ -554,14 +554,12 @@ const FacultyDashboard: React.FC = () => {
             const res = await api.put(`/projects/${id}/status`, { status, feedback });
             setProjects(prev => prev.map(p => p._id === id ? { ...p, status, feedback: res.data.feedback, updatedAt: res.data.updatedAt } : p));
 
-            // Also update selectedProject if it's the one being modified
-            if (selectedProject && selectedProject._id === id) {
-                setSelectedProject(prev => prev ? { ...prev, status, feedback: res.data.feedback, updatedAt: res.data.updatedAt } : null);
-            }
-
             setFeedback('');
-            // Optional: Close dialog on success? Or let user see result?
-            // User might want to close manually.
+            // Close the modal once the decision is submitted — the list already reflects the new
+            // status, so leaving the modal open made it look like the action didn't take effect.
+            if (selectedProject && selectedProject._id === id) {
+                setSelectedProject(null);
+            }
         } catch (error: any) {
             console.error(`Failed to ${status} project`, error);
             alert(error.response?.data?.message || `Failed to ${status} project`);

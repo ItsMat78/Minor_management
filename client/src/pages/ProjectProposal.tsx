@@ -52,12 +52,15 @@ const ProjectProposal: React.FC = () => {
             .then(res => {
                 const projects = res.data.projects || (res.data.project ? [res.data.project] : []);
 
-                // key logic: If any existing project has a faculty, lock it for new proposals
-                // If editing, we generally keep the faculty unless we want to enforce consistency across all projects
+                // Lock the faculty for new proposals only when there is a *live* commitment to one —
+                // a Pending or Approved proposal. A Rejected (or Draft) proposal is not a commitment,
+                // so it must not hardlock the student to the old faculty after a rejection.
                 // The requirement is "When selecting the 2nd project proposal, auto-lock the original faculty."
-                // This implies creation flow primarily. 
-
-                const existingProjectWithFaculty = projects.find((p: any) => p.faculty && (!editId || p._id !== editId));
+                const existingProjectWithFaculty = projects.find((p: any) =>
+                    p.faculty
+                    && (p.status === 'Pending' || p.status === 'Approved')
+                    && (!editId || p._id !== editId)
+                );
 
                 if (existingProjectWithFaculty) {
                     const fid = existingProjectWithFaculty.faculty?._id || existingProjectWithFaculty.faculty;
