@@ -4,9 +4,9 @@ Scope: login/auth, password change, group formation, invites, proposals, the pro
 lifecycle, submissions/evaluations, and transitions across **multiple semesters**.
 Severity: 🔴 breaks the workflow · 🟠 wrong behaviour in a real case · 🟡 polish/hardening.
 
-> **Status (this pass):** Items 1–12 fixed. #10 was already handled (server refuses to boot
-> without `JWT_SECRET`). #13 (rate-limiter tuning) left as a deliberate config decision —
-> see note at the bottom. Each fixed item is marked ✅ below.
+> **Status (this pass):** Items 1–13 fixed (#10 was already handled — server refuses to boot
+> without `JWT_SECRET`). Each fixed item is marked ✅ below. Action required for #13:
+> set `TRUST_PROXY=1` in the production environment.
 
 ---
 
@@ -120,11 +120,18 @@ to use it. **Fix:** either document/route first-time users to the OTP path, or a
 **File:** `userController.ts` `exportStudents` (~lines 323–330, 370). Noise in prod logs.
 **Fix:** remove.
 
-## 🟡 13. Auth rate limiter is shared across all auth routes (30/min/IP)
+## 🟡 13. ✅ FIXED — Auth rate limiter is shared across all auth routes (30/min/IP)
 **File:** `server/src/routes/authRoutes.ts`. On a campus NAT many students share one public
 IP; 30 requests/min across login+OTP+forgot for the whole campus is easy to exhaust during a
-deadline rush. **Fix:** raise the limit and/or key by email where possible; consider a
-separate, looser limiter for read-ish OTP verifies.
+deadline rush. **Fix applied:** replaced the single 30/min/IP limiter with:
+- a generous per-IP backstop (300/min) so a shared NAT isn't collectively throttled;
+- a per-**email** brute-force guard on `/login` (10 failed/15min, successful logins skipped);
+- a separate per-email guard on OTP verification (`/verify-otp`, `/verify-forgot-password-otp`),
+  so a locked login still leaves the forgot-password path usable.
+Per-account keying means brute-force protection works regardless of NAT, and only failed
+attempts count so legitimate users are never blocked. Also added an opt-in `TRUST_PROXY` env
+setting (`app.ts`) so the per-IP backstop sees real client IPs when behind a reverse proxy —
+**set `TRUST_PROXY=1` in the production env** (single proxy hop) to activate it.
 
 ---
 

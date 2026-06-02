@@ -98,7 +98,8 @@ describe('POST /api/projects', () => {
             .set('x-auth-token', generateToken(student))
             .send({ title: 'Second Proposal', description: 'Desc', status: 'Pending' });
         expect(res.status).toBe(400);
-        expect(res.body.message).toMatch(/already has an approved project/i);
+        // One active proposal at a time: Pending OR Approved blocks a new submission.
+        expect(res.body.message).toMatch(/already has an active proposal/i);
     });
 
     it('returns 400 when an invalid facultyId is provided', async () => {

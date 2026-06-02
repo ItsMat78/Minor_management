@@ -276,9 +276,9 @@ const Dashboard: React.FC = () => {
             setGroup(groupRes.data);
             setIsDialogOpen(false);
             setActiveTab('project');
-        } catch (error) {
+        } catch (error: any) {
             console.error("Failed to create group", error);
-            alert("Failed to create group.");
+            alert(error.response?.data?.message || "Failed to create group.");
         } finally {
             setCreatingGroup(false);
         }
@@ -333,9 +333,14 @@ const Dashboard: React.FC = () => {
         }
     };
 
-    // Branch restriction: if the active GF event has branchRestricted=true, only show same-branch students
+    // Branch restriction is now per-batch: the viewing student is restricted only if THEIR batch
+    // is in the event's branchRestrictedBatches. Falls back to the legacy whole-semester boolean
+    // (all participating batches) for events created before per-batch restriction existed.
     const activeGFEvent = activeEvents?.find((e: any) => e.type === 'group_formation_project_proposal');
-    const isBranchRestricted = !!(activeGFEvent as any)?.branchRestricted;
+    const restrictedBatches: string[] = Array.isArray((activeGFEvent as any)?.branchRestrictedBatches)
+        ? (activeGFEvent as any).branchRestrictedBatches.map(String)
+        : ((activeGFEvent as any)?.branchRestricted ? (((activeGFEvent as any)?.participatingBatches ?? []).map(String)) : []);
+    const isBranchRestricted = restrictedBatches.includes(myBatch);
 
     const filteredStudents = students.filter(student => {
         const matchesSearch = student.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -345,8 +350,13 @@ const Dashboard: React.FC = () => {
         // Client only filters locally by search and grouping status (if needed later)
         const matchesStatus = filterStatus === 'all' || (filterStatus === 'available' ? !student.isGrouped : student.isGrouped);
         const matchesBranch = filterBranch === 'all' || student.branch === filterBranch;
-        // When the active GF event is branch-restricted, filter out students from other branches
-        const matchesBranchRestriction = !isBranchRestricted || student.branch === user?.branch;
+        // When the viewing student's batch is branch-restricted, hide other-branch students.
+        // Mirrors the server's resilient comparison: normalize case/whitespace, and don't hide
+        // anyone when either branch is unknown (so incomplete data can't empty the directory).
+        const myBranchNorm = (user?.branch ?? '').trim().toUpperCase();
+        const theirBranchNorm = (student.branch ?? '').trim().toUpperCase();
+        const matchesBranchRestriction = !isBranchRestricted || !myBranchNorm || !theirBranchNorm
+            || theirBranchNorm === myBranchNorm;
 
         return matchesSearch && matchesStatus && matchesBranch && matchesBranchRestriction;
     }).sort((a, b) => (a.rollNumber || '').localeCompare(b.rollNumber || ''));
@@ -664,7 +674,7 @@ const Dashboard: React.FC = () => {
                                 </div>
                             )}
 
-                            {isBranchRestricted && !group && (
+                            {isBranchRestricted && user?.branch && !group && (
                                 <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center gap-3 text-sm text-amber-800">
                                     <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600" />
                                     <span><strong>Branch restriction active:</strong> Only {user?.branch} students are shown. Groups must be single-branch this semester.</span>

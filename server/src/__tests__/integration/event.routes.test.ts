@@ -233,7 +233,9 @@ describe('POST /api/events', () => {
         expect(res.body.message).toMatch(/group formation.*still active/i);
     });
 
-    it('archives all active groups when a GROUP_FORMATION event is created', async () => {
+    it('does NOT archive existing groups when a GROUP_FORMATION event is created', async () => {
+        // Archiving is intentionally handled by Semester Rollover (POST /api/admin/semester-rollover),
+        // not by creating a Group Formation event. Creating a GF event only resets participation flags.
         const admin = await createTestUser({ role: UserRole.ADMIN, password: ADMIN_PASSWORD });
         const { group } = await createTestGroup(1);
         expect(group.isArchived).toBeFalsy();
@@ -249,7 +251,7 @@ describe('POST /api/events', () => {
             });
 
         const updatedGroup = await Group.findById(group._id);
-        expect(updatedGroup!.isArchived).toBe(true);
+        expect(updatedGroup!.isArchived).toBeFalsy();
     });
 
     it('sets isParticipating=true for students in participating batches', async () => {

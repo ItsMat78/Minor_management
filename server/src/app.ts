@@ -13,6 +13,14 @@ import importRoutes from './routes/importRoutes';
 
 const app = express();
 
+// Behind a reverse proxy, set TRUST_PROXY (e.g. =1 for a single proxy hop) so req.ip reflects
+// the real client IP for rate limiting. Left off by default — enabling it blindly would let
+// clients spoof X-Forwarded-For when there is no trusted proxy in front.
+if (process.env.TRUST_PROXY) {
+    const tp = process.env.TRUST_PROXY;
+    app.set('trust proxy', /^\d+$/.test(tp) ? Number(tp) : tp);
+}
+
 const allowedOrigins = [
     'https://minor-management.vercel.app',
     'http://localhost:5173',

@@ -203,6 +203,7 @@ describe('GET /api/admin/archive', () => {
         expect(res.body).toHaveProperty('projects');
         expect(res.body).toHaveProperty('participants');
         expect(res.body).toHaveProperty('panels');
-        expect(res.body).toHaveProperty('availableYears');
+        // Archive is keyed by academic session (refactored from batch-year).
+        expect(res.body).toHaveProperty('availableSessions');
     });
 });

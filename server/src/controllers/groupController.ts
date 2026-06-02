@@ -6,6 +6,34 @@ import Project from '../models/Project';
 import Event, { EventType } from '../models/Event';
 import { sendGroupCreationEmail, sendGroupInviteEmail, sendGroupInviteResponseEmail } from '../utils/emailService';
 
+// Batch years that require single-branch groups for the given GF event. Prefers the explicit
+// per-batch list; falls back to the legacy boolean (which meant "all participating batches").
+const restrictedBatchesOf = (event: any): string[] => {
+    if (!event) return [];
+    if (Array.isArray(event.branchRestrictedBatches)) return event.branchRestrictedBatches.map(String);
+    if (event.branchRestricted) return (event.participatingBatches ?? []).map(String);
+    return [];
+};
+
+// Branch comparison that's resilient to missing / inconsistently-cased data. Returns true
+// (treat as same branch → allowed) unless BOTH branches are known and clearly differ. This
+// prevents a single missing/empty branch field from locking a student out of grouping with
+// everyone when branch restriction is on.
+const sameBranch = (a?: string | null, b?: string | null): boolean => {
+    const na = (a ?? '').trim().toUpperCase();
+    const nb = (b ?? '').trim().toUpperCase();
+    if (!na || !nb) return true; // unknown on either side — can't prove a mismatch, so don't block
+    return na === nb;
+};
+
+// The batch year a student belongs to: their targetBatch override (droppers) if set,
+// otherwise derived from the first two digits of their roll number.
+const batchOf = (u: { targetBatch?: string | null; rollNumber?: string }): string | undefined => {
+    if (u.targetBatch) return String(u.targetBatch);
+    if (u.rollNumber) return '20' + u.rollNumber.substring(0, 2);
+    return undefined;
+};
+
 // The Group Formation event that is active right now, or null.
 const findActiveGFEvent = async () => {
     const now = new Date();
@@ -78,12 +106,15 @@ export const createGroup = async (req: Request, res: Response) => {
                     { extensionDate: null, endDate: { $gte: now } }
                 ]
             });
-            if (activeGF && activeGF.branchRestricted) {
+            // Only enforce single-branch if the creator's batch is one of the restricted batches.
+            const restricted = restrictedBatchesOf(activeGF);
+            const creatorBatch = batchOf(user);
+            if (restricted.length > 0 && creatorBatch && restricted.includes(creatorBatch)) {
                 for (const memberId of pendingMembers) {
                     const member = await User.findById(memberId);
-                    if (member && member.branch !== user.branch) {
+                    if (member && !sameBranch(member.branch, user.branch)) {
                         return res.status(400).json({
-                            message: `This semester groups must be single-branch. ${member.name} (${member.branch}) cannot join a ${user.branch} group.`
+                            message: `This semester, batch ${creatorBatch} groups must be single-branch. ${member.name} (${member.branch}) cannot join a ${user.branch} group.`
                         });
                     }
                 }
@@ -213,14 +244,18 @@ export const acceptInvite = async (req: Request, res: Response) => {
         // Re-enforce the same-branch rule at accept time (it may have been enabled, or the
         // accepter's branch changed, after the invite was sent).
         const activeGF = await findActiveGFEvent();
-        if (activeGF?.branchRestricted) {
+        const restricted = restrictedBatchesOf(activeGF);
+        if (restricted.length > 0) {
             const [accepter, creator] = await Promise.all([
                 User.findById(userId).select('branch'),
-                group.createdBy ? User.findById(group.createdBy).select('branch') : null
+                group.createdBy ? User.findById(group.createdBy).select('branch rollNumber targetBatch') : null
             ]);
-            if (creator && accepter && accepter.branch !== creator.branch) {
+            // The group's batch is its targetBatch override, else the creator's batch.
+            const groupBatch = (group.targetBatch ? String(group.targetBatch) : undefined)
+                || (creator ? batchOf(creator) : undefined);
+            if (groupBatch && restricted.includes(groupBatch) && creator && accepter && !sameBranch(accepter.branch, creator.branch)) {
                 return res.status(400).json({
-                    message: `This semester groups must be single-branch. You (${accepter.branch}) cannot join a ${creator.branch} group.`
+                    message: `This semester, batch ${groupBatch} groups must be single-branch. You (${accepter.branch}) cannot join a ${creator.branch} group.`
                 });
             }
         }

@@ -41,7 +41,12 @@
       "Bash(Get-ChildItem -Path \"E:\\\\Projects\\\\journaladvisory\" -Recurse -Force -ErrorAction SilentlyContinue)",
       "Bash(Select-Object FullName)",
       "Bash(Sort-Object FullName)",
-      "Bash(cd /e/Projects/journaladvisory && find . -type f -o -type d | head -200)"
+      "Bash(cd /e/Projects/journaladvisory && find . -type f -o -type d | head -200)",
+      "Bash(python -m pip install anthropic --quiet)",
+      "Bash(python -c \"import anthropic; print\\('anthropic', anthropic.__version__\\)\")",
+      "Bash(echo \"CLIENT_EXIT=$?\")",
+      "Bash(git stash *)",
+      "Bash(npx ts-node *)"
     ]
   }
 }

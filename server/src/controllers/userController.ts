@@ -187,8 +187,10 @@ export const getAllStudents = async (req: Request, res: Response) => {
         // Total count for pagination header
         const total = usePagination ? await User.countDocuments(query) : students.length;
 
-        // Find which students are in groups
-        const groups = await Group.find({}, 'members');
+        // Find which students are in groups. Exclude ARCHIVED groups (from previous semesters,
+        // archived at rollover) — otherwise every returning student stays flagged "grouped"
+        // forever and becomes unselectable in the directory. Matches createGroup's own check.
+        const groups = await Group.find({ isArchived: { $ne: true } }, 'members');
         const groupedStudentIds = new Set();
         groups.forEach(g => {
             if (g.members) {
@@ -330,8 +332,8 @@ export const exportStudents = async (req: Request, res: Response) => {
             return res.status(204).end();
         }
 
-        // Get group status
-        const groups = await Group.find({}, 'members name project');
+        // Get group status (current semester only — exclude archived groups from past semesters)
+        const groups = await Group.find({ isArchived: { $ne: true } }, 'members name project');
         const studentGroupMap = new Map();
 
         groups.forEach(g => {

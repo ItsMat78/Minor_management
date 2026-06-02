@@ -69,11 +69,13 @@ describe('GET /api/auth/me', () => {
         expect(res.body.message).toMatch(/no token/i);
     });
 
-    it('returns 400 for a malformed token', async () => {
+    it('returns 401 for a malformed token', async () => {
+        // The auth middleware returns 401 (not 400) for invalid/expired tokens so the
+        // client can treat it as "log out & re-authenticate".
         const res = await request(app)
             .get('/api/auth/me')
             .set('x-auth-token', 'not.a.valid.jwt');
-        expect(res.status).toBe(400);
+        expect(res.status).toBe(401);
     });
 
     it('returns the authenticated user (without password) for a valid token', async () => {

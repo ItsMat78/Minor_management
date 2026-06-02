@@ -75,7 +75,7 @@ export const getActiveEvents = async (req: Request, res: Response) => {
 // Create a new event
 export const createEvent = async (req: Request, res: Response) => {
     try {
-        const { type, endDate, extensionDate, batchYear, password, rubricParams, participatingBatches, defaultMaxStudents, defaultMaxGroups, branchRestricted } = req.body;
+        const { type, endDate, extensionDate, batchYear, password, rubricParams, participatingBatches, defaultMaxStudents, defaultMaxGroups, branchRestrictedBatches } = req.body;
         const adminId = (req as any).user?.id;
 
         if (!await verifyAdminPassword(adminId, password)) {
@@ -113,6 +113,7 @@ export const createEvent = async (req: Request, res: Response) => {
 
         // Participation reset for Group Formation (archiving is handled by Semester Rollover)
         let normalizedBatches: string[] | undefined;
+        let normalizedRestrictedBatches: string[] = [];
         if (type === EventType.GROUP_FORMATION_AND_PROJECT_PROPOSAL) {
             if (!Array.isArray(participatingBatches) || participatingBatches.length === 0) {
                 return res.status(400).json({
@@ -125,6 +126,11 @@ export const createEvent = async (req: Request, res: Response) => {
             if (normalizedBatches.length === 0) {
                 return res.status(400).json({ message: 'participatingBatches must contain 4-digit year strings (e.g. "2024").' });
             }
+
+            // Branch-restricted batches must be a subset of the participating batches.
+            normalizedRestrictedBatches = Array.isArray(branchRestrictedBatches)
+                ? branchRestrictedBatches.map((b: any) => String(b).trim()).filter((b: string) => normalizedBatches!.includes(b))
+                : [];
 
             // Reset student participation, then flip on for selected batches
             await User.updateMany(
@@ -176,7 +182,9 @@ export const createEvent = async (req: Request, res: Response) => {
             extensionDate: extensionDate ? new Date(extensionDate) : undefined,
             batchYear: batchYear || undefined,
             participatingBatches: normalizedBatches,
-            branchRestricted: type === EventType.GROUP_FORMATION_AND_PROJECT_PROPOSAL ? !!branchRestricted : false,
+            branchRestrictedBatches: type === EventType.GROUP_FORMATION_AND_PROJECT_PROPOSAL ? normalizedRestrictedBatches : [],
+            // Legacy boolean kept in sync (derived) so older read paths still work.
+            branchRestricted: type === EventType.GROUP_FORMATION_AND_PROJECT_PROPOSAL ? normalizedRestrictedBatches.length > 0 : false,
             isActive: true,
             rubricParams,
             createdBy: adminId

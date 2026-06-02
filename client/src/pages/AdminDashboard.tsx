@@ -201,7 +201,8 @@ const AdminDashboard: React.FC = () => {
         rubricParams: '' // For JSON stringified rubric
     });
     const [participatingBatches, setParticipatingBatches] = useState<string[]>([]);
-    const [eventBranchRestricted, setEventBranchRestricted] = useState(false);
+    // Subset of participatingBatches whose groups must be single-branch this semester.
+    const [branchRestrictedBatches, setBranchRestrictedBatches] = useState<string[]>([]);
     // Default mentorship limits applied to every faculty for the new semester (Group Formation modal).
     const [eventDefaultMaxGroups, setEventDefaultMaxGroups] = useState(7);
     const [eventDefaultMaxStudents, setEventDefaultMaxStudents] = useState(21);
@@ -293,10 +294,6 @@ const AdminDashboard: React.FC = () => {
     const [adminEvalBatch, setAdminEvalBatch] = useState<string>('');
     const [adminEvalPanelGroups, setAdminEvalPanelGroups] = useState<any[]>([]);
     const [adminEvalLoading, setAdminEvalLoading] = useState(false);
-    const [adminEvalImportingPanelId, setAdminEvalImportingPanelId] = useState<string | null>(null);
-    const [adminEvalImportErrors, setAdminEvalImportErrors] = useState<{ row: number; message: string }[]>([]);
-    const [adminEvalImportSuccess, setAdminEvalImportSuccess] = useState<string | null>(null);
-    const [adminEvalLastImportedPanelId, setAdminEvalLastImportedPanelId] = useState<string | null>(null);
     const [adminEvalManualMarksMode, setAdminEvalManualMarksMode] = useState(true);
     const [adminEvalCollapsedFaculties, setAdminEvalCollapsedFaculties] = useState<Record<string, boolean>>({});
     const [adminBatchImporting, setAdminBatchImporting] = useState(false);
@@ -855,67 +852,6 @@ const AdminDashboard: React.FC = () => {
             console.error('Failed to fetch admin eval panels', error);
         } finally {
             if (!silent) setAdminEvalLoading(false);
-        }
-    };
-
-    const handleAdminEvalDownloadTemplate = async (panelId: string, mode: string) => {
-        try {
-            const panelData = adminEvalPanelGroups.find((p: any) => p.panel._id === panelId);
-            const panelNum = panelData?.panelNumber || 'Unknown';
-            const batchYr = panelData?.panel?.batchYear || 'Unknown';
-            const dateStr = new Date().toISOString().split('T')[0];
-            const res = await api.get(`/panels/${panelId}/evaluation-template?evalType=${adminEvalSubTab}&marksMode=${mode}`, { responseType: 'blob' });
-            const url = URL.createObjectURL(new Blob([res.data]));
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `Panel_${panelNum}_Batch_${batchYr}_${adminEvalSubTab}_Template_${dateStr}.xlsx`;
-            a.click();
-            URL.revokeObjectURL(url);
-        } catch {
-            alert('Failed to download template.');
-        }
-    };
-
-    const handleAdminEvalImportTemplate = async (panelId: string, file: File, mode: string) => {
-        setAdminEvalImportingPanelId(panelId);
-        setAdminEvalLastImportedPanelId(panelId);
-        setAdminEvalImportErrors([]);
-        setAdminEvalImportSuccess(null);
-        const formData = new FormData();
-        formData.append('file', file);
-        try {
-            const res = await api.post(`/panels/${panelId}/evaluation-import?evalType=${adminEvalSubTab}&marksMode=${mode}`, formData, {
-                headers: { 'Content-Type': 'multipart/form-data' }
-            });
-            setAdminEvalImportSuccess(`Successfully updated ${res.data.updatedGroups} group(s).`);
-            await fetchAdminEvalPanelGroups(adminEvalBatch);
-        } catch (err: any) {
-            const data = err.response?.data;
-            if (data?.errors) {
-                setAdminEvalImportErrors(data.errors);
-            } else {
-                setAdminEvalImportErrors([{ row: 0, message: data?.message || 'Import failed.' }]);
-            }
-        } finally {
-            setAdminEvalImportingPanelId(null);
-        }
-    };
-
-    const handleAdminEvalExportFinalSheet = async (panelId: string) => {
-        try {
-            const panelData = adminEvalPanelGroups.find((p: any) => p.panel._id === panelId);
-            const panelNum = panelData?.panelNumber || 'Unknown';
-            const batchYr = panelData?.panel?.batchYear || 'Unknown';
-            const dateStr = new Date().toISOString().split('T')[0];
-            const res = await api.get(`/panels/${panelId}/export-final?evalType=full`, { responseType: 'blob' });
-            const url = URL.createObjectURL(new Blob([res.data]));
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `Panel_${panelNum}_Batch_${batchYr}_Full_FinalMarks_${dateStr}.xlsx`;
-            a.click();
-            URL.revokeObjectURL(url);
-        } catch {
-            alert('Failed to export final sheet.');
         }
     };
 
@@ -2662,8 +2598,15 @@ const AdminDashboard: React.FC = () => {
                                                                                     batchYear: ev.batchYear || '',
                                                                                     rubricParams: ev.rubricParams ? JSON.stringify(ev.rubricParams, null, 2) : ''
                                                                                 });
-                                                                                setParticipatingBatches(Array.isArray(ev.participatingBatches) ? ev.participatingBatches.map(String) : []);
-                                                                                setEventBranchRestricted(!!ev.branchRestricted);
+                                                                                const evPbs = Array.isArray(ev.participatingBatches) ? ev.participatingBatches.map(String) : [];
+                                                                                setParticipatingBatches(evPbs);
+                                                                                // Per-batch list is authoritative when present; otherwise fall back to the
+                                                                                // legacy boolean (which meant "all participating batches").
+                                                                                setBranchRestrictedBatches(
+                                                                                    Array.isArray(ev.branchRestrictedBatches)
+                                                                                        ? ev.branchRestrictedBatches.map(String)
+                                                                                        : (ev.branchRestricted ? evPbs : [])
+                                                                                );
                                                                                 if (typeof ev.defaultMaxGroups === 'number') setEventDefaultMaxGroups(ev.defaultMaxGroups);
                                                                                 if (typeof ev.defaultMaxStudents === 'number') setEventDefaultMaxStudents(ev.defaultMaxStudents);
                                                                                 setRubricMode('builder');
@@ -4331,7 +4274,7 @@ const AdminDashboard: React.FC = () => {
                                     setRubricSections([]); setRubricPanelAggregation('average');
                                     setEventForm({ type: 'group_formation_project_proposal', endDate: '', extensionDate: '', batchYear: '', rubricParams: '' });
                                     setParticipatingBatches([]);
-                                    setEventBranchRestricted(false);
+                                    setBranchRestrictedBatches([]);
                                 }} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
                             </div>
                             <div className="p-6 space-y-5 overflow-y-auto">
@@ -4367,7 +4310,15 @@ const AdminDashboard: React.FC = () => {
                                                             <button
                                                                 key={y}
                                                                 type="button"
-                                                                onClick={() => setParticipatingBatches(prev => selected ? prev.filter(b => b !== y) : [...prev, y])}
+                                                                onClick={() => {
+                                                                    if (selected) {
+                                                                        setParticipatingBatches(prev => prev.filter(b => b !== y));
+                                                                        // A non-participating batch can't be branch-restricted.
+                                                                        setBranchRestrictedBatches(prev => prev.filter(b => b !== y));
+                                                                    } else {
+                                                                        setParticipatingBatches(prev => [...prev, y]);
+                                                                    }
+                                                                }}
                                                                 className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors ${selected ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-neutral-600 border-neutral-300 hover:border-indigo-300'}`}
                                                             >
                                                                 {y}
@@ -4383,18 +4334,32 @@ const AdminDashboard: React.FC = () => {
                                     )}
 
                                     {eventForm.type === 'group_formation_project_proposal' && (
-                                        <div className="mt-3 flex items-center justify-between p-3 bg-neutral-50 border border-neutral-200 rounded-xl">
-                                            <div>
-                                                <p className="text-sm font-bold text-neutral-800">Restrict groups to same branch</p>
-                                                <p className="text-[11px] text-neutral-500 mt-0.5">CSE / DSAI / ECE students cannot mix in a group this semester.</p>
-                                            </div>
-                                            <button
-                                                type="button"
-                                                onClick={() => setEventBranchRestricted(v => !v)}
-                                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${eventBranchRestricted ? 'bg-indigo-600' : 'bg-neutral-300'}`}
-                                            >
-                                                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${eventBranchRestricted ? 'translate-x-6' : 'translate-x-1'}`} />
-                                            </button>
+                                        <div className="mt-3 p-3 bg-neutral-50 border border-neutral-200 rounded-xl">
+                                            <p className="text-sm font-bold text-neutral-800">Restrict to same branch</p>
+                                            <p className="text-[11px] text-neutral-500 mt-0.5 mb-2">
+                                                Select the batches whose groups must be single-branch (CSE / DSAI / ECE cannot mix) —
+                                                usually the 5th/6th-semester batches. Those students will only see same-branch peers
+                                                when forming groups. Leave empty to allow mixed-branch groups for everyone.
+                                            </p>
+                                            {participatingBatches.length === 0 ? (
+                                                <p className="text-[11px] text-neutral-400 italic">Select participating batches above first.</p>
+                                            ) : (
+                                                <div className="flex flex-wrap gap-2">
+                                                    {[...participatingBatches].sort().map(y => {
+                                                        const selected = branchRestrictedBatches.includes(y);
+                                                        return (
+                                                            <button
+                                                                key={y}
+                                                                type="button"
+                                                                onClick={() => setBranchRestrictedBatches(prev => selected ? prev.filter(b => b !== y) : [...prev, y])}
+                                                                className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors ${selected ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-neutral-600 border-neutral-300 hover:border-amber-300'}`}
+                                                            >
+                                                                {y}
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                            )}
                                         </div>
                                     )}
 
@@ -4563,7 +4528,7 @@ const AdminDashboard: React.FC = () => {
                                 </div>
                             </div>
                             <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-3">
-                                <button onClick={() => { setShowCreateEvent(false); setEditingEvent(null); setAdminPassword(''); setRubricSections([]); setRubricPanelAggregation('average'); setParticipatingBatches([]); setEventBranchRestricted(false); }} className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition">Cancel</button>
+                                <button onClick={() => { setShowCreateEvent(false); setEditingEvent(null); setAdminPassword(''); setRubricSections([]); setRubricPanelAggregation('average'); setParticipatingBatches([]); setBranchRestrictedBatches([]); }} className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition">Cancel</button>
                                 <button onClick={async () => {
                                     try {
                                         if (!eventForm.endDate || !adminPassword) {
@@ -4626,7 +4591,9 @@ const AdminDashboard: React.FC = () => {
                                             payload.participatingBatches = participatingBatches;
                                             payload.defaultMaxStudents = eventDefaultMaxStudents;
                                             payload.defaultMaxGroups = eventDefaultMaxGroups;
-                                            payload.branchRestricted = eventBranchRestricted;
+                                            payload.branchRestrictedBatches = branchRestrictedBatches;
+                                            // Keep the legacy boolean in sync for any older read paths.
+                                            payload.branchRestricted = branchRestrictedBatches.length > 0;
                                         }
                                         if (editingEvent) {
                                             await api.put(`/events/${editingEvent._id}`, payload);
@@ -4637,7 +4604,7 @@ const AdminDashboard: React.FC = () => {
                                         setEditingEvent(null);
                                         setAdminPassword('');
                                         setParticipatingBatches([]);
-                                        setEventBranchRestricted(false);
+                                        setBranchRestrictedBatches([]);
                                         const res = await api.get('/events');
                                         setEvents(Array.isArray(res.data) ? res.data : []);
                                     } catch (e: any) {

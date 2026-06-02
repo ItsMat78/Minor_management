@@ -27,6 +27,11 @@ export const login = async (req: Request, res: Response) => {
             user.otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 mins
             await user.save();
 
+            // Dev convenience: print the OTP to the server console so flows can be tested
+            // without a real inbox (seeded accounts use synthetic @iiitnr.edu.in addresses).
+            // Never logged in production.
+            if (process.env.NODE_ENV !== 'production') console.log(`[DEV OTP] ${user.email}: ${otp}`);
+
             const subject = 'Your IIITNR Minor Portal Activation OTP';
             const text = `Your OTP to activate your account is: ${otp}\n\nThis code expires in 10 minutes.`;
             const html = `
@@ -125,6 +130,10 @@ export const resendOtp = async (req: Request, res: Response) => {
         user.otpExpires = new Date(Date.now() + 10 * 60 * 1000);
         await user.save();
 
+        // Dev convenience: print the OTP to the server console so flows can be tested without a
+        // real inbox (seeded accounts use synthetic @iiitnr.edu.in addresses). Never in production.
+        if (process.env.NODE_ENV !== 'production') console.log(`[DEV OTP] ${user.email}: ${otp}`);
+
         const subject = 'Your IIITNR Minor Portal Activation OTP';
         const text = `Your OTP to activate your account is: ${otp}\n\nThis code expires in 10 minutes.`;
         const html = `
@@ -170,6 +179,10 @@ export const forgotPassword = async (req: Request, res: Response) => {
         user.otp = otp;
         user.otpExpires = new Date(Date.now() + 10 * 60 * 1000);
         await user.save();
+
+        // Dev convenience: print the OTP to the server console so flows can be tested without a
+        // real inbox (seeded accounts use synthetic @iiitnr.edu.in addresses). Never in production.
+        if (process.env.NODE_ENV !== 'production') console.log(`[DEV OTP] ${user.email}: ${otp}`);
 
         const subject = 'Your IIITNR Minor Portal Password Reset OTP';
         const text = `Your OTP to sign in to the Minor Project Portal is: ${otp}\n\nThis code expires in 10 minutes.\n\nIf you did not request this, ignore this email.`;
