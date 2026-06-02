@@ -302,6 +302,45 @@ const Dashboard: React.FC = () => {
         }
     };
 
+    // ── Manage invites on an already-formed group ────────────────────────────
+    const [cancellingInviteId, setCancellingInviteId] = useState<string | null>(null);
+    const [isAddMemberOpen, setIsAddMemberOpen] = useState(false);
+    const [addMemberSelected, setAddMemberSelected] = useState<Set<string>>(new Set());
+    const [addMemberSearch, setAddMemberSearch] = useState('');
+    const [addingMembers, setAddingMembers] = useState(false);
+
+    const handleCancelInvite = async (memberId: string) => {
+        if (!group?._id) return;
+        setCancellingInviteId(memberId);
+        try {
+            await api.post(`/groups/${group._id}/cancel-invite`, { memberId });
+            const groupRes = await api.get('/groups/my');
+            setGroup(groupRes.data);
+        } catch (err: any) {
+            alert(err.response?.data?.message || 'Failed to cancel invite.');
+        } finally {
+            setCancellingInviteId(null);
+        }
+    };
+
+    const handleAddMembers = async () => {
+        if (!group?._id || addMemberSelected.size === 0) return;
+        setAddingMembers(true);
+        try {
+            await api.post(`/groups/${group._id}/invite`, { members: Array.from(addMemberSelected) });
+            const groupRes = await api.get('/groups/my');
+            setGroup(groupRes.data);
+            setIsAddMemberOpen(false);
+            setAddMemberSelected(new Set());
+            setAddMemberSearch('');
+            await fetchStudents();
+        } catch (err: any) {
+            alert(err.response?.data?.message || 'Failed to add members.');
+        } finally {
+            setAddingMembers(false);
+        }
+    };
+
     const handlePostUpdate = async () => {
         if (!group?.project?._id || !updateContent.trim()) return;
 
@@ -1446,7 +1485,33 @@ const Dashboard: React.FC = () => {
 
                                         {/* Members Grid */}
                                         <div>
-                                            <h3 className="text-sm font-black text-neutral-400 uppercase tracking-[0.2em] mb-4 ml-1">Team Roster</h3>
+                                            <div className="flex items-center justify-between mb-4">
+                                                <h3 className="text-sm font-black text-neutral-400 uppercase tracking-[0.2em] ml-1">Team Roster</h3>
+                                                {(() => {
+                                                    const used = group.members.length + (group.pendingMembers?.length || 0);
+                                                    const isFull = used >= 3;
+                                                    const hasSentProposal = _allGroupProjects.some((p: any) => p.status === 'Pending' || p.status === 'Approved');
+                                                    if (isFull) return null;
+                                                    const disabled = !isFormationActive || hasSentProposal;
+                                                    const reason = !isFormationActive
+                                                        ? 'Group formation is closed.'
+                                                        : hasSentProposal
+                                                        ? 'Withdraw or get the proposal rejected before adding members.'
+                                                        : '';
+                                                    return disabled ? (
+                                                        <div title={reason} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-neutral-100 text-neutral-400 text-xs font-bold cursor-not-allowed border border-neutral-200">
+                                                            <Plus className="w-4 h-4" /> Add Member
+                                                        </div>
+                                                    ) : (
+                                                        <button
+                                                            onClick={() => { setAddMemberSelected(new Set()); setAddMemberSearch(''); setIsAddMemberOpen(true); }}
+                                                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 transition-all active:scale-95 shadow-sm shadow-indigo-200"
+                                                        >
+                                                            <Plus className="w-4 h-4" /> Add Member
+                                                        </button>
+                                                    );
+                                                })()}
+                                            </div>
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                                 {group.members.map((m: any) => (
                                                     <div key={m._id} className="group relative bg-white p-5 rounded-3xl border border-neutral-200 hover:border-indigo-500 hover:shadow-xl hover:shadow-indigo-500/10 transition-all duration-300">
@@ -1485,6 +1550,16 @@ const Dashboard: React.FC = () => {
                                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                                         {(group.pendingMembers ?? []).map((m: any) => (
                                                             <div key={m._id} className="relative bg-amber-50 p-4 rounded-2xl border border-amber-200 opacity-80">
+                                                                {isFormationActive && (
+                                                                    <button
+                                                                        onClick={() => handleCancelInvite(m._id)}
+                                                                        disabled={cancellingInviteId === m._id}
+                                                                        title="Cancel this invite"
+                                                                        className="absolute top-2 right-2 p-1.5 rounded-lg text-amber-600 hover:text-white hover:bg-red-500 transition-colors disabled:opacity-40"
+                                                                    >
+                                                                        <X className="w-3.5 h-3.5" />
+                                                                    </button>
+                                                                )}
                                                                 <div className="flex items-center gap-3">
                                                                     {m.photoUrl ? (
                                                                         <img src={m.photoUrl} alt={m.name} className="w-11 h-11 rounded-xl object-cover border border-amber-200" />
@@ -2089,6 +2164,91 @@ const Dashboard: React.FC = () => {
                                     {leavingGroup ? 'Leaving...' : 'Confirm Leave'}
                                 </button>
                             </div>
+                        </div>
+                    </Dialog.Content>
+                </Dialog.Portal>
+            </Dialog.Root>
+
+            {/* Add Member Dialog */}
+            <Dialog.Root open={isAddMemberOpen} onOpenChange={(open) => { setIsAddMemberOpen(open); if (!open) { setAddMemberSelected(new Set()); setAddMemberSearch(''); } }}>
+                <Dialog.Portal>
+                    <Dialog.Overlay className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100]" />
+                    <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-lg bg-white p-8 rounded-3xl shadow-2xl z-[101] focus:outline-none border border-neutral-100 max-h-[85vh] flex flex-col animate-in fade-in zoom-in-95 duration-200">
+                        <Dialog.Title className="text-2xl font-black mb-1 text-indigo-600 tracking-tight">Add Members</Dialog.Title>
+                        {(() => {
+                            const used = (group?.members?.length || 0) + (group?.pendingMembers?.length || 0);
+                            const remaining = Math.max(0, 3 - used);
+                            return (
+                                <Dialog.Description className="text-neutral-500 mb-4 text-sm">
+                                    You can invite {remaining} more {remaining === 1 ? 'person' : 'people'} (max 3 per group). They’ll appear as pending until they accept.
+                                    {isBranchRestricted && <span className="block mt-1 text-amber-600 font-medium">This batch is restricted to single-branch groups — only {user?.branch} students are shown.</span>}
+                                </Dialog.Description>
+                            );
+                        })()}
+                        <div className="relative mb-3">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
+                            <input
+                                value={addMemberSearch}
+                                onChange={(e) => setAddMemberSearch(e.target.value)}
+                                placeholder="Search by name or roll number"
+                                className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-neutral-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                            />
+                        </div>
+                        <div className="flex-1 overflow-y-auto -mx-2 px-2 space-y-2">
+                            {(() => {
+                                const used = (group?.members?.length || 0) + (group?.pendingMembers?.length || 0);
+                                const remaining = Math.max(0, 3 - used);
+                                const memberIds = new Set([
+                                    ...((group?.members || []).map((m: any) => m._id)),
+                                    ...((group?.pendingMembers || []).map((m: any) => m._id)),
+                                ]);
+                                const myBranchNorm = (user?.branch ?? '').trim().toUpperCase();
+                                const term = addMemberSearch.toLowerCase();
+                                const available = students.filter(s => {
+                                    if (s.isGrouped) return false;
+                                    if (memberIds.has(s._id)) return false;
+                                    const theirBranchNorm = (s.branch ?? '').trim().toUpperCase();
+                                    const branchOk = !isBranchRestricted || !myBranchNorm || !theirBranchNorm || theirBranchNorm === myBranchNorm;
+                                    if (!branchOk) return false;
+                                    if (!term) return true;
+                                    return (s.name?.toLowerCase().includes(term) || s.rollNumber?.toLowerCase().includes(term));
+                                }).sort((a, b) => (a.rollNumber || '').localeCompare(b.rollNumber || ''));
+
+                                if (available.length === 0) {
+                                    return <p className="text-sm text-neutral-400 text-center py-8">No available students match.</p>;
+                                }
+                                return available.map(s => {
+                                    const selected = addMemberSelected.has(s._id);
+                                    const atCap = !selected && addMemberSelected.size >= remaining;
+                                    return (
+                                        <button
+                                            key={s._id}
+                                            disabled={atCap}
+                                            onClick={() => {
+                                                const next = new Set(addMemberSelected);
+                                                if (selected) next.delete(s._id); else next.add(s._id);
+                                                setAddMemberSelected(next);
+                                            }}
+                                            className={`w-full flex items-center gap-3 p-3 rounded-2xl border text-left transition-all ${selected ? 'border-indigo-500 bg-indigo-50' : atCap ? 'border-neutral-100 bg-neutral-50 opacity-50 cursor-not-allowed' : 'border-neutral-200 hover:border-indigo-300'}`}
+                                        >
+                                            {selected ? <CheckSquare className="w-5 h-5 text-indigo-600 shrink-0" /> : <Square className="w-5 h-5 text-neutral-300 shrink-0" />}
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex items-center gap-2">
+                                                    <p className="font-bold text-neutral-800 truncate text-sm">{s.name}</p>
+                                                    <span className="shrink-0 text-[9px] font-black bg-neutral-900 text-white px-2 py-0.5 rounded-full uppercase tracking-widest">{s.branch || 'GEN'}</span>
+                                                </div>
+                                                <p className="text-[10px] font-bold font-mono text-neutral-400">{s.rollNumber}</p>
+                                            </div>
+                                        </button>
+                                    );
+                                });
+                            })()}
+                        </div>
+                        <div className="flex justify-end gap-3 mt-5 pt-4 border-t border-neutral-100">
+                            <button onClick={() => setIsAddMemberOpen(false)} className="px-4 py-2 text-sm font-medium text-neutral-600 hover:bg-neutral-50 rounded-lg">Cancel</button>
+                            <button onClick={handleAddMembers} disabled={addMemberSelected.size === 0 || addingMembers} className="px-5 py-2 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg disabled:opacity-50">
+                                {addingMembers ? 'Sending…' : `Send Invite${addMemberSelected.size > 1 ? 's' : ''}`}
+                            </button>
                         </div>
                     </Dialog.Content>
                 </Dialog.Portal>

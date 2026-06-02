@@ -312,6 +312,140 @@ export const rejectInvite = async (req: Request, res: Response) => {
     }
 };
 
+// Withdraw an outstanding invite. Any current group member may cancel a pending invite — e.g.
+// when an invitee never responds and the group needs to clear it to submit a proposal.
+export const cancelInvite = async (req: Request, res: Response) => {
+    try {
+        const userId = (req as any).user.id;
+        const { id } = req.params;
+        const { memberId } = req.body;
+        if (!memberId) return res.status(400).json({ message: 'memberId is required' });
+
+        const group = await Group.findById(id);
+        if (!group) return res.status(404).json({ message: 'Group not found' });
+        if (group.isArchived) return res.status(403).json({ message: 'Archived groups are read-only.' });
+
+        if (!group.members.map(m => m.toString()).includes(userId)) {
+            return res.status(403).json({ message: 'Only a group member can cancel an invite.' });
+        }
+        if (!group.pendingMembers.map(m => m.toString()).includes(memberId)) {
+            return res.status(400).json({ message: 'That user does not have a pending invite for this group.' });
+        }
+
+        group.pendingMembers = group.pendingMembers.filter(m => m.toString() !== memberId) as any;
+        await group.save();
+
+        res.json({ message: 'Invite cancelled.' });
+    } catch (error) {
+        res.status(500).json({ message: 'Server error', error });
+    }
+};
+
+// Invite additional members to an already-formed group. Allowed only while a Group Formation
+// event is open AND the group has not sent a proposal (no Pending/Approved project). Once a
+// proposal is sent it must be withdrawn or rejected before new members can be added.
+export const inviteMembers = async (req: Request, res: Response) => {
+    try {
+        const userId = (req as any).user.id;
+        const { id } = req.params;
+        const { members } = req.body;
+
+        if (!Array.isArray(members) || members.length === 0) {
+            return res.status(400).json({ message: 'No members to invite.' });
+        }
+
+        const group = await Group.findById(id);
+        if (!group) return res.status(404).json({ message: 'Group not found' });
+        if (group.isArchived) return res.status(403).json({ message: 'Archived groups are read-only.' });
+
+        if (!group.members.map(m => m.toString()).includes(userId)) {
+            return res.status(403).json({ message: 'Only a group member can invite others.' });
+        }
+
+        // Block once group formation has closed.
+        const activeGF = await findActiveGFEvent();
+        if (!activeGF) {
+            return res.status(403).json({ message: 'Group formation is not currently open.' });
+        }
+
+        // Block if the group already has a sent proposal (Pending or Approved). Drafts are fine.
+        const activeProposal = await Project.findOne({ group: group._id, status: { $in: ['Pending', 'Approved'] } });
+        if (activeProposal) {
+            return res.status(400).json({ message: 'Withdraw or get the current proposal rejected before adding members.' });
+        }
+
+        // Capacity: existing members + outstanding invites + new invites must not exceed 3.
+        const current = group.members.length + group.pendingMembers.length;
+        if (current + members.length > 3) {
+            return res.status(400).json({ message: 'Group cannot exceed 3 members (including pending invites).' });
+        }
+
+        // Branch-restriction context for this group's batch.
+        const creator = group.createdBy
+            ? await User.findById(group.createdBy).select('branch rollNumber targetBatch')
+            : null;
+        const groupBatch = (group.targetBatch ? String(group.targetBatch) : undefined)
+            || (creator ? batchOf(creator) : undefined);
+        const branchLocked = !!groupBatch && restrictedBatchesOf(activeGF).includes(groupBatch);
+        // The branch a locked group is fixed to: the creator's, else the first member's.
+        let groupBranch: string | null | undefined = creator?.branch;
+        if (branchLocked && !groupBranch && group.members.length > 0) {
+            const firstMember = await User.findById(group.members[0]).select('branch');
+            groupBranch = firstMember?.branch;
+        }
+
+        const toInvite: string[] = [];
+        for (const memberId of members) {
+            if (group.members.map(m => m.toString()).includes(memberId)
+                || group.pendingMembers.map(m => m.toString()).includes(memberId)) {
+                continue; // already a member / already invited — skip silently
+            }
+            const member = await User.findById(memberId);
+            if (!member) return res.status(404).json({ message: `User ${memberId} not found` });
+            if (member.role !== 'Student') return res.status(400).json({ message: `${member.name} is not a student` });
+
+            const memberGroup = await Group.findOne({
+                $or: [{ members: memberId }, { pendingMembers: memberId }],
+                isArchived: { $ne: true }
+            });
+            if (memberGroup) return res.status(400).json({ message: `${member.name} is already in a group or has a pending invite` });
+
+            if (branchLocked && !sameBranch(member.branch, groupBranch)) {
+                return res.status(400).json({
+                    message: `This semester, batch ${groupBatch} groups must be single-branch. ${member.name} (${member.branch}) cannot join a ${groupBranch} group.`
+                });
+            }
+
+            toInvite.push(memberId);
+        }
+
+        if (toInvite.length === 0) {
+            return res.status(400).json({ message: 'No new members to invite.' });
+        }
+
+        group.pendingMembers.push(...(toInvite as any));
+        await group.save();
+
+        const [inviter, inviteUsers] = await Promise.all([
+            User.findById(userId).select('name'),
+            User.find({ _id: { $in: toInvite } }).select('email name')
+        ]);
+        for (const invitee of inviteUsers) {
+            if (invitee.email) {
+                sendGroupInviteEmail(invitee.email, inviter?.name || 'A classmate', group.name || 'Unnamed Group')
+                    .catch(err => console.error('Invite email failed:', err));
+            }
+        }
+
+        const updated = await Group.findById(group._id)
+            .populate('members', 'name email role branch rollNumber photoUrl')
+            .populate('pendingMembers', 'name email rollNumber photoUrl branch');
+        res.json({ message: 'Invitations sent.', group: updated });
+    } catch (error) {
+        res.status(500).json({ message: 'Server error', error });
+    }
+};
+
 export const leaveGroup = async (req: Request, res: Response) => {
     try {
         const userId = (req as any).user.id;
