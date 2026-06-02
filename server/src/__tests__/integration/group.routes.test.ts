@@ -5,7 +5,7 @@
 import request from 'supertest';
 import app from '../../app';
 import Group from '../../models/Group';
-import { createTestUser, generateToken, createTestGroup } from '../helpers/factories';
+import { createTestUser, generateToken, createTestGroup, createTestProject } from '../helpers/factories';
 import { UserRole } from '../../models/User';
 
 // All email functions must return a Promise so .catch() in controllers doesn't throw.
@@ -210,6 +210,41 @@ describe('POST /api/groups/:id/reject', () => {
             .set('x-auth-token', generateToken(stranger));
 
         expect(res.status).toBe(403);
+    });
+});
+
+describe('POST /api/groups/leave', () => {
+    it('blocks leaving once a proposal has been sent (Pending)', async () => {
+        // Regression: a sent proposal (Pending or Approved) must lock the group —
+        // previously only Approved blocked, so members could leave with a proposal pending.
+        const { group, members: [student] } = await createTestGroup(2);
+        await createTestProject(group._id, { status: 'Pending' });
+        group.status = 'ProposalPending';
+        await group.save();
+
+        const res = await request(app)
+            .post('/api/groups/leave')
+            .set('x-auth-token', generateToken(student))
+            .send({ password: 'Password123!' });
+
+        expect(res.status).toBe(403);
+        expect(res.body.message).toMatch(/pending or accepted/i);
+        const updated = await Group.findById(group._id);
+        expect(updated!.members.map(m => m.toString())).toContain(student._id.toString());
+    });
+
+    it('allows leaving when only a Draft proposal exists', async () => {
+        const { group, members: [student] } = await createTestGroup(2);
+        await createTestProject(group._id, { status: 'Draft' });
+
+        const res = await request(app)
+            .post('/api/groups/leave')
+            .set('x-auth-token', generateToken(student))
+            .send({ password: 'Password123!' });
+
+        expect(res.status).toBe(200);
+        const updated = await Group.findById(group._id);
+        expect(updated!.members.map(m => m.toString())).not.toContain(student._id.toString());
     });
 });
 

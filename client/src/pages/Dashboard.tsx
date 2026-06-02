@@ -1609,9 +1609,11 @@ const Dashboard: React.FC = () => {
                                                 If you are the last member, the group will be dissolved.
                                             </p>
                                             
-                                            {group.status === 'Approved' || (group.projects ?? []).some((p: any) => p.status === 'Approved') ? (
+                                            {group.status === 'Approved' || group.status === 'ProposalPending' || (group.projects ?? []).some((p: any) => p.status === 'Approved' || p.status === 'Pending') ? (
                                                 <div className="w-full py-4 rounded-2xl font-black text-xs uppercase tracking-widest bg-neutral-50 text-neutral-400 border-2 border-neutral-100 text-center cursor-not-allowed select-none">
-                                                    Locked — project proposal accepted
+                                                    {group.status === 'Approved' || (group.projects ?? []).some((p: any) => p.status === 'Approved')
+                                                        ? 'Locked — project proposal accepted'
+                                                        : 'Locked — withdraw your proposal to leave'}
                                                 </div>
                                             ) : (
                                             <button

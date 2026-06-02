@@ -445,14 +445,20 @@ export const leaveGroup = async (req: Request, res: Response) => {
         if (!group) return res.status(404).json({ message: 'Not in an active group' });
         if (group.isArchived) return res.status(403).json({ message: 'Cannot leave an archived group.' });
 
-        // Block leaving if the group's project has been approved
-        if (group.status === 'Approved') {
-            return res.status(403).json({ message: 'Cannot leave the group after a project proposal has been accepted.' });
+        // Block leaving once a proposal has been sent (Pending or Approved). Drafts are fine —
+        // they aren't submitted, so a member may still leave while only drafts exist.
+        const proposalLockMsg = 'Cannot leave the group while a project proposal is pending or accepted. Withdraw the proposal first.';
+        if (group.status === 'ProposalPending' || group.status === 'Approved') {
+            return res.status(403).json({ message: proposalLockMsg });
         }
-        // Defensive check: also query the project directly in case group.status lags
-        const approvedProject = await Project.findOne({ group: group._id, status: 'Approved' });
-        if (approvedProject) {
-            return res.status(403).json({ message: 'Cannot leave the group after a project proposal has been accepted.' });
+        // Defensive check: also query the project directly in case group.status lags behind.
+        const sentProposal = await Project.findOne({
+            group: group._id,
+            isArchived: { $ne: true },
+            status: { $in: ['Pending', 'Approved'] }
+        });
+        if (sentProposal) {
+            return res.status(403).json({ message: proposalLockMsg });
         }
 
         // Remove user from group
