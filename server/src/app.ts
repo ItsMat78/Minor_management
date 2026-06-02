@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
+import { allowedOrigins } from './config/cors';
 
 import authRoutes from './routes/authRoutes';
 import groupRoutes from './routes/groupRoutes';
@@ -21,12 +22,6 @@ if (process.env.TRUST_PROXY) {
     app.set('trust proxy', /^\d+$/.test(tp) ? Number(tp) : tp);
 }
 
-const allowedOrigins = [
-    'https://minor-management.vercel.app',
-    'http://localhost:5173',
-    'http://minor-project.iiitnr.ac.in',
-    'https://minor-project.iiitnr.ac.in',
-];
 app.use(cors({
     origin: allowedOrigins,
     credentials: true

@@ -3,6 +3,7 @@ import { Server, Socket } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import Message from './models/Message';
 import User from './models/User';
+import { allowedOrigins } from './config/cors';
 
 interface AuthenticatedSocket extends Socket {
     user?: { id: string; name: string; role: string };
@@ -11,7 +12,7 @@ interface AuthenticatedSocket extends Socket {
 export const initSocket = (httpServer: HttpServer) => {
     const io = new Server(httpServer, {
         cors: {
-            origin: ["https://minor-management.vercel.app", "http://localhost:5173"],
+            origin: allowedOrigins,
             methods: ["GET", "POST"]
         }
     });
