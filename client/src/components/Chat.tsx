@@ -3,10 +3,6 @@ import { io, Socket } from 'socket.io-client';
 import { useAuth } from '../context/AuthContext';
 import { Send, MessageSquare, Paperclip, ChevronRight, X } from 'lucide-react';
 
-const socket: Socket = io(import.meta.env.VITE_API_URL || window.location.origin, {
-    auth: { token: localStorage.getItem('token') }
-});
-
 interface Message {
     sender: string;
     message: string;
@@ -28,18 +24,33 @@ const Chat: React.FC<ChatProps> = ({ groupId, groupName, isOpen, onClose, onMess
     const [newMessage, setNewMessage] = useState('');
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const [file, setFile] = useState<File | null>(null);
+    const socketRef = useRef<Socket | null>(null);
+
+    // Hold the latest callback in a ref so it doesn't force the socket effect to re-run
+    // (which would tear down and rebuild the connection on every parent render).
+    const onMessageReceivedRef = useRef(onMessageReceived);
+    useEffect(() => { onMessageReceivedRef.current = onMessageReceived; }, [onMessageReceived]);
 
     useEffect(() => {
+        // Read the token at mount, not at module load: it lives in localStorage *or*
+        // sessionStorage (a normal login without "remember me" uses sessionStorage) and isn't
+        // set until after login. A module-level socket captured a null token here and never
+        // authenticated, so chat silently failed for most users.
+        const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+        if (!token || !groupId) return;
+
+        const socket = io(import.meta.env.VITE_API_URL || window.location.origin, {
+            auth: { token },
+        });
+        socketRef.current = socket;
+
         socket.emit('joinGroup', groupId);
 
         const handleReceiveMessage = (data: Message) => {
             setMessages((prev) => [...prev, data]);
-            if (onMessageReceived) onMessageReceived();
+            onMessageReceivedRef.current?.();
         };
-
-        const handleLoadMessages = (data: Message[]) => {
-            setMessages(data);
-        };
+        const handleLoadMessages = (data: Message[]) => setMessages(data);
 
         socket.on('receiveMessage', handleReceiveMessage);
         socket.on('loadMessages', handleLoadMessages);
@@ -47,8 +58,10 @@ const Chat: React.FC<ChatProps> = ({ groupId, groupName, isOpen, onClose, onMess
         return () => {
             socket.off('receiveMessage', handleReceiveMessage);
             socket.off('loadMessages', handleLoadMessages);
+            socket.disconnect();
+            socketRef.current = null;
         };
-    }, [groupId, onMessageReceived]);
+    }, [groupId]);
 
     useEffect(() => {
         if (isOpen) {
@@ -59,12 +72,11 @@ const Chat: React.FC<ChatProps> = ({ groupId, groupName, isOpen, onClose, onMess
     const sendMessage = (e: React.FormEvent) => {
         e.preventDefault();
         if (!newMessage.trim() && !file) return;
+        const socket = socketRef.current;
+        if (!socket) return;
 
-        // Simple link detection (basic regex)
-        // In a real app, use a library like linkifyjs
-
-        // Mock attachment handling for now since we don't have a dedicated chat upload endpoint
-        // In production: Upload file to server -> get URL -> send URL in message
+        // Mock attachment handling for now since we don't have a dedicated chat upload endpoint.
+        // In production: Upload file to server -> get URL -> send URL in message.
         const attachments = file ? [{ name: file.name, url: '#' }] : [];
 
         socket.emit('sendMessage', {
@@ -118,7 +130,7 @@ const Chat: React.FC<ChatProps> = ({ groupId, groupName, isOpen, onClose, onMess
                             )}
                         </div>
                         <span className="text-[10px] text-gray-400 mt-1 px-1">
-                            {msg.sender === user?.name ? 'You' : msg.sender} • {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            {msg.sender === user?.name ? 'You' : msg.sender} • {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>
                     </div>
                 ))}
