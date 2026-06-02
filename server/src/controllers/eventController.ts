@@ -216,12 +216,22 @@ export const updateEvent = async (req: Request, res: Response) => {
         }
 
         if (updates.endDate) updates.endDate = new Date(updates.endDate);
-        if (updates.extensionDate) updates.extensionDate = new Date(updates.extensionDate);
-        if (updates.extensionDate === null || updates.extensionDate === '') {
-            updates.extensionDate = undefined;
+
+        // Clearing extensionDate must use $unset. Assigning `undefined` is silently dropped by
+        // findByIdAndUpdate, so the old extension would survive — which both breaks "remove
+        // extension" and makes "end event early" look broken (effectiveEnd = extensionDate ||
+        // endDate, so a stale future extension keeps the event alive even after endDate is now).
+        const clearExtension = updates.extensionDate === null || updates.extensionDate === '';
+        if (clearExtension) {
+            delete updates.extensionDate;
+        } else if (updates.extensionDate) {
+            updates.extensionDate = new Date(updates.extensionDate);
         }
 
-        const event = await Event.findByIdAndUpdate(id, updates, { new: true });
+        const updateOps: any = { $set: updates };
+        if (clearExtension) updateOps.$unset = { extensionDate: 1 };
+
+        const event = await Event.findByIdAndUpdate(id, updateOps, { new: true });
         if (!event) {
             return res.status(404).json({ message: 'Event not found' });
         }

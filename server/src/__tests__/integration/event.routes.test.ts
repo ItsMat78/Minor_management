@@ -284,6 +284,80 @@ describe('POST /api/events', () => {
     });
 });
 
+// ── PUT /api/events/:id ───────────────────────────────────────────────────────
+
+describe('PUT /api/events/:id', () => {
+    it('updates the deadline of an event', async () => {
+        const admin = await createTestUser({ role: UserRole.ADMIN, password: ADMIN_PASSWORD });
+        const event = await Event.create({
+            type: EventType.GROUP_FORMATION_AND_PROJECT_PROPOSAL,
+            isActive: true,
+            startDate: new Date(),
+            endDate: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000),
+            participatingBatches: ['2024'],
+            createdBy: admin._id,
+        });
+
+        const newEnd = new Date(Date.now() + 20 * 24 * 60 * 60 * 1000).toISOString();
+        const res = await request(app)
+            .put(`/api/events/${event._id}`)
+            .set('x-auth-token', generateToken(admin))
+            .send({ type: event.type, endDate: newEnd, password: ADMIN_PASSWORD });
+
+        expect(res.status).toBe(200);
+        expect(new Date(res.body.endDate).toISOString()).toBe(newEnd);
+    });
+
+    it('clears extensionDate when sent as null (regression)', async () => {
+        const admin = await createTestUser({ role: UserRole.ADMIN, password: ADMIN_PASSWORD });
+        const event = await Event.create({
+            type: EventType.GROUP_FORMATION_AND_PROJECT_PROPOSAL,
+            isActive: true,
+            startDate: new Date(),
+            endDate: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000),
+            extensionDate: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000),
+            participatingBatches: ['2024'],
+            createdBy: admin._id,
+        });
+
+        const res = await request(app)
+            .put(`/api/events/${event._id}`)
+            .set('x-auth-token', generateToken(admin))
+            .send({ type: event.type, extensionDate: null, password: ADMIN_PASSWORD });
+
+        expect(res.status).toBe(200);
+        expect(res.body.extensionDate == null).toBe(true);
+        const fresh = await Event.findById(event._id).lean() as any;
+        expect(fresh.extensionDate).toBeUndefined();
+    });
+
+    it('"end early" (endDate=now + cleared extension) expires an event that had an extension', async () => {
+        const admin = await createTestUser({ role: UserRole.ADMIN, password: ADMIN_PASSWORD });
+        const student = await createTestUser({ role: UserRole.STUDENT });
+        const event = await Event.create({
+            type: EventType.GROUP_FORMATION_AND_PROJECT_PROPOSAL,
+            isActive: true,
+            startDate: new Date(Date.now() - 1000),
+            endDate: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000),
+            extensionDate: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000),
+            participatingBatches: ['2024'],
+            createdBy: admin._id,
+        });
+
+        const res = await request(app)
+            .put(`/api/events/${event._id}`)
+            .set('x-auth-token', generateToken(admin))
+            .send({ type: event.type, endDate: new Date().toISOString(), extensionDate: null, password: ADMIN_PASSWORD });
+        expect(res.status).toBe(200);
+
+        // With the extension gone and endDate now in the past, it must no longer be active.
+        const activeRes = await request(app)
+            .get('/api/events/active')
+            .set('x-auth-token', generateToken(student));
+        expect(activeRes.body.find((e: any) => e._id === String(event._id))).toBeUndefined();
+    });
+});
+
 // ── PUT /api/events/:id/toggle ────────────────────────────────────────────────
 
 describe('PUT /api/events/:id/toggle', () => {

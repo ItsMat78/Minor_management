@@ -4670,10 +4670,13 @@ const AdminDashboard: React.FC = () => {
                                         try {
                                             if (!adminPassword) { alert('Admin password is required.'); return; }
 
-                                            // Expire event by setting endDate to now
+                                            // Expire event by setting endDate to now. Also clear any
+                                            // extension — otherwise effectiveEnd = extensionDate keeps
+                                            // the event alive and "end early" appears to do nothing.
                                             const payload = {
                                                 type: confirmEndEvent.type,
                                                 endDate: new Date().toISOString(),
+                                                extensionDate: null,
                                                 batchYear: confirmEndEvent.batchYear,
                                                 password: adminPassword
                                             };
