@@ -7,6 +7,7 @@ import { sendProposalStatusEmail, sendProposalSubmissionEmail, sendEmail } from 
 import { publicUrlFor, deleteFileByUrl } from '../middleware/uploadMiddleware';
 import Panel from '../models/Panel';
 import Event, { EventType } from '../models/Event';
+import { nextActiveGroupNumber } from '../utils/groupNumbering';
 
 // ... (imports)
 
@@ -15,8 +16,10 @@ export const createProject = async (req: Request, res: Response) => {
         const userId = (req as any).user.id;
         const { title, description, tags, facultyId, attachments, status = 'Pending', semester } = req.body;
 
-        // Check if user is in a group
-        const group = await Group.findOne({ members: userId });
+        // Check if user is in an active group. Must exclude archived groups: a student
+        // who participated in a past session is still a member of that (now archived)
+        // group, and matching it here would surface last session's proposal.
+        const group = await Group.findOne({ members: userId, isArchived: { $ne: true } });
         if (!group) {
             return res.status(400).json({ message: 'You must be in a group to propose a project' });
         }
@@ -29,6 +32,7 @@ export const createProject = async (req: Request, res: Response) => {
         if (status !== 'Draft') {
             const existingActive = await Project.findOne({
                 group: group._id,
+                isArchived: { $ne: true },
                 status: { $in: ['Pending', 'Approved'] }
             });
             if (existingActive) {
@@ -58,15 +62,16 @@ export const createProject = async (req: Request, res: Response) => {
 
         await newProject.save();
 
-        // Auto decide group number upon project submission if it hasn't been assigned a numeric ID yet
+        // Auto decide group number upon project submission if it hasn't been assigned a numeric ID yet.
+        // Uses the shared per-batch, active-only numbering so it can't drift from createGroup
+        // (a plain max+1 over all groups would count archived past-session groups → wrong number).
         if (!group.name || isNaN(parseInt(group.name)) || group.name.startsWith('Group-')) {
-            const allGroups = await Group.find({}, 'name').lean();
-            let maxNum = 0;
-            allGroups.forEach((g: any) => {
-                const num = parseInt(g.name);
-                if (!isNaN(num) && num > maxNum) maxNum = num;
-            });
-            group.name = String(maxNum + 1);
+            let batchYear = group.targetBatch;
+            if (!batchYear && group.members.length > 0) {
+                const firstMember = await User.findById(group.members[0]).select('rollNumber').lean() as any;
+                if (firstMember?.rollNumber) batchYear = '20' + firstMember.rollNumber.substring(0, 2);
+            }
+            group.name = String(await nextActiveGroupNumber(batchYear));
         }
 
         // Update group status if submitting

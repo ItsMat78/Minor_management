@@ -102,6 +102,35 @@ describe('POST /api/projects', () => {
         expect(res.body.message).toMatch(/already has an active proposal/i);
     });
 
+    it('lets a student propose in their active group despite an archived group with an approved project', async () => {
+        // Regression: after a session rollover the student's past group is archived but its
+        // project keeps status 'Approved'. createProject must look at the ACTIVE group only,
+        // otherwise the old archived proposal wrongly blocks a fresh one.
+        const student = await createTestUser({ role: UserRole.STUDENT, rollNumber: '23IT050' });
+
+        const oldGroup = new Group({
+            name: '12', members: [student._id], status: 'Dissolved',
+            isArchived: true, targetBatch: '2023', archivedSession: 'Even 2022-23',
+        });
+        await oldGroup.save();
+        const oldProject = await createTestProject(oldGroup._id, { status: 'Approved' });
+        oldProject.isArchived = true;
+        await oldProject.save();
+
+        const newGroup = new Group({
+            name: '1', members: [student._id], createdBy: student._id, status: 'Forming',
+        });
+        await newGroup.save();
+
+        const res = await request(app)
+            .post('/api/projects')
+            .set('x-auth-token', generateToken(student))
+            .send({ title: 'New Proposal', description: 'Desc' });
+
+        expect(res.status).toBe(201);
+        expect(res.body.status).toBe('Pending');
+    });
+
     it('returns 400 when an invalid facultyId is provided', async () => {
         const { members: [student] } = await createTestGroup(1);
         const nonExistentId = '000000000000000000000000';

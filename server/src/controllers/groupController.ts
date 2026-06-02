@@ -5,6 +5,7 @@ import User from '../models/User';
 import Project from '../models/Project';
 import Event, { EventType } from '../models/Event';
 import { sendGroupCreationEmail, sendGroupInviteEmail, sendGroupInviteResponseEmail } from '../utils/emailService';
+import { nextActiveGroupNumber } from '../utils/groupNumbering';
 
 // Batch years that require single-branch groups for the given GF event. Prefers the explicit
 // per-batch list; falls back to the legacy boolean (which meant "all participating batches").
@@ -129,27 +130,7 @@ export const createGroup = async (req: Request, res: Response) => {
                 batchYear = '20' + user.rollNumber.substring(0, 2);
             }
 
-            // Find all groups to determine the next available number for this batch
-            const allGroups = await Group.find().populate('members', 'rollNumber');
-            const usedNumbers = new Set<number>();
-
-            allGroups.forEach(g => {
-                let gb = g.targetBatch;
-                if (!gb && g.members && g.members.length > 0 && (g.members[0] as any).rollNumber) {
-                    gb = '20' + (g.members[0] as any).rollNumber.substring(0, 2);
-                }
-                if (gb === batchYear && g.name) {
-                    // Try to extract a leading number from the name if possible, or parse it directly
-                    const num = parseInt(g.name, 10);
-                    if (!isNaN(num)) usedNumbers.add(num);
-                }
-            });
-
-            let nextNum = 1;
-            while (usedNumbers.has(nextNum)) {
-                nextNum++;
-            }
-            assignedName = nextNum.toString();
+            assignedName = (await nextActiveGroupNumber(batchYear)).toString();
         }
 
         const newGroup = new Group({
@@ -626,25 +607,7 @@ export const getNextGroupNumber = async (req: Request, res: Response) => {
         const { batch } = req.query;
         if (!batch) return res.status(400).json({ message: 'Batch is required' });
 
-        const allGroups = await Group.find().populate('members', 'rollNumber');
-        const usedNumbers = new Set<number>();
-
-        allGroups.forEach(g => {
-            let gb = g.targetBatch;
-            if (!gb && g.members && g.members.length > 0 && (g.members[0] as any).rollNumber) {
-                gb = '20' + (g.members[0] as any).rollNumber.substring(0, 2);
-            }
-            if (gb === batch && g.name) {
-                const num = parseInt(g.name, 10);
-                if (!isNaN(num)) usedNumbers.add(num);
-            }
-        });
-
-        let nextNum = 1;
-        while (usedNumbers.has(nextNum)) {
-            nextNum++;
-        }
-        res.json({ nextNumber: nextNum });
+        res.json({ nextNumber: await nextActiveGroupNumber(batch as string) });
     } catch (error) {
         res.status(500).json({ message: 'Server error', error });
     }

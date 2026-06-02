@@ -103,6 +103,39 @@ describe('POST /api/groups', () => {
         expect(res.status).toBe(400);
         expect(res.body.message).toMatch(/already in a group/i);
     });
+
+    it('numbers a new group from active groups only, ignoring archived past-session groups', async () => {
+        // Regression: 94 archived groups from a finished session must not push the next
+        // number to 95 — archived groups belong to past sessions and reserve nothing.
+        const archived = new Group({
+            name: '94', members: [], status: 'Dissolved',
+            isArchived: true, targetBatch: '2023', archivedSession: 'Even 2022-23',
+        });
+        await archived.save();
+
+        const student = await createTestUser({ role: UserRole.STUDENT, rollNumber: '23IT099' });
+        const res = await request(app)
+            .post('/api/groups')
+            .set('x-auth-token', generateToken(student))
+            .send({});
+
+        expect(res.status).toBe(201);
+        expect(res.body.name).toBe('1'); // not '95'
+    });
+
+    it('still continues numbering after active groups in the same batch', async () => {
+        const active = new Group({ name: '1', members: [], status: 'Approved', targetBatch: '2023' });
+        await active.save();
+
+        const student = await createTestUser({ role: UserRole.STUDENT, rollNumber: '23IT099' });
+        const res = await request(app)
+            .post('/api/groups')
+            .set('x-auth-token', generateToken(student))
+            .send({});
+
+        expect(res.status).toBe(201);
+        expect(res.body.name).toBe('2');
+    });
 });
 
 describe('POST /api/groups/:id/accept', () => {
