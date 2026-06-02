@@ -524,6 +524,14 @@ const Dashboard: React.FC = () => {
                             <p className="text-xs text-neutral-500 truncate">{user?.email}</p>
                         </div>
                     </div>
+                    <a
+                        href="/userManual.pdf"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-full mb-2 flex items-center justify-center gap-2 rounded-lg border border-neutral-200 py-2 text-sm font-medium text-neutral-600 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-100 transition-colors"
+                    >
+                        <FileText className="w-4 h-4" /> Help &amp; User Manual
+                    </a>
                     <button
                         onClick={logout}
                         className="w-full rounded-lg border border-neutral-200 py-2 text-sm font-medium hover:bg-red-50 hover:text-red-600 transition-colors"

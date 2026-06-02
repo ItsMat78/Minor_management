@@ -398,21 +398,21 @@ const Login: React.FC = () => {
                 </div>
             </motion.div>
 
-            {/* User Manual download — bottom right */}
+            {/* Getting-started guide download — bottom right */}
             <a
-                href="/userManual.pdf"
-                download="UserManual.pdf"
+                href="/loginGuide.pdf"
+                download="GettingStarted.pdf"
                 className="fixed bottom-6 right-6 z-20 flex items-center gap-3 rounded-2xl bg-white px-4 py-3 shadow-xl hover:shadow-2xl hover:-translate-y-0.5 transition-all"
             >
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-red-100 text-red-600">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-indigo-100 text-indigo-600">
                     <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 18 15 15"/>
+                        <circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/>
                     </svg>
                 </div>
                 <div className="flex flex-col leading-tight">
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-red-500">PDF</span>
-                    <span className="text-sm font-bold text-neutral-800">Download User Manual</span>
-                    <span className="text-[11px] text-neutral-400">Don't know what to do?</span>
+                    <span className="text-[11px] text-neutral-400">New here, or stuck signing in?</span>
+                    <span className="text-sm font-bold text-neutral-800">Getting Started Guide</span>
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-indigo-500">PDF · Logging in &amp; setup</span>
                 </div>
             </a>
         </div>
