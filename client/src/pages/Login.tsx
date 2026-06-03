@@ -176,7 +176,7 @@ const Login: React.FC = () => {
     };
 
     return (
-        <div className="relative flex min-h-screen items-center justify-center overflow-hidden">
+        <div className="relative flex min-h-screen items-center justify-center overflow-hidden p-4 sm:p-6">
             <div
                 className="absolute inset-0 z-0 bg-cover bg-center bg-no-repeat"
                 style={{ backgroundImage: `url('${CAMPUS_BG_URL}')` }}
@@ -195,7 +195,7 @@ const Login: React.FC = () => {
                         <img src={LOGO_URL} alt="IIITNR Logo" className="h-full w-full object-contain" />
                     </div>
                     <h1 className="text-2xl font-bold tracking-tight">IIIT Naya Raipur</h1>
-                    <p className="mt-1 text-blue-100 opacity-90">Project Management Portal</p>
+                    <p className="mt-1 text-blue-100 opacity-90">Minor Project Management Portal</p>
                 </div>
 
                 <div className="p-8 pt-6">
@@ -305,16 +305,26 @@ const Login: React.FC = () => {
                                             placeholder="Password"
                                         />
                                     </div>
-                                    <div className="flex items-center justify-end">
+                                    <div className="flex items-center justify-between gap-3 pt-0.5">
+                                        <label htmlFor="rememberMe" className="flex cursor-pointer select-none items-center gap-2 text-sm text-gray-600">
+                                            <input
+                                                type="checkbox"
+                                                id="rememberMe"
+                                                checked={rememberMe}
+                                                onChange={(e) => setRememberMe(e.target.checked)}
+                                                className="h-4 w-4 cursor-pointer rounded border-gray-300 accent-blue-900 focus:ring-blue-500"
+                                            />
+                                            Remember me
+                                        </label>
                                         <button
                                             type="button"
                                             onClick={() => { setIsForgotMode(true); setError(''); setInfo(''); setForgotEmail(email); }}
-                                            className="text-xs font-medium text-blue-700 hover:text-blue-900 hover:underline"
+                                            className="text-sm font-medium text-blue-700 hover:text-blue-900 hover:underline"
                                         >
                                             Forgot password?
                                         </button>
                                     </div>
-                                    <p className="text-xs text-gray-400 text-center">
+                                    <p className="text-xs text-gray-400">
                                         First time signing in? Use &ldquo;Forgot password&rdquo; to set your password.
                                     </p>
                                 </>
@@ -355,21 +365,6 @@ const Login: React.FC = () => {
                             )}
                         </div>
 
-                        {!isOtpMode && !isForgotMode && !isForgotOtpMode && (
-                            <div className="flex items-center gap-2">
-                                <input
-                                    type="checkbox"
-                                    id="rememberMe"
-                                    checked={rememberMe}
-                                    onChange={(e) => setRememberMe(e.target.checked)}
-                                    className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                                />
-                                <label htmlFor="rememberMe" className="text-sm text-gray-600 cursor-pointer select-none">
-                                    Remember me
-                                </label>
-                            </div>
-                        )}
-
                         <button
                             type="submit"
                             disabled={isLoading}
@@ -406,7 +401,7 @@ const Login: React.FC = () => {
             >
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-indigo-100 text-indigo-600">
                     <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                        <circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><line x1="12" y1="17" x2="12.01" y2="17" />
                     </svg>
                 </div>
                 <div className="flex flex-col leading-tight">

@@ -412,7 +412,11 @@ const FacultyDashboard: React.FC = () => {
     const [selectedProject, setSelectedProject] = useState<Project | null>(null);
     const [actionLoading, setActionLoading] = useState<string | null>(null);
     const [feedback, setFeedback] = useState('');
-    const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+    // Desktop: sidebar docked open. Mobile: starts collapsed so it doesn't cover
+    // the content (it opens as an overlay when toggled).
+    const [isSidebarOpen, setIsSidebarOpen] = useState(() =>
+        typeof window !== 'undefined' ? window.innerWidth >= 1024 : true
+    );
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
     const [archivedProjects, setArchivedProjects] = useState<any[]>([]);
@@ -737,6 +741,16 @@ const FacultyDashboard: React.FC = () => {
     };
 
 
+    // Switch tab, leave any open group-detail view, and on mobile (where the
+    // sidebar is an overlay) collapse it so the selected view is visible.
+    const selectTab = (tab: typeof activeTab) => {
+        setActiveTab(tab);
+        setViewGroup(null);
+        if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+            setIsSidebarOpen(false);
+        }
+    };
+
     const SidebarItem = ({ icon, label, active, onClick }: any) => (
         <button
             onClick={onClick}
@@ -826,11 +840,19 @@ const FacultyDashboard: React.FC = () => {
 
     return (
         <div className="flex h-full bg-neutral-50 font-jakarta text-neutral-900 overflow-hidden">
-            {/* Sidebar */}
+            {/* Mobile backdrop — closes the overlay sidebar when tapped */}
+            {isSidebarOpen && (
+                <div
+                    onClick={() => setIsSidebarOpen(false)}
+                    className="fixed inset-0 bg-black/40 z-40 lg:hidden"
+                    aria-hidden="true"
+                />
+            )}
+            {/* Sidebar — fixed overlay on mobile, docked column on desktop */}
             <motion.aside
                 initial={{ x: -250 }}
                 animate={{ x: isSidebarOpen ? 0 : -250 }}
-                className={`${isSidebarOpen ? 'w-64' : 'w-0'} flex-shrink-0 bg-white border-r border-neutral-200 transition-width duration-300 flex flex-col z-20`}
+                className={`fixed lg:relative z-50 h-full w-64 ${isSidebarOpen ? 'lg:w-64' : 'lg:w-0'} flex-shrink-0 bg-white border-r border-neutral-200 transition-width duration-300 flex flex-col`}
             >
                 <div className="p-6 border-b border-neutral-100 flex items-center justify-between">
                     <h2 className="text-lg font-bold flex items-center gap-2">
@@ -848,31 +870,31 @@ const FacultyDashboard: React.FC = () => {
                         icon={<Layout className="w-5 h-5" />}
                         label="Student Directory"
                         active={activeTab === 'directory'}
-                        onClick={() => { setActiveTab('directory'); setViewGroup(null); }}
+                        onClick={() => selectTab('directory')}
                     />
                     <SidebarItem
                         icon={<FileText className="w-5 h-5" />}
                         label="Project Proposals"
                         active={activeTab === 'proposals'}
-                        onClick={() => { setActiveTab('proposals'); setViewGroup(null); }}
+                        onClick={() => selectTab('proposals')}
                     />
                     <SidebarItem
                         icon={<Users className="w-5 h-5" />}
                         label="My Mentees"
                         active={activeTab === 'mentees'}
-                        onClick={() => { setActiveTab('mentees'); setViewGroup(null); }}
+                        onClick={() => selectTab('mentees')}
                     />
                     <SidebarItem
                         icon={<Settings className="w-5 h-5" />}
                         label="My Profile"
                         active={activeTab === 'profile'}
-                        onClick={() => { setActiveTab('profile'); setViewGroup(null); }}
+                        onClick={() => selectTab('profile')}
                     />
                     <SidebarItem
                         icon={<Archive className="w-5 h-5" />}
                         label="Past Projects"
                         active={activeTab === 'archive'}
-                        onClick={() => { setActiveTab('archive'); setViewGroup(null); }}
+                        onClick={() => selectTab('archive')}
                     />
 
                     {!activeEvents?.some(e => e.type === 'group_formation_project_proposal' && new Date(e.extensionDate || e.endDate) > new Date()) && (activeEvents?.some(e => e.type === 'mid_term_evaluation') || activeEvents?.some(e => e.type === 'end_term_evaluation')) && (
@@ -883,7 +905,7 @@ const FacultyDashboard: React.FC = () => {
                                     icon={<GraduationCap className="w-5 h-5" />}
                                     label="Mid-Term Eval"
                                     active={activeTab === 'mid-term'}
-                                    onClick={() => { setActiveTab('mid-term'); setViewGroup(null); }}
+                                    onClick={() => selectTab('mid-term')}
                                 />
                             )}
                             {activeEvents?.some(e => e.type === 'end_term_evaluation') && (
@@ -891,7 +913,7 @@ const FacultyDashboard: React.FC = () => {
                                     icon={<Medal className="w-5 h-5" />}
                                     label="End-Term Eval"
                                     active={activeTab === 'end-term'}
-                                    onClick={() => { setActiveTab('end-term'); setViewGroup(null); }}
+                                    onClick={() => selectTab('end-term')}
                                 />
                             )}
                         </div>
@@ -930,19 +952,19 @@ const FacultyDashboard: React.FC = () => {
 
             {/* Main Content */}
             <div className="flex-1 flex flex-col min-w-0 bg-neutral-50/50">
-                <header className="flex items-center h-16 px-6 border-b border-neutral-200 bg-white sticky top-0 z-10 justify-between">
-                    <div className="flex items-center gap-4">
+                <header className="flex items-center h-16 px-4 sm:px-6 gap-2 border-b border-neutral-200 bg-white sticky top-0 z-10 justify-between">
+                    <div className="flex items-center gap-2 sm:gap-4 min-w-0">
                         {!isSidebarOpen && (
-                            <button onClick={() => setIsSidebarOpen(true)} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
+                            <button onClick={() => setIsSidebarOpen(true)} className="p-2 hover:bg-gray-100 rounded-lg transition-colors shrink-0">
                                 <Menu className="w-5 h-5" />
                             </button>
                         )}
-                        <h1 className="text-xl font-bold text-neutral-800 flex items-center gap-2">
+                        <h1 className="text-lg sm:text-xl font-bold text-neutral-800 flex items-center gap-2 min-w-0 truncate">
                             {activeTab === 'mentees' && viewGroup ? (
                                 <>
-                                    <span onClick={() => setViewGroup(null)} className="cursor-pointer hover:text-indigo-600 transition-colors">My Mentees</span>
-                                    <ChevronRight className="w-5 h-5 text-neutral-400" />
-                                    <span className="text-neutral-900">{viewGroup.name}</span>
+                                    <span onClick={() => setViewGroup(null)} className="cursor-pointer hover:text-indigo-600 transition-colors shrink-0">My Mentees</span>
+                                    <ChevronRight className="w-5 h-5 text-neutral-400 shrink-0" />
+                                    <span className="text-neutral-900 truncate min-w-0">{viewGroup.name}</span>
                                 </>
                             ) : (
                                 activeTab === 'proposals' ? 'Project Proposals' :
@@ -958,7 +980,7 @@ const FacultyDashboard: React.FC = () => {
                     <GlobalEventBanner />
                 </header>
 
-                <main className="flex-1 overflow-y-auto p-6">
+                <main className="flex-1 overflow-y-auto p-4 sm:p-6">
                     {activeTab === 'archive' ? (
                         <div className="max-w-6xl mx-auto">
                             <div className="bg-white rounded-2xl border border-neutral-200 p-5 shadow-sm flex items-center gap-4 mb-6">
@@ -1027,7 +1049,7 @@ const FacultyDashboard: React.FC = () => {
                     ) : activeTab === 'profile' ? (
                         /* Profile View */
                         <div className="max-w-2xl mx-auto">
-                            <div className="bg-white p-10 rounded-3xl border border-neutral-200 shadow-sm text-center">
+                            <div className="bg-white p-6 sm:p-10 rounded-3xl border border-neutral-200 shadow-sm text-center">
                                 <div className="relative inline-block mb-6">
                                     {user?.photoUrl ? (
                                         <img src={user.photoUrl} alt={user.name} className="h-24 w-24 rounded-full object-cover border-4 border-indigo-100 shadow-md mx-auto" />
@@ -1856,7 +1878,7 @@ const FacultyDashboard: React.FC = () => {
             <Dialog.Root open={!!selectedProject} onOpenChange={(open) => !open && setSelectedProject(null)}>
                 <Dialog.Portal>
                     <Dialog.Overlay className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 transition-opacity" />
-                    <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-4xl bg-white rounded-3xl shadow-2xl z-50 overflow-hidden max-h-[90vh] flex flex-col focus:outline-none border border-neutral-100">
+                    <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[calc(100%_-_2rem)] max-w-4xl bg-white rounded-3xl shadow-2xl z-50 overflow-hidden max-h-[90vh] flex flex-col focus:outline-none border border-neutral-100">
                         <div className="flex items-center justify-between p-6 border-b border-neutral-100 bg-neutral-50/50 shrink-0">
                             <div className="flex items-center gap-4">
                                 <div className="p-3 bg-indigo-600 rounded-2xl text-white shadow-lg shadow-indigo-200">
@@ -1879,7 +1901,7 @@ const FacultyDashboard: React.FC = () => {
 
                         <div className="flex-1 overflow-hidden flex flex-col lg:flex-row">
                             {/* Left Side: Details & Team */}
-                            <div className="lg:w-3/5 p-8 overflow-y-auto space-y-10 border-r border-neutral-100 bg-white custom-scrollbar">
+                            <div className="lg:w-3/5 p-6 sm:p-8 overflow-y-auto space-y-10 border-r border-neutral-100 bg-white custom-scrollbar">
                                 <div>
                                     <h4 className="flex items-center gap-3 text-[10px] font-black text-neutral-400 uppercase tracking-[0.2em] mb-5">
                                         Project Overview
@@ -1936,7 +1958,7 @@ const FacultyDashboard: React.FC = () => {
                                 </div>
                             </div>
 
-                            <div className="lg:w-2/5 p-8 bg-neutral-50/50 overflow-y-auto space-y-10 border-l border-neutral-100">
+                            <div className="lg:w-2/5 p-6 sm:p-8 bg-neutral-50/50 overflow-y-auto space-y-10 border-l border-neutral-100">
                                 <div>
                                     <h4 className="flex items-center gap-3 text-[10px] font-black text-neutral-400 uppercase tracking-[0.2em] mb-5 px-1">
                                         Project Assets
@@ -1972,7 +1994,7 @@ const FacultyDashboard: React.FC = () => {
                                             })}
                                         </div>
                                     ) : (
-                                        <div className="p-10 border-2 border-dashed border-neutral-200 rounded-3xl text-center bg-white/50 backdrop-blur-sm">
+                                        <div className="p-6 sm:p-10 border-2 border-dashed border-neutral-200 rounded-3xl text-center bg-white/50 backdrop-blur-sm">
                                             <div className="w-12 h-12 bg-neutral-50 rounded-full flex items-center justify-center mx-auto mb-3 text-neutral-300">
                                                 <Archive className="w-6 h-6" />
                                             </div>

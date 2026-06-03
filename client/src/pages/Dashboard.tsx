@@ -46,8 +46,21 @@ const Dashboard: React.FC = () => {
     const [loadingStudents, setLoadingStudents] = useState(false);
     const [selectedStudents, setSelectedStudents] = useState<Set<string>>(new Set());
     const [searchTerm, setSearchTerm] = useState('');
-    const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+    // On desktop the sidebar is docked open; on mobile it starts collapsed so it
+    // doesn't cover the content (it opens as an overlay when toggled).
+    const [isSidebarOpen, setIsSidebarOpen] = useState(() =>
+        typeof window !== 'undefined' ? window.innerWidth >= 1024 : true
+    );
     const [activeTab, setActiveTab] = useState<'directory' | 'project' | 'group' | 'archive' | 'results'>(initialStudentTab || 'directory');
+
+    // Switch tab and, on mobile where the sidebar is an overlay, close it so the
+    // selected view is visible.
+    const selectTab = (tab: 'directory' | 'project' | 'group' | 'archive' | 'results') => {
+        setActiveTab(tab);
+        if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+            setIsSidebarOpen(false);
+        }
+    };
 
 
     useEffect(() => {
@@ -430,11 +443,19 @@ const Dashboard: React.FC = () => {
 
     return (
         <div className="flex h-full bg-neutral-50 font-jakarta text-neutral-900 overflow-hidden">
-            {/* Sidebar */}
+            {/* Mobile backdrop — closes the overlay sidebar when tapped */}
+            {isSidebarOpen && (
+                <div
+                    onClick={() => setIsSidebarOpen(false)}
+                    className="fixed inset-0 bg-black/40 z-40 lg:hidden"
+                    aria-hidden="true"
+                />
+            )}
+            {/* Sidebar — fixed overlay on mobile, docked column on desktop */}
             <motion.aside
                 initial={{ x: -250 }}
                 animate={{ x: isSidebarOpen ? 0 : -250 }}
-                className={`${isSidebarOpen ? 'w-64' : 'w-0'} flex-shrink-0 bg-white border-r border-neutral-200 transition-width duration-300 flex flex-col`}
+                className={`fixed lg:relative z-50 h-full w-64 ${isSidebarOpen ? 'lg:w-64' : 'lg:w-0'} flex-shrink-0 bg-white border-r border-neutral-200 transition-width duration-300 flex flex-col`}
             >
                 <div className="p-6 border-b border-neutral-100 flex items-center justify-between">
                     <h2 className="text-lg font-bold">Portal</h2>
@@ -448,7 +469,7 @@ const Dashboard: React.FC = () => {
                             icon={<Layout className="w-5 h-5" />}
                             label="Student Directory"
                             active={activeTab === 'directory'}
-                            onClick={() => setActiveTab('directory')}
+                            onClick={() => selectTab('directory')}
                         />
                     )}
                     {group && (
@@ -457,19 +478,19 @@ const Dashboard: React.FC = () => {
                                 icon={<FileText className="w-5 h-5" />}
                                 label="My Project"
                                 active={activeTab === 'project'}
-                                onClick={() => setActiveTab('project')}
+                                onClick={() => selectTab('project')}
                             />
                             <SidebarItem
                                 icon={<Users className="w-5 h-5" />}
                                 label="My Group"
                                 active={activeTab === 'group'}
-                                onClick={() => setActiveTab('group')}
+                                onClick={() => selectTab('group')}
                             />
                             {approvedProjectForSidebar && (
                                 <div className="pt-3 border-t border-neutral-100 mt-2 space-y-1">
                                     <p className="px-3 text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Deliverables</p>
                                     <button
-                                        onClick={() => setActiveTab('project')}
+                                        onClick={() => selectTab('project')}
                                         className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-colors ${hasMidTermSubs ? 'text-emerald-700 hover:bg-emerald-50' : 'text-neutral-400 hover:bg-neutral-50'}`}
                                     >
                                         <CheckSquare className="w-4 h-4" />
@@ -478,7 +499,7 @@ const Dashboard: React.FC = () => {
                                         {midTermActive && !hasMidTermSubs && <span className="ml-auto text-[9px] text-amber-600 font-bold uppercase">Open</span>}
                                     </button>
                                     <button
-                                        onClick={() => setActiveTab('project')}
+                                        onClick={() => selectTab('project')}
                                         className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-colors ${hasEndTermSubs ? 'text-indigo-700 hover:bg-indigo-50' : 'text-neutral-400 hover:bg-neutral-50'}`}
                                     >
                                         <CheckSquare className="w-4 h-4" />
@@ -494,14 +515,14 @@ const Dashboard: React.FC = () => {
                         icon={<Archive className="w-5 h-5" />}
                         label="Archive"
                         active={activeTab === 'archive'}
-                        onClick={() => setActiveTab('archive')}
+                        onClick={() => selectTab('archive')}
                     />
                     {approvedProjectForSidebar && hasEvaluations && (
                         <SidebarItem
                             icon={<Trophy className="w-5 h-5" />}
                             label="My Results"
                             active={activeTab === 'results'}
-                            onClick={() => setActiveTab('results')}
+                            onClick={() => selectTab('results')}
                         />
                     )}
                 </nav>
@@ -543,15 +564,15 @@ const Dashboard: React.FC = () => {
 
             {/* Main Content */}
             <div className="flex-1 flex flex-col min-w-0">
-                <header className="flex items-center h-16 px-6 border-b border-neutral-200 bg-white justify-between">
-                    <div className="flex items-center gap-4">
+                <header className="flex items-center h-16 px-4 sm:px-6 gap-2 border-b border-neutral-200 bg-white justify-between">
+                    <div className="flex items-center gap-2 sm:gap-4 min-w-0">
                         {!isSidebarOpen && (
-                            <button onClick={() => setIsSidebarOpen(true)} className="p-2 hover:bg-neutral-100 rounded-lg">
+                            <button onClick={() => setIsSidebarOpen(true)} className="p-2 hover:bg-neutral-100 rounded-lg shrink-0">
                                 <Menu className="w-5 h-5" />
                             </button>
                         )}
-                        <div>
-                            <div className="flex items-center gap-2 text-xs text-neutral-500 mb-0.5">
+                        <div className="min-w-0">
+                            <div className="hidden sm:flex items-center gap-2 text-xs text-neutral-500 mb-0.5">
                                 <span>Portal</span>
                                 <ChevronRight className="w-3 h-3" />
                                 <span>
@@ -560,7 +581,7 @@ const Dashboard: React.FC = () => {
                                      activeTab === 'archive' ? 'Archive' : 'My Project'}
                                 </span>
                             </div>
-                            <h1 className="text-xl font-bold text-neutral-800">
+                            <h1 className="text-lg sm:text-xl font-bold text-neutral-800 truncate">
                                 {activeTab === 'directory' ? 'Student Directory' :
                                  activeTab === 'results' ? 'My Results' :
                                  activeTab === 'archive' ? 'Project Archive' : 'Project Workspace'}
@@ -570,7 +591,7 @@ const Dashboard: React.FC = () => {
                     <GlobalEventBanner />
                 </header>
 
-                <main className="flex-1 overflow-y-auto p-6">
+                <main className="flex-1 overflow-y-auto p-4 sm:p-6">
                     {/* Status Banners */}
                     <div className="max-w-5xl mx-auto space-y-4 mb-6">
                         {user?.isParticipating === false && (
@@ -653,7 +674,7 @@ const Dashboard: React.FC = () => {
                                 <motion.div
                                     initial={{ opacity: 0, y: 20 }}
                                     animate={{ opacity: 1, y: 0 }}
-                                    className="bg-white p-10 rounded-[2.5rem] border border-red-100 shadow-[0_30px_70px_-20px_rgba(220,38,38,0.12)] relative overflow-hidden"
+                                    className="bg-white p-6 sm:p-10 rounded-[2.5rem] border border-red-100 shadow-[0_30px_70px_-20px_rgba(220,38,38,0.12)] relative overflow-hidden"
                                 >
                                     {/* Decorative background element */}
                                     <div className="absolute top-0 right-0 w-32 h-32 bg-red-50 rounded-bl-full -mr-16 -mt-16 opacity-50" />
@@ -775,7 +796,7 @@ const Dashboard: React.FC = () => {
                                         </Dialog.Trigger>
                                         <Dialog.Portal>
                                             <Dialog.Overlay className="fixed inset-0 bg-black/50 backdrop-blur-sm data-[state=open]:animate-overlayShow" />
-                                            <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md bg-white p-6 rounded-2xl shadow-xl focus:outline-none data-[state=open]:animate-contentShow">
+                                            <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[calc(100%_-_2rem)] max-w-md bg-white p-6 rounded-2xl shadow-xl focus:outline-none data-[state=open]:animate-contentShow">
                                                 <Dialog.Title className="text-lg font-bold mb-4">Create New Group</Dialog.Title>
                                                 {!showConfirmation ? (
                                                     <>
@@ -1995,7 +2016,7 @@ const Dashboard: React.FC = () => {
             <Dialog.Root open={isUpdateDialogOpen} onOpenChange={setIsUpdateDialogOpen}>
                 <Dialog.Portal>
                     <Dialog.Overlay className="fixed inset-0 bg-black/50 backdrop-blur-sm data-[state=open]:animate-overlayShow" />
-                    <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md bg-white p-6 rounded-2xl shadow-xl focus:outline-none data-[state=open]:animate-contentShow max-h-[90vh] overflow-y-auto">
+                    <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[calc(100%_-_2rem)] max-w-md bg-white p-6 rounded-2xl shadow-xl focus:outline-none data-[state=open]:animate-contentShow max-h-[90vh] overflow-y-auto">
                         <Dialog.Title className="text-lg font-bold mb-4">Post Project Update</Dialog.Title>
                         <div className="space-y-4">
                             <div>
@@ -2050,7 +2071,7 @@ const Dashboard: React.FC = () => {
             <Dialog.Root open={isSubmitDialogOpen} onOpenChange={setIsSubmitDialogOpen}>
                 <Dialog.Portal>
                     <Dialog.Overlay className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] transition-all" />
-                    <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md bg-white p-8 rounded-3xl shadow-2xl z-[101] focus:outline-none border border-neutral-100 font-jakarta max-h-[90vh] overflow-y-auto">
+                    <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[calc(100%_-_2rem)] max-w-md bg-white p-6 sm:p-8 rounded-3xl shadow-2xl z-[101] focus:outline-none border border-neutral-100 font-jakarta max-h-[90vh] overflow-y-auto">
                         <div className="flex justify-between items-center mb-6">
                             <Dialog.Title className="text-xl font-black text-neutral-900 tracking-tight flex items-center gap-2">
                                 <FileText className="w-6 h-6 text-emerald-600" />
@@ -2142,7 +2163,7 @@ const Dashboard: React.FC = () => {
             <Dialog.Root open={isLeaveDialogOpen} onOpenChange={setIsLeaveDialogOpen}>
                 <Dialog.Portal>
                     <Dialog.Overlay className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] transition-all" />
-                    <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md bg-white p-8 rounded-3xl shadow-2xl z-[101] focus:outline-none border border-neutral-100 animate-in fade-in zoom-in-95 duration-200">
+                    <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[calc(100%_-_2rem)] max-w-md bg-white p-6 sm:p-8 rounded-3xl shadow-2xl z-[101] focus:outline-none border border-neutral-100 animate-in fade-in zoom-in-95 duration-200">
                         <Dialog.Title className="text-2xl font-black mb-2 text-red-600 tracking-tight">Leave Group</Dialog.Title>
                         <Dialog.Description className="text-neutral-500 mb-4">
                             Are you sure you want to leave this group? This action cannot be undone.
@@ -2183,7 +2204,7 @@ const Dashboard: React.FC = () => {
             <Dialog.Root open={isAddMemberOpen} onOpenChange={(open) => { setIsAddMemberOpen(open); if (!open) { setAddMemberSelected(new Set()); setAddMemberSearch(''); } }}>
                 <Dialog.Portal>
                     <Dialog.Overlay className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100]" />
-                    <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-lg bg-white p-8 rounded-3xl shadow-2xl z-[101] focus:outline-none border border-neutral-100 max-h-[85vh] flex flex-col animate-in fade-in zoom-in-95 duration-200">
+                    <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[calc(100%_-_2rem)] max-w-lg bg-white p-6 sm:p-8 rounded-3xl shadow-2xl z-[101] focus:outline-none border border-neutral-100 max-h-[85vh] flex flex-col animate-in fade-in zoom-in-95 duration-200">
                         <Dialog.Title className="text-2xl font-black mb-1 text-indigo-600 tracking-tight">Add Members</Dialog.Title>
                         {(() => {
                             const used = (group?.members?.length || 0) + (group?.pendingMembers?.length || 0);
@@ -2268,7 +2289,7 @@ const Dashboard: React.FC = () => {
             <Dialog.Root open={isProposalWarningOpen} onOpenChange={setIsProposalWarningOpen}>
                 <Dialog.Portal>
                     <Dialog.Overlay className="fixed inset-0 bg-black/50 backdrop-blur-sm data-[state=open]:animate-overlayShow" />
-                    <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md bg-white p-6 rounded-2xl shadow-xl focus:outline-none data-[state=open]:animate-contentShow">
+                    <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[calc(100%_-_2rem)] max-w-md bg-white p-6 rounded-2xl shadow-xl focus:outline-none data-[state=open]:animate-contentShow">
                         <Dialog.Title className="text-lg font-bold mb-2 text-indigo-600">Multiple Proposals</Dialog.Title>
                         <Dialog.Description className="text-neutral-500 mb-4">
                             You are about to create another project proposal.
@@ -2298,7 +2319,7 @@ const Dashboard: React.FC = () => {
             <Dialog.Root open={!!selectedProject} onOpenChange={(open) => !open && setSelectedProject(null)}>
                 <Dialog.Portal>
                     <Dialog.Overlay className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[60]" />
-                    <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-2xl bg-white rounded-3xl shadow-2xl z-[70] overflow-hidden max-h-[90vh] flex flex-col focus:outline-none border border-neutral-100 font-jakarta">
+                    <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[calc(100%_-_2rem)] max-w-2xl bg-white rounded-3xl shadow-2xl z-[70] overflow-hidden max-h-[90vh] flex flex-col focus:outline-none border border-neutral-100 font-jakarta">
                         <div className="flex items-center justify-between p-6 border-b border-neutral-100 bg-neutral-50/50 shrink-0">
                             <div className="flex items-center gap-4">
                                 <div className="p-3 bg-indigo-600 rounded-2xl text-white shadow-lg shadow-indigo-200">
