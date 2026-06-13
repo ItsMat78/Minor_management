@@ -113,6 +113,10 @@ export const createEvent = async (req: Request, res: Response) => {
             return res.status(400).json({ message: 'Missing required fields: type, endDate' });
         }
 
+        if (extensionDate && new Date(extensionDate) <= new Date(endDate)) {
+            return res.status(400).json({ message: 'Extension date must be after the deadline (end date).' });
+        }
+
         // Validate event type
         if (!Object.values(EventType).includes(type)) {
             return res.status(400).json({ message: 'Invalid event type' });
@@ -256,6 +260,15 @@ export const updateEvent = async (req: Request, res: Response) => {
             delete updates.extensionDate;
         } else if (updates.extensionDate) {
             updates.extensionDate = new Date(updates.extensionDate);
+        }
+
+        // An extension must fall after the deadline. Compare against the new endDate if it's part of
+        // this update, otherwise the event's existing endDate.
+        if (!clearExtension && updates.extensionDate) {
+            const endRef = updates.endDate ?? (await Event.findById(id).select('endDate').lean())?.endDate;
+            if (endRef && new Date(updates.extensionDate) <= new Date(endRef)) {
+                return res.status(400).json({ message: 'Extension date must be after the deadline (end date).' });
+            }
         }
 
         // Keep the per-batch branch clustering consistent with the (possibly updated) restricted
