@@ -4,6 +4,7 @@ import User, { UserRole } from '../models/User';
 import Group from '../models/Group';
 import Project from '../models/Project';
 import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 import fs from 'fs';
 import bcrypt from 'bcryptjs';
 import { publicUrlFor, deleteFileByUrl } from '../middleware/uploadMiddleware';
@@ -42,7 +43,7 @@ export const getFaculty = async (req: Request, res: Response) => {
         const batchYear = batchYearPrefix ? parseInt('20' + batchYearPrefix) : null;
 
         const facultyList = await User.find({ role: UserRole.FACULTY })
-            .select('name email department expertise currentStudents currentGroups maxStudents maxGroups batchConfigs isVerified photoUrl')
+            .select('name email department branch expertise currentStudents currentGroups maxStudents maxGroups batchConfigs isVerified photoUrl')
             .lean();
 
         // Dynamically calculate counts for EACH faculty for THIS specific batch
@@ -379,6 +380,64 @@ export const exportStudents = async (req: Request, res: Response) => {
     }
 };
 
+// Blank import template (.xlsx) for students or faculty. The Branch column is constrained by an
+// Excel data-validation dropdown so admins can only enter valid branches (and, for faculty, valid
+// comma-separated combinations of them).
+export const downloadImportTemplate = async (req: Request, res: Response) => {
+    try {
+        const type = (req.query.type as string) === 'faculty' ? 'faculty' : 'student';
+        const wb = new ExcelJS.Workbook();
+        const ws = wb.addWorksheet(type === 'faculty' ? 'Faculty' : 'Students');
+
+        // Allowed branch values live on a hidden sheet so commas inside a value (e.g. "CSE,DSAI")
+        // don't get split the way an inline list formula would.
+        const lists = wb.addWorksheet('Lists');
+        lists.state = 'hidden';
+        const branchOptions = type === 'faculty'
+            ? ['CSE', 'DSAI', 'ECE', 'CSE,DSAI', 'CSE,ECE', 'DSAI,ECE', 'CSE,DSAI,ECE']
+            : ['CSE', 'DSAI', 'ECE'];
+        branchOptions.forEach((b, i) => { lists.getCell(`A${i + 1}`).value = b; });
+        const listRef = `Lists!$A$1:$A$${branchOptions.length}`;
+
+        const headers = type === 'faculty'
+            ? ['Name', 'Email', 'Branch', 'Department', 'Expertise']
+            : ['Name', 'Email', 'RollNumber', 'Branch', 'Semester'];
+        const example = type === 'faculty'
+            ? ['Dr. Jane Doe', 'jane.doe@iiitnr.edu.in', 'CSE,DSAI', 'Computer Science', 'Machine Learning, NLP']
+            : ['John Smith', 'john.smith@iiitnr.edu.in', '24100XXXX', 'CSE', 4];
+
+        const headerRow = ws.addRow(headers);
+        headerRow.font = { bold: true };
+        ws.addRow(example);
+        headers.forEach((_, i) => { ws.getColumn(i + 1).width = 26; });
+
+        // Constrain the Branch column (rows 2..500) to the allowed values.
+        const branchColIdx = headers.indexOf('Branch') + 1;
+        const colLetter = ws.getColumn(branchColIdx).letter;
+        for (let r = 2; r <= 500; r++) {
+            (ws.getCell(`${colLetter}${r}`) as any).dataValidation = {
+                type: 'list',
+                allowBlank: type === 'student', // student branch can be blank (derived from roll number)
+                formulae: [listRef],
+                showErrorMessage: true,
+                errorStyle: 'stop',
+                errorTitle: 'Invalid branch',
+                error: type === 'faculty'
+                    ? 'Pick a value from the list. Allowed: CSE, DSAI, ECE (or a combination).'
+                    : 'Pick a value from the list: CSE, DSAI or ECE.'
+            };
+        }
+
+        const buffer = await wb.xlsx.writeBuffer();
+        res.setHeader('Content-Disposition', `attachment; filename="${type}_import_template.xlsx"`);
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.send(Buffer.from(buffer));
+    } catch (error) {
+        console.error('downloadImportTemplate error:', error);
+        res.status(500).json({ message: 'Failed to generate import template' });
+    }
+};
+
 export const previewImport = async (req: Request, res: Response) => {
     try {
         if (!req.file) {
@@ -416,7 +475,8 @@ export const previewImport = async (req: Request, res: Response) => {
             const name = getVal('name') || getVal('fullname');
             const email = getVal('email') || getVal('emailid');
             const rollNumber = importType === 'student' ? (getVal('rollnumber') || getVal('rollno') || getVal('roll')) : undefined;
-            const branch = getVal('branch') || getVal('department') || getVal('dept');
+            const branchCol = getVal('branch');
+            const departmentCol = getVal('department') || getVal('dept');
             const semester = getVal('semester') || getVal('sem') || '1';
 
             if (!name) {
@@ -449,7 +509,7 @@ export const previewImport = async (req: Request, res: Response) => {
 
             newEmails.add(cleanEmail);
 
-            let resolvedBranch = branch;
+            let resolvedBranch = importType === 'student' ? (branchCol || departmentCol) : branchCol;
             if (importType === 'student' && !resolvedBranch) {
                 if (!rollNumber || rollNumber.length < 5) {
                     invalidRows.push({ rowNumber: index + 2, data: row, reason: 'Roll Number too short to derive branch (must be ≥ 5 characters)' });
@@ -465,6 +525,23 @@ export const previewImport = async (req: Request, res: Response) => {
                 }
             }
 
+            // Faculty must declare which branch(es) they mentor (used to scope the proposal list).
+            // Accept a comma-separated subset of the three branches; reject anything else.
+            if (importType === 'faculty') {
+                if (!branchCol) {
+                    invalidRows.push({ rowNumber: index + 2, data: row, reason: 'Branch is required for faculty. Allowed: CSE, DSAI, ECE (comma-separated for multiple, e.g. "CSE,DSAI").' });
+                    return;
+                }
+                const VALID_BRANCHES = ['CSE', 'DSAI', 'ECE'];
+                const parts = branchCol.split(',').map((s: string) => s.trim().toUpperCase()).filter(Boolean);
+                const invalid = parts.filter((p: string) => !VALID_BRANCHES.includes(p));
+                if (parts.length === 0 || invalid.length > 0) {
+                    invalidRows.push({ rowNumber: index + 2, data: row, reason: `Invalid branch value${invalid.length > 1 ? 's' : ''}: ${(invalid.length ? invalid : [branchCol]).join(', ')}. Allowed: CSE, DSAI, ECE.` });
+                    return;
+                }
+                resolvedBranch = Array.from(new Set(parts)).join(',');
+            }
+
             validRows.push({
                 name,
                 email: cleanEmail,
@@ -472,7 +549,7 @@ export const previewImport = async (req: Request, res: Response) => {
                 rollNumber,
                 branch: resolvedBranch,
                 semester: importType === 'student' ? Number(semester) || 1 : undefined,
-                department: importType === 'faculty' ? branch || 'Computer Science' : undefined,
+                department: importType === 'faculty' ? (departmentCol || resolvedBranch) : undefined,
                 expertise: importType === 'faculty' ? getVal('expertise') || 'General' : undefined
             });
         });

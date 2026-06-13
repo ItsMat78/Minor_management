@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import api from '../utils/api';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Send, X, Check, ArrowRight } from 'lucide-react';
+import { Send, X, Check, ArrowRight, Info } from 'lucide-react';
 import FilePreview from '../components/FilePreview';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
@@ -12,6 +12,7 @@ interface Faculty {
     _id: string;
     name: string;
     department: string;
+    branch?: string; // comma-separated branches this faculty mentors; empty = all branches
     currentStudents: number;
     maxStudents: number;
     email: string;
@@ -41,11 +42,28 @@ const ProjectProposal: React.FC = () => {
     const [error, setError] = useState('');
     const [existingAttachments, setExistingAttachments] = useState<string[]>([]);
     const [lockedFacultyId, setLockedFacultyId] = useState<string | null>(null);
+    // Faculty are scoped to the student's branch ONLY when the student's batch is branch-restricted
+    // this semester. Non-restricted batches see every faculty.
+    const [isBatchBranchRestricted, setIsBatchBranchRestricted] = useState(false);
 
     useEffect(() => {
         api.get('/users/faculty')
             .then(res => setFacultyList(res.data))
             .catch(err => console.error('Failed to fetch faculty', err));
+
+        // Is the student's batch branch-restricted under the active Group Formation event? Only then
+        // is the faculty list narrowed to the student's branch.
+        api.get('/events/active')
+            .then(res => {
+                const events = Array.isArray(res.data) ? res.data : [];
+                const gf = events.find((e: any) => e.type === 'group_formation_project_proposal');
+                const restricted: string[] = gf && Array.isArray(gf.branchRestrictedBatches)
+                    ? gf.branchRestrictedBatches.map(String)
+                    : (gf?.branchRestricted ? ((gf.participatingBatches ?? []).map(String)) : []);
+                const myBatch = user?.targetBatch || (user?.rollNumber ? '20' + user.rollNumber.substring(0, 2) : '');
+                setIsBatchBranchRestricted(!!myBatch && restricted.includes(String(myBatch)));
+            })
+            .catch(() => setIsBatchBranchRestricted(false));
 
         // Fetch group projects to check for existing faculty locks or edit data
         api.get('/groups/my')
@@ -124,6 +142,21 @@ const ProjectProposal: React.FC = () => {
     };
 
     const prevStep = () => setStep(step - 1);
+
+    // Faculty are scoped to the student's branch ONLY for branch-restricted batches: such a student
+    // sees only faculty whose mentored branches include theirs. Faculty with no branch set are open
+    // to everyone, and a faculty already locked by a live proposal always stays visible so the lock
+    // isn't broken. Students in non-restricted batches see all faculty.
+    const myBranch = (user?.branch || '').trim().toUpperCase();
+    const branchFilterActive = isBatchBranchRestricted && !!myBranch;
+    const facultyMatchesBranch = (f: Faculty): boolean => {
+        if (!branchFilterActive) return true;
+        const branches = (f.branch || '').split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
+        if (branches.length === 0) return true; // open to all branches
+        return branches.includes(myBranch);
+    };
+    const visibleFaculty = facultyList.filter(f => facultyMatchesBranch(f) || f._id === lockedFacultyId);
+    const hiddenByBranch = facultyList.length - visibleFaculty.length;
 
     const handleSubmit = async (e: React.FormEvent, isDraft = false) => {
         e.preventDefault();
@@ -335,6 +368,16 @@ const ProjectProposal: React.FC = () => {
                                             )}
                                         </div>
 
+                                        {branchFilterActive && !lockedFacultyId && (
+                                            <div className="mb-4 p-3 bg-indigo-50 border border-indigo-100 rounded-lg text-xs text-indigo-700 flex items-start gap-2">
+                                                <Info className="w-4 h-4 shrink-0 mt-0.5" />
+                                                <span>
+                                                    Your batch is branch-restricted, so only faculty who mentor <strong>{myBranch}</strong> projects are shown
+                                                    {hiddenByBranch > 0 ? ` (${hiddenByBranch} from other branches hidden).` : '.'}
+                                                </span>
+                                            </div>
+                                        )}
+
                                         {!lockedFacultyId && (
                                             <div className="mb-4">
                                                 <label className="flex items-center gap-2 cursor-pointer p-3 border border-gray-200 rounded-lg hover:bg-gray-50">
@@ -351,8 +394,16 @@ const ProjectProposal: React.FC = () => {
                                             </div>
                                         )}
 
+                                        {visibleFaculty.length === 0 && (
+                                            <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-700">
+                                                {branchFilterActive
+                                                    ? 'No faculty are currently listed for your branch. Choose "Decide Later" and your group can pick a mentor once one is available.'
+                                                    : 'No faculty are currently available. Choose "Decide Later" and your group can pick a mentor once one is available.'}
+                                            </div>
+                                        )}
+
                                         <div className="grid grid-cols-1 gap-3 max-h-[400px] overflow-y-auto pr-2">
-                                            {facultyList.map(faculty => {
+                                            {visibleFaculty.map(faculty => {
                                                 const isLocked = !!lockedFacultyId && lockedFacultyId !== faculty._id;
                                                 return (
                                                     <label

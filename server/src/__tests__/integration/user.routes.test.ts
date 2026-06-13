@@ -4,10 +4,19 @@
  * unauthenticated ping endpoint.
  */
 import request from 'supertest';
+import * as XLSX from 'xlsx';
 import app from '../../app';
 import User from '../../models/User';
 import { createTestUser, generateToken, createTestGroup } from '../helpers/factories';
 import { UserRole } from '../../models/User';
+
+// Build an in-memory .xlsx buffer from an array-of-objects (header row inferred from keys).
+function buildXlsx(rows: Record<string, any>[]): Buffer {
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
+    return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
+}
 
 jest.mock('../../utils/emailService', () => ({
     sendEmail: jest.fn().mockResolvedValue(undefined),
@@ -186,5 +195,79 @@ describe('DELETE /api/users/:id', () => {
             expect(memberIds).not.toContain(member._id.toString());
         }
         // (group may be null if dissolved when member count hit 0 — both are valid)
+    });
+});
+
+// ── POST /api/users/import-preview (faculty branch validation) ────────────────
+
+describe('POST /api/users/import-preview — faculty branch', () => {
+    it('rejects a faculty row with no branch', async () => {
+        const admin = await createTestUser({ role: UserRole.ADMIN });
+        const buf = buildXlsx([{ Name: 'Dr. NoBranch', Email: 'nobranch@t.ac.in', Department: 'Computer Science' }]);
+
+        const res = await request(app)
+            .post('/api/users/import-preview')
+            .set('x-auth-token', generateToken(admin))
+            .field('importType', 'faculty')
+            .attach('file', buf, { filename: 'f.xlsx', contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+
+        expect(res.status).toBe(200);
+        expect(res.body.validRows).toHaveLength(0);
+        expect(res.body.invalidRows).toHaveLength(1);
+        expect(res.body.invalidRows[0].reason).toMatch(/branch is required/i);
+    });
+
+    it('rejects a faculty row whose branch is not CSE/DSAI/ECE', async () => {
+        const admin = await createTestUser({ role: UserRole.ADMIN });
+        const buf = buildXlsx([{ Name: 'Dr. Bad', Email: 'bad@t.ac.in', Branch: 'Mechanical' }]);
+
+        const res = await request(app)
+            .post('/api/users/import-preview')
+            .set('x-auth-token', generateToken(admin))
+            .field('importType', 'faculty')
+            .attach('file', buf, { filename: 'f.xlsx', contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+
+        expect(res.status).toBe(200);
+        expect(res.body.validRows).toHaveLength(0);
+        expect(res.body.invalidRows[0].reason).toMatch(/invalid branch/i);
+    });
+
+    it('accepts a faculty row with a valid comma-separated branch and normalizes it', async () => {
+        const admin = await createTestUser({ role: UserRole.ADMIN });
+        const buf = buildXlsx([{ Name: 'Dr. Multi', Email: 'multi@t.ac.in', Branch: ' cse , dsai ' }]);
+
+        const res = await request(app)
+            .post('/api/users/import-preview')
+            .set('x-auth-token', generateToken(admin))
+            .field('importType', 'faculty')
+            .attach('file', buf, { filename: 'f.xlsx', contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+
+        expect(res.status).toBe(200);
+        expect(res.body.invalidRows).toHaveLength(0);
+        expect(res.body.validRows).toHaveLength(1);
+        expect(res.body.validRows[0].branch).toBe('CSE,DSAI');
+    });
+});
+
+// ── GET /api/users/import-template ────────────────────────────────────────────
+
+describe('GET /api/users/import-template', () => {
+    it('returns an xlsx for the faculty template', async () => {
+        const admin = await createTestUser({ role: UserRole.ADMIN });
+        const res = await request(app)
+            .get('/api/users/import-template?type=faculty')
+            .set('x-auth-token', generateToken(admin));
+
+        expect(res.status).toBe(200);
+        expect(res.headers['content-type']).toMatch(/spreadsheetml/);
+        expect(res.headers['content-disposition']).toMatch(/faculty_import_template\.xlsx/);
+    });
+
+    it('is admin-only', async () => {
+        const student = await createTestUser({ role: UserRole.STUDENT });
+        const res = await request(app)
+            .get('/api/users/import-template?type=faculty')
+            .set('x-auth-token', generateToken(student));
+        expect(res.status).toBe(403);
     });
 });
