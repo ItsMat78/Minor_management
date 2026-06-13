@@ -30,7 +30,7 @@ async function makeStudent(rollNumber: string, branch?: string) {
     return u;
 }
 
-async function makeActiveGFEvent(fields: Partial<{ participatingBatches: string[]; branchRestrictedBatches: string[]; branchRestricted: boolean }>) {
+async function makeActiveGFEvent(fields: Partial<{ participatingBatches: string[]; branchRestrictedBatches: string[]; branchRestricted: boolean; branchRestrictionGroups: { batch: string; clusters: string[] }[] }>) {
     return Event.create({
         type: EventType.GROUP_FORMATION_AND_PROJECT_PROPOSAL,
         isActive: true,
@@ -39,6 +39,7 @@ async function makeActiveGFEvent(fields: Partial<{ participatingBatches: string[
         participatingBatches: fields.participatingBatches,
         branchRestrictedBatches: fields.branchRestrictedBatches,
         branchRestricted: fields.branchRestricted,
+        branchRestrictionGroups: fields.branchRestrictionGroups,
         createdBy: new (require('mongoose').Types.ObjectId)(),
     });
 }
@@ -116,6 +117,55 @@ describe('POST /api/groups — per-batch branch restriction', () => {
         await makeActiveGFEvent({ participatingBatches: ['2023'], branchRestricted: true });
         const creator = await makeStudent('23CSE030', 'CSE');
         const member = await makeStudent('23ECE031', 'ECE');
+
+        const res = await request(app)
+            .post('/api/groups')
+            .set('x-auth-token', generateToken(creator))
+            .send({ members: [member._id] });
+
+        expect(res.status).toBe(400);
+    });
+});
+
+describe('POST /api/groups — per-batch branch clustering', () => {
+    // Batch 2023 restricted, but CSE & DSAI are clustered together (ECE stays separate).
+    const clusteredEvent = () => makeActiveGFEvent({
+        participatingBatches: ['2023'],
+        branchRestrictedBatches: ['2023'],
+        branchRestrictionGroups: [{ batch: '2023', clusters: ['CSE,DSAI', 'ECE'] }],
+    });
+
+    it('allows a cross-branch member within the same cluster (CSE + DSAI)', async () => {
+        await clusteredEvent();
+        const creator = await makeStudent('23CSE100', 'CSE');
+        const member = await makeStudent('23DSAI101', 'DSAI');
+
+        const res = await request(app)
+            .post('/api/groups')
+            .set('x-auth-token', generateToken(creator))
+            .send({ members: [member._id] });
+
+        expect(res.status).toBe(201);
+    });
+
+    it('rejects a member from a different cluster (CSE + ECE)', async () => {
+        await clusteredEvent();
+        const creator = await makeStudent('23CSE110', 'CSE');
+        const member = await makeStudent('23ECE111', 'ECE');
+
+        const res = await request(app)
+            .post('/api/groups')
+            .set('x-auth-token', generateToken(creator))
+            .send({ members: [member._id] });
+
+        expect(res.status).toBe(400);
+        expect(res.body.message).toMatch(/CSE\+DSAI/);
+    });
+
+    it('still rejects across two singleton clusters (DSAI + ECE)', async () => {
+        await clusteredEvent();
+        const creator = await makeStudent('23DSAI120', 'DSAI');
+        const member = await makeStudent('23ECE121', 'ECE');
 
         const res = await request(app)
             .post('/api/groups')

@@ -19,6 +19,15 @@ export interface IEvent extends Document {
     // when present (even if empty). Legacy events created before this field fall back to the
     // `branchRestricted` boolean (which meant "all participating batches").
     branchRestrictedBatches?: string[];
+    // Per-batch override of the single-branch rule: for a restricted batch, the branches that
+    // may group TOGETHER, expressed as "clusters". Each cluster is a comma-separated branch list
+    // (e.g. "CSE,DSAI"). Members may group iff their branches fall in the same cluster; a branch
+    // not listed in any cluster stays single-branch. A batch with no entry here (the default)
+    // keeps the pure single-branch behaviour.
+    branchRestrictionGroups?: {
+        batch: string;
+        clusters: string[];
+    }[];
     rubricParams?: any;
     createdBy: mongoose.Types.ObjectId;
     createdAt: Date;
@@ -41,6 +50,14 @@ const EventSchema: Schema = new Schema({
     // default:undefined so legacy events (written before this field) read as undefined and
     // fall back to the boolean; new events always write an explicit array (possibly empty).
     branchRestrictedBatches: { type: [String], default: undefined },
+    branchRestrictionGroups: {
+        type: [{
+            _id: false,
+            batch: { type: String },
+            clusters: { type: [String], default: undefined }
+        }],
+        default: undefined
+    },
     rubricParams: { type: Schema.Types.Mixed },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User' }
 }, {

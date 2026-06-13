@@ -394,6 +394,23 @@ const Dashboard: React.FC = () => {
         : ((activeGFEvent as any)?.branchRestricted ? (((activeGFEvent as any)?.participatingBatches ?? []).map(String)) : []);
     const isBranchRestricted = restrictedBatches.includes(myBatch);
 
+    // When my batch is branch-restricted, the set of branches I may group with. Mirrors the
+    // server's per-batch clustering: by default only my own branch (single-branch); if the admin
+    // configured a cluster containing my branch, everyone in that cluster is allowed. null = no
+    // restriction / unknown branch (don't filter — incomplete data must not empty the directory).
+    const allowedBranchSet: Set<string> | null = (() => {
+        const myBranchNorm = (user?.branch ?? '').trim().toUpperCase();
+        if (!isBranchRestricted || !myBranchNorm) return null;
+        const groups = (activeGFEvent as any)?.branchRestrictionGroups;
+        const entry = Array.isArray(groups) ? groups.find((g: any) => String(g.batch) === String(myBatch)) : null;
+        const clusters: string[][] = entry && Array.isArray(entry.clusters)
+            ? entry.clusters.map((c: string) => String(c).split(',').map(s => s.trim().toUpperCase()).filter(Boolean)).filter((c: string[]) => c.length > 0)
+            : [];
+        const myCluster = clusters.find(c => c.includes(myBranchNorm));
+        return new Set(myCluster && myCluster.length ? myCluster : [myBranchNorm]);
+    })();
+    const allowedBranchesLabel = allowedBranchSet ? Array.from(allowedBranchSet).join(' / ') : (user?.branch || '');
+
     const filteredStudents = students.filter(student => {
         const matchesSearch = student.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                              student.rollNumber?.toLowerCase().includes(searchTerm.toLowerCase());
@@ -402,13 +419,12 @@ const Dashboard: React.FC = () => {
         // Client only filters locally by search and grouping status (if needed later)
         const matchesStatus = filterStatus === 'all' || (filterStatus === 'available' ? !student.isGrouped : student.isGrouped);
         const matchesBranch = filterBranch === 'all' || student.branch === filterBranch;
-        // When the viewing student's batch is branch-restricted, hide other-branch students.
-        // Mirrors the server's resilient comparison: normalize case/whitespace, and don't hide
-        // anyone when either branch is unknown (so incomplete data can't empty the directory).
-        const myBranchNorm = (user?.branch ?? '').trim().toUpperCase();
+        // When the viewing student's batch is branch-restricted, hide students whose branch isn't
+        // in my allowed cluster. Resilient: don't hide anyone when either branch is unknown (so
+        // incomplete data can't empty the directory).
         const theirBranchNorm = (student.branch ?? '').trim().toUpperCase();
-        const matchesBranchRestriction = !isBranchRestricted || !myBranchNorm || !theirBranchNorm
-            || theirBranchNorm === myBranchNorm;
+        const matchesBranchRestriction = !allowedBranchSet || !theirBranchNorm
+            || allowedBranchSet.has(theirBranchNorm);
 
         return matchesSearch && matchesStatus && matchesBranch && matchesBranchRestriction;
     }).sort((a, b) => (a.rollNumber || '').localeCompare(b.rollNumber || ''));
@@ -745,7 +761,7 @@ const Dashboard: React.FC = () => {
                             {isBranchRestricted && user?.branch && !group && (
                                 <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center gap-3 text-sm text-amber-800">
                                     <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600" />
-                                    <span><strong>Branch restriction active:</strong> Only {user?.branch} students are shown. Groups must be single-branch this semester.</span>
+                                    <span><strong>Branch restriction active:</strong> Only {allowedBranchesLabel} students are shown — your group must stay within {allowedBranchSet && allowedBranchSet.size > 1 ? `these branches (${allowedBranchesLabel})` : 'your branch'} this semester.</span>
                                 </div>
                             )}
 
@@ -2212,7 +2228,7 @@ const Dashboard: React.FC = () => {
                             return (
                                 <Dialog.Description className="text-neutral-500 mb-4 text-sm">
                                     You can invite {remaining} more {remaining === 1 ? 'person' : 'people'} (max 3 per group). They’ll appear as pending until they accept.
-                                    {isBranchRestricted && <span className="block mt-1 text-amber-600 font-medium">This batch is restricted to single-branch groups — only {user?.branch} students are shown.</span>}
+                                    {isBranchRestricted && <span className="block mt-1 text-amber-600 font-medium">This batch is branch-restricted — only {allowedBranchesLabel} students are shown.</span>}
                                 </Dialog.Description>
                             );
                         })()}
@@ -2233,13 +2249,12 @@ const Dashboard: React.FC = () => {
                                     ...((group?.members || []).map((m: any) => m._id)),
                                     ...((group?.pendingMembers || []).map((m: any) => m._id)),
                                 ]);
-                                const myBranchNorm = (user?.branch ?? '').trim().toUpperCase();
                                 const term = addMemberSearch.toLowerCase();
                                 const available = students.filter(s => {
                                     if (s.isGrouped) return false;
                                     if (memberIds.has(s._id)) return false;
                                     const theirBranchNorm = (s.branch ?? '').trim().toUpperCase();
-                                    const branchOk = !isBranchRestricted || !myBranchNorm || !theirBranchNorm || theirBranchNorm === myBranchNorm;
+                                    const branchOk = !allowedBranchSet || !theirBranchNorm || allowedBranchSet.has(theirBranchNorm);
                                     if (!branchOk) return false;
                                     if (!term) return true;
                                     return (s.name?.toLowerCase().includes(term) || s.rollNumber?.toLowerCase().includes(term));

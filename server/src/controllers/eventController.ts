@@ -16,6 +16,33 @@ const verifyAdminPassword = async (userId: string, passwordToVerify: string) => 
     return isMatch;
 };
 
+// Normalize the per-batch branch clustering: keep only entries for batches that are actually
+// branch-restricted, clean each cluster (uppercase/trim/dedupe branch codes), and drop entries
+// that don't actually relax the single-branch rule (i.e. every cluster is a singleton) so the
+// default single-branch behaviour stays represented by the absence of an entry.
+const normalizeBranchRestrictionGroups = (raw: any, restrictedBatches: string[]): { batch: string; clusters: string[] }[] => {
+    if (!Array.isArray(raw)) return [];
+    const allowed = new Set(restrictedBatches.map(String));
+    const out: { batch: string; clusters: string[] }[] = [];
+    for (const entry of raw) {
+        const batch = String(entry?.batch ?? '').trim();
+        if (!allowed.has(batch)) continue;
+        const clustersRaw = Array.isArray(entry?.clusters) ? entry.clusters : [];
+        const clusters = clustersRaw
+            .map((c: any) => {
+                const branches = String(c).split(',').map(b => b.trim().toUpperCase()).filter(Boolean);
+                return Array.from(new Set(branches)); // dedupe within a cluster
+            })
+            .filter((c: string[]) => c.length > 0)
+            .map((c: string[]) => c.join(','));
+        // Only persist if at least one cluster groups 2+ branches; otherwise it's just single-branch.
+        if (clusters.some((c: string) => c.includes(','))) {
+            out.push({ batch, clusters });
+        }
+    }
+    return out;
+};
+
 // Return the participating batches of the currently active Group Formation event.
 // Accessible to all authenticated users so dropdowns can filter correctly.
 export const getParticipatingBatchesHandler = async (req: Request, res: Response) => {
@@ -75,7 +102,7 @@ export const getActiveEvents = async (req: Request, res: Response) => {
 // Create a new event
 export const createEvent = async (req: Request, res: Response) => {
     try {
-        const { type, endDate, extensionDate, batchYear, password, rubricParams, participatingBatches, defaultMaxStudents, defaultMaxGroups, branchRestrictedBatches } = req.body;
+        const { type, endDate, extensionDate, batchYear, password, rubricParams, participatingBatches, defaultMaxStudents, defaultMaxGroups, branchRestrictedBatches, branchRestrictionGroups } = req.body;
         const adminId = (req as any).user?.id;
 
         if (!await verifyAdminPassword(adminId, password)) {
@@ -114,6 +141,7 @@ export const createEvent = async (req: Request, res: Response) => {
         // Participation reset for Group Formation (archiving is handled by Semester Rollover)
         let normalizedBatches: string[] | undefined;
         let normalizedRestrictedBatches: string[] = [];
+        let normalizedBranchGroups: { batch: string; clusters: string[] }[] = [];
         if (type === EventType.GROUP_FORMATION_AND_PROJECT_PROPOSAL) {
             if (!Array.isArray(participatingBatches) || participatingBatches.length === 0) {
                 return res.status(400).json({
@@ -131,6 +159,7 @@ export const createEvent = async (req: Request, res: Response) => {
             normalizedRestrictedBatches = Array.isArray(branchRestrictedBatches)
                 ? branchRestrictedBatches.map((b: any) => String(b).trim()).filter((b: string) => normalizedBatches!.includes(b))
                 : [];
+            normalizedBranchGroups = normalizeBranchRestrictionGroups(branchRestrictionGroups, normalizedRestrictedBatches);
 
             // Reset student participation, then flip on for selected batches
             await User.updateMany(
@@ -183,6 +212,7 @@ export const createEvent = async (req: Request, res: Response) => {
             batchYear: batchYear || undefined,
             participatingBatches: normalizedBatches,
             branchRestrictedBatches: type === EventType.GROUP_FORMATION_AND_PROJECT_PROPOSAL ? normalizedRestrictedBatches : [],
+            branchRestrictionGroups: type === EventType.GROUP_FORMATION_AND_PROJECT_PROPOSAL ? normalizedBranchGroups : undefined,
             // Legacy boolean kept in sync (derived) so older read paths still work.
             branchRestricted: type === EventType.GROUP_FORMATION_AND_PROJECT_PROPOSAL ? normalizedRestrictedBatches.length > 0 : false,
             isActive: true,
@@ -226,6 +256,16 @@ export const updateEvent = async (req: Request, res: Response) => {
             delete updates.extensionDate;
         } else if (updates.extensionDate) {
             updates.extensionDate = new Date(updates.extensionDate);
+        }
+
+        // Keep the per-batch branch clustering consistent with the (possibly updated) restricted
+        // batch list. When branchRestrictedBatches isn't part of this update, allow the groups'
+        // own batches through so an edit that only touches clustering still saves.
+        if ('branchRestrictionGroups' in updates) {
+            const allowedBatches = Array.isArray(updates.branchRestrictedBatches)
+                ? updates.branchRestrictedBatches.map((b: any) => String(b).trim())
+                : (Array.isArray(updates.branchRestrictionGroups) ? updates.branchRestrictionGroups.map((g: any) => String(g?.batch ?? '').trim()) : []);
+            updates.branchRestrictionGroups = normalizeBranchRestrictionGroups(updates.branchRestrictionGroups, allowedBatches);
         }
 
         const updateOps: any = { $set: updates };

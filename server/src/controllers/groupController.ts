@@ -16,16 +16,40 @@ const restrictedBatchesOf = (event: any): string[] => {
     return [];
 };
 
-// Branch comparison that's resilient to missing / inconsistently-cased data. Returns true
-// (treat as same branch → allowed) unless BOTH branches are known and clearly differ. This
-// prevents a single missing/empty branch field from locking a student out of grouping with
-// everyone when branch restriction is on.
-const sameBranch = (a?: string | null, b?: string | null): boolean => {
+// The branch "clusters" configured for a given batch under this event: each cluster is a set of
+// branches allowed to group together (e.g. [["CSE","DSAI"],["ECE"]]). Returns null when the batch
+// has no explicit clustering, in which case the rule is pure single-branch.
+const clustersForBatch = (event: any, batch?: string | null): string[][] | null => {
+    if (!event || !batch) return null;
+    const groups = event.branchRestrictionGroups;
+    if (!Array.isArray(groups)) return null;
+    const entry = groups.find((g: any) => String(g.batch) === String(batch));
+    if (!entry || !Array.isArray(entry.clusters) || entry.clusters.length === 0) return null;
+    const parsed = entry.clusters
+        .map((c: any) => String(c).split(',').map(b => b.trim().toUpperCase()).filter(Boolean))
+        .filter((c: string[]) => c.length > 0);
+    return parsed.length > 0 ? parsed : null;
+};
+
+// Whether two branches may belong to the same group. Resilient to missing / inconsistently-cased
+// data: returns true (allowed) unless BOTH branches are known and the clustering clearly forbids
+// the mix — so a single missing/empty branch field can't lock a student out of grouping. With no
+// clusters configured the rule is single-branch (only identical branches match); with clusters,
+// two branches match iff they share a cluster.
+const branchesCompatible = (a?: string | null, b?: string | null, clusters?: string[][] | null): boolean => {
     const na = (a ?? '').trim().toUpperCase();
     const nb = (b ?? '').trim().toUpperCase();
     if (!na || !nb) return true; // unknown on either side — can't prove a mismatch, so don't block
-    return na === nb;
+    if (na === nb) return true;  // same branch is always allowed
+    if (!clusters || clusters.length === 0) return false; // single-branch
+    return clusters.some(c => c.includes(na) && c.includes(nb));
 };
+
+// Human-readable description of the allowed grouping for an error message.
+const restrictionDescription = (clusters?: string[][] | null): string =>
+    clusters && clusters.length > 0
+        ? `groups can only mix branches within: ${clusters.map(c => c.join('+')).join(', ')}`
+        : 'groups must be single-branch';
 
 // The batch year a student belongs to: their targetBatch override (droppers) if set,
 // otherwise derived from the first two digits of their roll number.
@@ -107,15 +131,16 @@ export const createGroup = async (req: Request, res: Response) => {
                     { extensionDate: null, endDate: { $gte: now } }
                 ]
             });
-            // Only enforce single-branch if the creator's batch is one of the restricted batches.
+            // Only enforce the branch rule if the creator's batch is one of the restricted batches.
             const restricted = restrictedBatchesOf(activeGF);
             const creatorBatch = batchOf(user);
             if (restricted.length > 0 && creatorBatch && restricted.includes(creatorBatch)) {
+                const clusters = clustersForBatch(activeGF, creatorBatch);
                 for (const memberId of pendingMembers) {
                     const member = await User.findById(memberId);
-                    if (member && !sameBranch(member.branch, user.branch)) {
+                    if (member && !branchesCompatible(member.branch, user.branch, clusters)) {
                         return res.status(400).json({
-                            message: `This semester, batch ${creatorBatch} groups must be single-branch. ${member.name} (${member.branch}) cannot join a ${user.branch} group.`
+                            message: `This semester, batch ${creatorBatch} ${restrictionDescription(clusters)}. ${member.name} (${member.branch}) cannot join a ${user.branch} group.`
                         });
                     }
                 }
@@ -234,10 +259,13 @@ export const acceptInvite = async (req: Request, res: Response) => {
             // The group's batch is its targetBatch override, else the creator's batch.
             const groupBatch = (group.targetBatch ? String(group.targetBatch) : undefined)
                 || (creator ? batchOf(creator) : undefined);
-            if (groupBatch && restricted.includes(groupBatch) && creator && accepter && !sameBranch(accepter.branch, creator.branch)) {
-                return res.status(400).json({
-                    message: `This semester, batch ${groupBatch} groups must be single-branch. You (${accepter.branch}) cannot join a ${creator.branch} group.`
-                });
+            if (groupBatch && restricted.includes(groupBatch)) {
+                const clusters = clustersForBatch(activeGF, groupBatch);
+                if (creator && accepter && !branchesCompatible(accepter.branch, creator.branch, clusters)) {
+                    return res.status(400).json({
+                        message: `This semester, batch ${groupBatch} ${restrictionDescription(clusters)}. You (${accepter.branch}) cannot join a ${creator.branch} group.`
+                    });
+                }
             }
         }
 
@@ -368,6 +396,7 @@ export const inviteMembers = async (req: Request, res: Response) => {
         const groupBatch = (group.targetBatch ? String(group.targetBatch) : undefined)
             || (creator ? batchOf(creator) : undefined);
         const branchLocked = !!groupBatch && restrictedBatchesOf(activeGF).includes(groupBatch);
+        const clusters = branchLocked ? clustersForBatch(activeGF, groupBatch) : null;
         // The branch a locked group is fixed to: the creator's, else the first member's.
         let groupBranch: string | null | undefined = creator?.branch;
         if (branchLocked && !groupBranch && group.members.length > 0) {
@@ -391,9 +420,9 @@ export const inviteMembers = async (req: Request, res: Response) => {
             });
             if (memberGroup) return res.status(400).json({ message: `${member.name} is already in a group or has a pending invite` });
 
-            if (branchLocked && !sameBranch(member.branch, groupBranch)) {
+            if (branchLocked && !branchesCompatible(member.branch, groupBranch, clusters)) {
                 return res.status(400).json({
-                    message: `This semester, batch ${groupBatch} groups must be single-branch. ${member.name} (${member.branch}) cannot join a ${groupBranch} group.`
+                    message: `This semester, batch ${groupBatch} ${restrictionDescription(clusters)}. ${member.name} (${member.branch}) cannot join a ${groupBranch} group.`
                 });
             }
 
