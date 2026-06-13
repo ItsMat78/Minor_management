@@ -6,6 +6,7 @@ import User from '../models/User';
 import ExcelJS from 'exceljs';
 import fs from 'fs';
 import { sendPanelAssignmentEmail } from '../utils/emailService';
+import { academicYearFor } from '../utils/session';
 
 const RUBRIC_FIELDS: Record<string, { guide: { key: string; label: string; max: number }[]; panel: { key: string; label: string; max: number }[] }> = {
     'mid-term': {
@@ -60,10 +61,11 @@ const addCollegeAndPanelHeader = (ws: ExcelJS.Worksheet, panel: any, evalLabel: 
     const panelFacultyNames = (panel.faculty || []).map((f: any) => f.name || '').filter(Boolean).join(' / ') || 'Panel';
     const batchYear: number = panel.batchYear;
 
-    // Academic year: e.g. batchYear=2022, current 2025 → 2025-26
+    // Academic year accounts for the term: Jan–Jun (even/spring) belongs to the prior start year,
+    // e.g. June 2026 → "2025-26", not "2026-27".
     const now = new Date();
     const cy = now.getFullYear();
-    const acadYear = `${cy}-${String(cy + 1).slice(2)}`;
+    const acadYear = academicYearFor(now);
 
     // Semester string derived from batch year
     const yearDiff = cy - batchYear;
@@ -94,7 +96,7 @@ const addBatchHeader = (ws: ExcelJS.Worksheet, batchYear: number, evalLabel: str
     const lastCol = colLetter(totalCols);
     const now = new Date();
     const cy = now.getFullYear();
-    const acadYear = `${cy}-${String(cy + 1).slice(2)}`;
+    const acadYear = academicYearFor(now);
     const yearDiff = cy - batchYear;
     const semCount = Math.max(1, yearDiff * 2 + (now.getMonth() >= 6 ? 1 : 0));
     const romanSems = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'];
@@ -121,10 +123,13 @@ const addBatchHeader = (ws: ExcelJS.Worksheet, batchYear: number, evalLabel: str
 
 export const exportEvaluations = async (req: any, res: Response) => {
     try {
-        const { batchYear, evalType, branch } = req.query; // evalType: 'midterm' or 'full'
+        const { batchYear, evalType, branch, session } = req.query; // evalType: 'midterm' or 'full'
 
-        // Get all groups and filter by batch
-        const allGroups = await Group.find({ status: { $in: ['Approved', 'Pending'] }, isArchived: { $ne: true } })
+        // `session` exports an archived academic session; otherwise the current (live) groups.
+        const groupFilter: any = session
+            ? { isArchived: true, archivedSession: session }
+            : { status: { $in: ['Approved', 'Pending'] }, isArchived: { $ne: true } };
+        const allGroups = await Group.find(groupFilter)
             .populate('members', 'name rollNumber photoUrl branch department isParticipating')
             .populate({
                 path: 'project',
@@ -132,7 +137,8 @@ export const exportEvaluations = async (req: any, res: Response) => {
             })
             .lean();
 
-        // Filter by batch and branch if specified
+        // Filter by batch and branch if specified. Archived members are non-participating, so the
+        // participating filter is only applied to the live export.
         let filteredGroups = allGroups.filter((g: any) => {
             const gBatch = g.targetBatch ? String(g.targetBatch) : (g.members && g.members.length > 0 && g.members[0].rollNumber ? '20' + String(g.members[0].rollNumber).substring(0, 2) : 'Unknown');
             if (batchYear && batchYear !== 'All' && gBatch !== String(batchYear)) return false;
@@ -140,7 +146,7 @@ export const exportEvaluations = async (req: any, res: Response) => {
         }).map((g: any) => ({
             ...g,
             members: (g.members || []).filter((m: any) => {
-                if (m.isParticipating === false) return false;
+                if (!session && m.isParticipating === false) return false;
                 if (branch && branch !== 'All') return (m.branch || m.department || '').toUpperCase() === String(branch).toUpperCase();
                 return true;
             })
@@ -591,14 +597,23 @@ export const getAllPanelEvaluationGroups = async (req: any, res: Response) => {
 
 export const exportPanels = async (req: any, res: Response) => {
     try {
-        const { batchYear, includeArchived } = req.query;
+        const { batchYear, includeArchived, session } = req.query;
 
+        // When `session` is given, export that archived academic session's panels (all batches);
+        // otherwise export the current (non-archived) panels, optionally filtered by batch.
         let query: any = {};
-        if (batchYear && batchYear !== 'All') query.batchYear = Number(batchYear);
-        if (includeArchived !== 'true') query.isArchived = { $ne: true };
+        if (session) {
+            query.archivedSession = session;
+        } else {
+            if (batchYear && batchYear !== 'All') query.batchYear = Number(batchYear);
+            if (includeArchived !== 'true') query.isArchived = { $ne: true };
+        }
 
         const panels = await Panel.find(query).populate('faculty', 'name email').lean();
-        const groups = await Group.find({ status: { $in: ['Approved', 'Pending'] }, isArchived: { $ne: true } })
+        const groupFilter: any = session
+            ? { isArchived: true, archivedSession: session }
+            : { status: { $in: ['Approved', 'Pending'] }, isArchived: { $ne: true } };
+        const groups = await Group.find(groupFilter)
             .populate('members', 'name rollNumber branch department')
             .populate({ path: 'project', populate: { path: 'faculty', select: 'name email _id' } })
             .lean();
@@ -618,7 +633,7 @@ export const exportPanels = async (req: any, res: Response) => {
         if (semCount < 1) semCount = 1;
         const romanSems = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'];
         const semStr = romanSems[Math.min(semCount - 1, 9)] || `${semCount}th`;
-        const acadYear = `${cy}-${String(cy + 1).slice(2)}`;
+        const acadYear = academicYearFor(now);
 
         if (panels.length === 0) {
             return res.status(204).end();
@@ -717,21 +732,21 @@ export const exportPanels = async (req: any, res: Response) => {
             else { cell.font = { bold: true, size: 10, color: { argb: 'FF0070C0' } }; cell.fill = fill('FFF2F2F2'); }
         });
 
-        // INDIVIDUAL PANEL SHEETS
+        // INDIVIDUAL PANEL SHEETS — composition only: the groups (and their members) under each
+        // panel. No evaluation marks; this export is purely "who sits where / which groups".
         (panels as any[]).forEach((panel: any, pi: number) => {
             const pg = panelGroups[pi]; const chairId = panelChairs[pi];
             const ws = workbook.addWorksheet(`Panel ${pi + 1}`);
             ws.columns = [
-                { width: 4 }, { width: 12 }, { width: 30 }, { width: 16 }, { width: 14 }, { width: 45 }, { width: 26 },
-                { width: 14 }, { width: 14 }, { width: 14 }, { width: 20 }, { width: 14 }, { width: 14 }, { width: 14 }, { width: 20 }, { width: 12 }, { width: 12 },
+                { width: 4 }, { width: 12 }, { width: 30 }, { width: 18 }, { width: 14 }, { width: 46 }, { width: 30 },
             ];
-            const LAST = 17;
+            const LAST = 7;
 
             const sheetInstRows = [
                 'Dr. SPM International Institute of Information Technology, Naya Raipur',
                 '(A Joint Initiative of Govt. of Chhattisgarh and NTPC)',
                 'Email: iiitnr@iiitnr.ac.in  |  Tel: (0771) 2474040  |  Web: www.iiitnr.ac.in',
-                `MINOR PROJECT - ${semStr} Semester Evaluation  |  Batch ${panel.batchYear}  |  Academic Year ${acadYear}`,
+                `MINOR PROJECT - ${semStr} Semester  |  Panel Allocation  |  Batch ${panel.batchYear}  |  Academic Year ${acadYear}`,
             ];
             sheetInstRows.forEach((text, idx) => {
                 ws.addRow([null, text]);
@@ -746,32 +761,24 @@ export const exportPanels = async (req: any, res: Response) => {
             ws.addRow([]);
             const facLabel = `Panel No. ${pi + 1}   |   ` + panel.faculty.map((f: any) => f._id.toString() === chairId ? `${f.name} (Chair)` : f.name).join('  -  ');
             ws.addRow([null, `Panel No. ${pi + 1}`, null, null, facLabel]);
-            ws.mergeCells('B6:D6'); ws.mergeCells('E6:Q6'); ws.getRow(6).height = 38;
+            ws.mergeCells('B6:D6'); ws.mergeCells('E6:G6'); ws.getRow(6).height = 38;
             for (let col = 2; col <= LAST; col++) {
                 const cell = ws.getCell(6, col);
                 cell.font = { bold: true, size: 10, color: { argb: 'FF1F3864' } }; cell.fill = fill('FF9BC2E6'); cell.border = thin;
                 cell.alignment = col <= 4 ? center : leftAlign;
             }
 
-            const MID = 'FFFCE4D6'; const END = 'FFE2EFDA'; const AVG = 'FFFFF2CC'; const TOT = 'FFDCE6F1'; const HDR = 'FF002060';
-            const colBg: Record<number, string> = { 2: HDR, 3: HDR, 4: HDR, 5: HDR, 6: HDR, 7: HDR, 8: MID, 9: MID, 10: MID, 11: AVG, 12: END, 13: END, 14: END, 15: AVG, 16: TOT, 17: TOT };
-            const colFg: Record<number, string> = { 2: 'FFFFFFFF', 3: 'FFFFFFFF', 4: 'FFFFFFFF', 5: 'FFFFFFFF', 6: 'FFFFFFFF', 7: 'FFFFFFFF', 8: 'FF843C0C', 9: 'FF843C0C', 10: 'FF843C0C', 11: 'FF7F6000', 12: 'FF1F4E3D', 13: 'FF1F4E3D', 14: 'FF1F4E3D', 15: 'FF7F6000', 16: 'FF1F3864', 17: 'FF1F3864' };
-
-            const h1 = ws.addRow([null, 'Group\nNo.', "Student's Name", 'Roll No.', 'Dept', 'Title of the Project', 'Supervisor', 'MID-TERM (15+15+15)', null, null, 'Avg. Mid (30) Guide+(E1+E2)/2', 'END-TERM (35+35+35)', null, null, 'Avg. End (70) Guide+(E1+E2)/2', 'Total (100)', 'Grade']);
-            const h2 = ws.addRow([null, null, null, null, null, null, null, 'E1 (15)', 'E2 (15)', 'Guide (15)', null, 'E1 (35)', 'E2 (35)', 'Guide (35)', null, null, null]);
-            ws.getRow(7).height = 38; ws.getRow(8).height = 38;
-            ['B', 'C', 'D', 'E', 'F', 'G', 'K', 'O', 'P', 'Q'].forEach(col => ws.mergeCells(`${col}7:${col}8`));
-            ws.mergeCells('H7:J7'); ws.mergeCells('L7:N7');
-            [h1, h2].forEach(row => {
-                row.eachCell({ includeEmpty: true }, (cell, col) => {
-                    if (col < 2) return;
-                    cell.border = thin; cell.alignment = center;
-                    cell.font = { bold: true, size: 9, color: { argb: colFg[col] || 'FF000000' } };
-                    cell.fill = fill(colBg[col] || 'FFFFFFFF');
-                });
+            const HDR = 'FF002060';
+            const hdr = ws.addRow([null, 'Group\nNo.', "Student's Name", 'Roll No.', 'Dept', 'Title of the Project', 'Supervisor']);
+            ws.getRow(7).height = 32;
+            hdr.eachCell({ includeEmpty: true }, (cell, col) => {
+                if (col < 2) return;
+                cell.border = thin; cell.alignment = center;
+                cell.font = { bold: true, size: 9, color: { argb: 'FFFFFFFF' } };
+                cell.fill = fill(HDR);
             });
 
-            let curRow = 9;
+            let curRow = 8;
             pg.forEach((g: any, gi: number) => {
                 const members = (g.members || []) as any[];
                 const title = g.project?.title || 'TBD';
@@ -782,19 +789,19 @@ export const exportPanels = async (req: any, res: Response) => {
                 const count = Math.max(members.length, 1);
 
                 if (members.length === 0) {
-                    const row = ws.addRow([null, groupNo, '', '', '', title, supervisor, '', '', '', '', '', '', '', '', '', '']);
-                    row.height = 38;
-                    row.eachCell({ includeEmpty: true }, (cell, col) => { if (col >= 2) { cell.border = thin; cell.fill = fill(rowFill); cell.font = { size: 9.5 }; cell.alignment = col <= 2 ? center : (col >= 8 ? center : leftAlign); } });
+                    const row = ws.addRow([null, groupNo, '', '', '', title, supervisor]);
+                    row.height = 30;
+                    row.eachCell({ includeEmpty: true }, (cell, col) => { if (col >= 2) { cell.border = thin; cell.fill = fill(rowFill); cell.font = { size: 9.5 }; cell.alignment = col <= 2 ? center : leftAlign; } });
                     curRow++;
                 } else {
                     members.forEach((m: any, mi: number) => {
                         const dept = m.branch || m.department || getBranch(m.rollNumber || '');
-                        const row = ws.addRow([null, mi === 0 ? groupNo : '', m.name || '', m.rollNumber || '', dept, mi === 0 ? title : '', mi === 0 ? supervisor : '', '', '', '', '', '', '', '', '', '', '']);
-                        row.height = 38;
+                        const row = ws.addRow([null, mi === 0 ? groupNo : '', m.name || '', m.rollNumber || '', dept, mi === 0 ? title : '', mi === 0 ? supervisor : '']);
+                        row.height = 30;
                         row.eachCell({ includeEmpty: true }, (cell, col) => {
                             if (col < 2) return;
                             cell.border = thin; cell.fill = fill(rowFill); cell.font = { size: 9.5 };
-                            cell.alignment = col <= 2 ? center : (col >= 8 ? center : leftAlign);
+                            cell.alignment = (col === 2 || col === 4 || col === 5) ? center : leftAlign;
                         });
                         curRow++;
                     });
@@ -811,26 +818,26 @@ export const exportPanels = async (req: any, res: Response) => {
             });
 
             ws.addRow([]); ws.addRow([]);
-            const sigHeaderRow = ws.addRow([null, 'Evaluation Board Member', null, 'Designation / Role', null, 'Signature', null, null]);
+            const sigHeaderRow = ws.addRow([null, 'Evaluation Board Member', null, 'Designation / Role', null, 'Signature']);
             ws.mergeCells(`B${sigHeaderRow.number}:C${sigHeaderRow.number}`);
             ws.mergeCells(`D${sigHeaderRow.number}:E${sigHeaderRow.number}`);
-            ws.mergeCells(`F${sigHeaderRow.number}:H${sigHeaderRow.number}`);
+            ws.mergeCells(`F${sigHeaderRow.number}:G${sigHeaderRow.number}`);
             sigHeaderRow.height = 20;
-            ['B', 'C', 'D', 'E', 'F', 'G', 'H'].forEach(col => {
+            ['B', 'C', 'D', 'E', 'F', 'G'].forEach(col => {
                 const cell = ws.getCell(`${col}${sigHeaderRow.number}`);
                 cell.font = { bold: true, size: 10, color: { argb: 'FF1F3864' } }; cell.fill = fill('FFDCE6F1'); cell.border = thin; cell.alignment = center;
             });
 
             panel.faculty.forEach((fac: any) => {
                 const isChair = fac._id.toString() === chairId;
-                const sigRow = ws.addRow([null, isChair ? `${fac.name} (Chair)` : fac.name, null, isChair ? 'Panel Chair' : 'Panel Member', null, '', null, null]);
+                const sigRow = ws.addRow([null, isChair ? `${fac.name} (Chair)` : fac.name, null, isChair ? 'Panel Chair' : 'Panel Member', null, '']);
                 ws.mergeCells(`B${sigRow.number}:C${sigRow.number}`);
                 ws.mergeCells(`D${sigRow.number}:E${sigRow.number}`);
-                ws.mergeCells(`F${sigRow.number}:H${sigRow.number}`);
+                ws.mergeCells(`F${sigRow.number}:G${sigRow.number}`);
                 sigRow.height = 32;
-                ['B', 'C', 'D', 'E', 'F', 'G', 'H'].forEach(col => {
+                ['B', 'C', 'D', 'E', 'F', 'G'].forEach(col => {
                     const cell = ws.getCell(`${col}${sigRow.number}`);
-                    cell.border = thin; cell.alignment = col <= 'C' ? leftAlign : center; cell.font = { size: 10 };
+                    cell.border = thin; cell.alignment = (col === 'B' || col === 'C') ? leftAlign : center; cell.font = { size: 10 };
                 });
             });
         });
@@ -1438,6 +1445,11 @@ export const downloadBatchEvaluationTemplate = async (req: any, res: Response) =
         if (!batchYear) return res.status(400).json({ message: 'batchYear is required.' });
 
         const batchNum = Number(batchYear);
+        // Optional branch filter — mirrors the on-screen Evaluations list: keep only groups that
+        // include a member of the selected branch ('All'/absent = no filtering).
+        const branchQ = req.query.branch as string | undefined;
+        const wantBranch = branchQ && branchQ !== 'All' ? branchQ.trim().toUpperCase() : null;
+        const groupMatchesBranch = (g: any) => !wantBranch || (g.members || []).some((m: any) => (m.branch || '').trim().toUpperCase() === wantBranch);
         const panels = await Panel.find({ batchYear: batchNum, isArchived: { $ne: true } })
             .populate('faculty', 'name email photoUrl')
             .sort({ createdAt: 1 }) as any[];
@@ -1527,7 +1539,7 @@ export const downloadBatchEvaluationTemplate = async (req: any, res: Response) =
                 const projFacId = typeof g.project.faculty === 'string' ? g.project.faculty : g.project.faculty?._id?.toString();
                 if (!projFacId || !panelFacultyIds.includes(projFacId)) return false;
                 const gBatch = g.targetBatch ? String(g.targetBatch) : (g.members?.[0]?.rollNumber ? '20' + g.members[0].rollNumber.substring(0, 2) : 'Unknown');
-                return gBatch === String(batchNum);
+                return gBatch === String(batchNum) && groupMatchesBranch(g);
             });
             if (panelGroups.length === 0) continue;
             hasAnyGroup = true;
@@ -1777,6 +1789,16 @@ export const exportBatchFinalSheet = async (req: any, res: Response) => {
 
         if (!batchYear) return res.status(400).json({ message: 'batchYear is required.' });
         const batchNum = Number(batchYear);
+        // Optional branch filter — mirrors the on-screen Evaluations list: keep only groups that
+        // include a member of the selected branch ('All'/absent = no filtering).
+        const branchQ = req.query.branch as string | undefined;
+        const wantBranch = branchQ && branchQ !== 'All' ? branchQ.trim().toUpperCase() : null;
+        const groupMatchesBranch = (g: any) => !wantBranch || (g.members || []).some((m: any) => (m.branch || '').trim().toUpperCase() === wantBranch);
+        // Layout options (default both on): panel separator rows, and the group columns (Group No.
+        // + Project Title with per-group merging). Turning groupInfo off yields a flat per-student
+        // list of marks; turning panelRows off drops the "Panel N | faculty" banner rows.
+        const includePanelRows = req.query.panelRows !== 'false';
+        const includeGroupInfo = req.query.groupInfo !== 'false';
 
         const panels = await Panel.find({ batchYear: batchNum, isArchived: { $ne: true } })
             .populate('faculty', 'name email photoUrl')
@@ -1808,16 +1830,31 @@ export const exportBatchFinalSheet = async (req: any, res: Response) => {
         const getP = (se: any, section: 'panel1' | 'panel2', key: string) =>
             se?.[section]?.[key] ?? (section === 'panel1' ? se?.panel?.[key] : 0) ?? 0;
 
-        const cols: any[] = [
-            { header: 'Group No.', width: 10 },
-            { header: 'Project Title', width: 35 },
-            { header: 'Student Name', width: 25 },
-            { header: 'Roll No.', width: 15 },
-            { header: 'Attendance', width: 12 }
-        ];
+        const leadCols: any[] = includeGroupInfo
+            ? [
+                { header: 'Group No.', width: 10 },
+                { header: 'Project Title', width: 35 },
+                { header: 'Student Name', width: 25 },
+                { header: 'Roll No.', width: 15 },
+                { header: 'Attendance', width: 12 }
+            ]
+            : [
+                { header: 'Student Name', width: 25 },
+                { header: 'Roll No.', width: 15 },
+                { header: 'Attendance', width: 12 }
+            ];
+        const BASE = leadCols.length; // number of lead (non-marks) columns
+        const cols: any[] = [...leadCols];
         if (includeMid) { cols.push({ header: 'Guide (0-15)', width: 15 }, { header: 'E1 (0-15)', width: 15 }, { header: 'E2 (0-15)', width: 15 }); }
         if (includeEnd) { cols.push({ header: 'Guide (0-35)', width: 15 }, { header: 'E1 (0-35)', width: 15 }, { header: 'E2 (0-35)', width: 15 }); }
         cols.push({ header: 'Total (100)', width: 13 }, { header: 'Grade', width: 10 });
+
+        // Column ranges for the super-label merges, derived from BASE so they stay correct whether
+        // or not the group columns are present.
+        let cursor = BASE;
+        const midStart = cursor + 1; if (includeMid) cursor += 3;
+        const endStart = cursor + 1; if (includeEnd) cursor += 3;
+        const overallStart = cursor + 1; cursor += 2;
 
         const workbook = new ExcelJS.Workbook();
         const ws = workbook.addWorksheet('Final Sheet');
@@ -1827,7 +1864,7 @@ export const exportBatchFinalSheet = async (req: any, res: Response) => {
         const headerBlockRows = addBatchHeader(ws, batchNum, finalEvalLabel, cols.length);
         let excelRowNum = headerBlockRows + 1;
 
-        const superLabels = ['', '', '', '', ''];
+        const superLabels: string[] = Array(BASE).fill('');
         if (includeMid) superLabels.push('MID-TERM EVALUATION', '', '');
         if (includeEnd) superLabels.push('END-TERM EVALUATION', '', '');
         superLabels.push('OVERALL', '');
@@ -1836,14 +1873,14 @@ export const exportBatchFinalSheet = async (req: any, res: Response) => {
         sRow.font = { bold: true };
         sRow.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
         sRow.eachCell((cell, colNum) => {
-            if (colNum <= 5) return;
+            if (colNum <= BASE) return;
             cell.border = border;
             cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFED7D31' } };
         });
 
-        if (includeMid && !includeEnd) { ws.mergeCells(excelRowNum, 6, excelRowNum, 8); ws.mergeCells(excelRowNum, 9, excelRowNum, 10); }
-        else if (!includeMid && includeEnd) { ws.mergeCells(excelRowNum, 6, excelRowNum, 8); ws.mergeCells(excelRowNum, 9, excelRowNum, 10); }
-        else if (includeMid && includeEnd) { ws.mergeCells(excelRowNum, 6, excelRowNum, 8); ws.mergeCells(excelRowNum, 9, excelRowNum, 11); ws.mergeCells(excelRowNum, 12, excelRowNum, 13); }
+        if (includeMid) ws.mergeCells(excelRowNum, midStart, excelRowNum, midStart + 2);
+        if (includeEnd) ws.mergeCells(excelRowNum, endStart, excelRowNum, endStart + 2);
+        ws.mergeCells(excelRowNum, overallStart, excelRowNum, overallStart + 1);
         excelRowNum++;
 
         const hRow = ws.addRow(cols.map(c => c.header));
@@ -1861,19 +1898,21 @@ export const exportBatchFinalSheet = async (req: any, res: Response) => {
                 const projFacId = typeof g.project.faculty === 'string' ? g.project.faculty : g.project.faculty?._id?.toString();
                 if (!projFacId || !panelFacultyIds.includes(projFacId)) return false;
                 const gBatch = g.targetBatch ? String(g.targetBatch) : (g.members?.[0]?.rollNumber ? '20' + g.members[0].rollNumber.substring(0, 2) : 'Unknown');
-                return gBatch === String(batchNum);
+                return gBatch === String(batchNum) && groupMatchesBranch(g);
             });
             if (panelGroups.length === 0) continue;
 
-            const facNames = panel.faculty.map((f: any) => f.name || '').filter(Boolean).join(' / ');
-            const roomStr = panel.room ? `  |  Room: ${panel.room}` : '';
-            const panelSepRow = ws.addRow([`Panel ${pi + 1}  |  ${facNames}${roomStr}`, ...Array(cols.length - 1).fill('')]);
-            ws.mergeCells(excelRowNum, 1, excelRowNum, cols.length);
-            panelSepRow.getCell(1).font = { bold: true, size: 11, color: { argb: 'FFFFFFFF' } };
-            panelSepRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2E75B6' } };
-            panelSepRow.getCell(1).alignment = { horizontal: 'left', vertical: 'middle' };
-            panelSepRow.height = 20;
-            excelRowNum++;
+            if (includePanelRows) {
+                const facNames = panel.faculty.map((f: any) => f.name || '').filter(Boolean).join(' / ');
+                const roomStr = panel.room ? `  |  Room: ${panel.room}` : '';
+                const panelSepRow = ws.addRow([`Panel ${pi + 1}  |  ${facNames}${roomStr}`, ...Array(cols.length - 1).fill('')]);
+                ws.mergeCells(excelRowNum, 1, excelRowNum, cols.length);
+                panelSepRow.getCell(1).font = { bold: true, size: 11, color: { argb: 'FFFFFFFF' } };
+                panelSepRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2E75B6' } };
+                panelSepRow.getCell(1).alignment = { horizontal: 'left', vertical: 'middle' };
+                panelSepRow.height = 20;
+                excelRowNum++;
+            }
 
             panelGroups.forEach((g: any, gIdx: number) => {
                 const members: any[] = g.members || [];
@@ -1887,12 +1926,15 @@ export const exportBatchFinalSheet = async (req: any, res: Response) => {
                     const endSE = studentEvals.find((e: any) => String(e.student?._id || e.student) === String(m._id) && e.evalType === 'end-term');
                     const primarySE = includeEnd ? endSE : midSE;
 
-                    const rowData: any[] = [
-                        mIdx === 0 ? g.name : '',
-                        mIdx === 0 ? g.project?.title || '' : '',
+                    const rowData: any[] = [];
+                    if (includeGroupInfo) {
+                        rowData.push(mIdx === 0 ? g.name : '');
+                        rowData.push(mIdx === 0 ? g.project?.title || '' : '');
+                    }
+                    rowData.push(
                         m.name || '', m.rollNumber || '',
                         primarySE ? (primarySE.attendance === 'present' ? 'Present' : 'Absent') : '',
-                    ];
+                    );
 
                     let midTotal = 0;
                     if (includeMid) {
@@ -1931,7 +1973,7 @@ export const exportBatchFinalSheet = async (req: any, res: Response) => {
                     excelRowNum++;
                 });
 
-                if (members.length > 1) {
+                if (includeGroupInfo && members.length > 1) {
                     const groupEndRow = groupStartRow + members.length - 1;
                     ws.mergeCells(groupStartRow, 1, groupEndRow, 1);
                     ws.mergeCells(groupStartRow, 2, groupEndRow, 2);
@@ -2142,13 +2184,19 @@ export const previewPanelImport = async (req: any, res: Response) => {
  */
 export const exportOfficialFormat = async (req: any, res: Response) => {
     try {
-        const { batchYear } = req.query;
+        const { batchYear, session } = req.query;
 
         if (!batchYear || batchYear === 'All') {
             return res.status(400).json({ message: 'Please specify a batch year.' });
         }
 
-        const allGroups = await Group.find({ status: { $in: ['Approved', 'Pending'] }, isArchived: { $ne: true } })
+        // `session` exports an archived academic session's groups for the batch; otherwise the
+        // current (non-archived) groups. Archived members are non-participating, so the
+        // participating filter is only applied to the live export.
+        const groupFilter: any = session
+            ? { isArchived: true, archivedSession: session }
+            : { status: { $in: ['Approved', 'Pending'] }, isArchived: { $ne: true } };
+        const allGroups = await Group.find(groupFilter)
             .populate('members', 'name rollNumber branch department isParticipating')
             .populate({
                 path: 'project',
@@ -2166,7 +2214,7 @@ export const exportOfficialFormat = async (req: any, res: Response) => {
             return gBatch === String(batchYear);
         }).map((g: any) => ({
             ...g,
-            members: (g.members || []).filter((m: any) => m.isParticipating !== false)
+            members: session ? (g.members || []) : (g.members || []).filter((m: any) => m.isParticipating !== false)
         })).filter((g: any) => g.members.length > 0);
 
         // Sort by group name (numeric)

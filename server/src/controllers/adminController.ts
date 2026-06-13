@@ -183,7 +183,9 @@ export const createUser = async (req: Request, res: Response) => {
             password: defaultPassword,
             role,
             rollNumber:  role === 'Student' ? rollNumber : undefined,
-            branch:      role === 'Student' ? (branch || 'CSE') : undefined,
+            // Students always have a single branch (default CSE). Faculty store the branches they
+            // mentor for as a comma-separated list (e.g. "CSE,DSAI"); empty means "all branches".
+            branch:      role === 'Student' ? (branch || 'CSE') : (branch || undefined),
             semester:    role === 'Student' ? (Number(semester) || undefined) : undefined,
             department:  role === 'Faculty' ? (department || 'CSE') : undefined,
             expertise:   role === 'Faculty' ? expertise : undefined,
@@ -317,6 +319,57 @@ export const getArchive = async (req: Request, res: Response) => {
     } catch (error: any) {
         console.error('getArchive error:', error);
         res.status(500).json({ message: 'Server error fetching archive', error: error.message });
+    }
+};
+
+// Lists the academic sessions available for export: every archived session (with the batches that
+// participated in it) plus the current live session. Drives the "All Semesters" export, which
+// builds one folder per session.
+export const getExportSessions = async (req: Request, res: Response) => {
+    try {
+        const archivedGroups = await Group.find({ isArchived: true })
+            .select('archivedSession targetBatch members updatedAt createdAt')
+            .populate('members', 'rollNumber')
+            .lean();
+
+        const bySession: Record<string, Set<string>> = {};
+        for (const g of archivedGroups as any[]) {
+            const label = resolveSession(g);
+            if (!label) continue;
+            const batch = g.targetBatch
+                ? String(g.targetBatch)
+                : (g.members?.[0]?.rollNumber ? '20' + String(g.members[0].rollNumber).substring(0, 2) : null);
+            (bySession[label] = bySession[label] || new Set<string>());
+            if (batch && /^\d{4}$/.test(batch)) bySession[label].add(batch);
+        }
+
+        const archived = Object.entries(bySession)
+            .map(([session, set]) => ({ session, batches: Array.from(set).sort() }))
+            .sort((a, b) => sessionSortKey(b.session) - sessionSortKey(a.session));
+
+        // Current (live) session — batches from the active Group Formation event.
+        const now = new Date();
+        const activeGF = await Event.findOne({
+            type: EventType.GROUP_FORMATION_AND_PROJECT_PROPOSAL,
+            isActive: true,
+            startDate: { $lte: now },
+            $or: [
+                { extensionDate: { $exists: true, $ne: null, $gte: now } },
+                { extensionDate: { $exists: false }, endDate: { $gte: now } },
+                { extensionDate: null, endDate: { $gte: now } }
+            ]
+        }).lean();
+        const currentBatches = Array.isArray(activeGF?.participatingBatches)
+            ? activeGF!.participatingBatches.map(String).filter((b: string) => /^\d{4}$/.test(b))
+            : [];
+
+        res.json({
+            current: { session: sessionLabelFor(now), batches: currentBatches },
+            archived
+        });
+    } catch (error: any) {
+        console.error('getExportSessions error:', error);
+        res.status(500).json({ message: 'Server error fetching export sessions', error: error.message });
     }
 };
 

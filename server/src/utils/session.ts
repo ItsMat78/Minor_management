@@ -13,6 +13,16 @@ export const sessionLabelFor = (date: Date): string => {
     return `Even ${y - 1}-${String(y).slice(2)}`;
 };
 
+// Academic-year label for a date (Indian 2-semester calendar), e.g. "2025-26".
+//   Jul–Dec → "<Y>-<Y+1>"   (odd/autumn term, start of the academic year)
+//   Jan–Jun → "<Y-1>-<Y>"   (even/spring term of the same academic year)
+// e.g. 2026-05 → "2025-26"; 2025-09 → "2025-26".
+export const academicYearFor = (date: Date): string => {
+    const y = date.getFullYear();
+    const m = date.getMonth(); // 0-11
+    return m >= 6 ? `${y}-${String(y + 1).slice(2)}` : `${y - 1}-${String(y).slice(2)}`;
+};
+
 // Chronological sort key for a session label. Odd (autumn) precedes Even (spring)
 // within the same academic year. Returns 0 for unparseable labels.
 export const sessionSortKey = (label: string): number => {
