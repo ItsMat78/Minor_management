@@ -140,3 +140,86 @@ setting (`app.ts`) so the per-IP backstop sees real client IPs when behind a rev
   block are correct (recently fixed).
 - `archivedSession` archive filtering verified working.
 - Faculty/Admin correctly render their own dashboards from `/dashboard`.
+
+
+
+## 10th June bugs
+● I've reviewed the backend thoroughly (controllers, models, routes, middleware, socket). Here are the real bugs I found,
+  ranked by impact. I focused on logic/security correctness, not style.
+
+  🔴 High — Group chat has no membership authorization
+  server/src/socket.ts (joinGroup / sendMessage)
+
+  The socket auth middleware verifies the JWT, but joinGroup then joins any groupId the client sends and immediately replays
+  the last 50 messages:
+
+  socket.on('joinGroup', async (groupId: string) => {
+      socket.join(groupId);
+      const messages = await Message.find({ groupId })... // no check that socket.user is a member
+      socket.emit('loadMessages', messages);
+  });
+
+  sendMessage is the same — it writes to whatever groupId arrives. Group IDs are returned all over the REST API (/groups,     
+  /projects, panel endpoints), so any authenticated student/faculty can read and post into any group's private chat just by   
+  supplying that ID. The server needs to verify socket.user.id is in that group's members before joining or sending.
+
+  🟠 Medium — deleteUser leaves orphaned group state
+
+  server/src/controllers/userController.ts:276
+
+  await Group.updateMany({ members: user._id }, { $pull: { members: user._id } });
+  await User.findByIdAndDelete(id);
+
+  It only pulls from members. It does not:
+  - pull the user from pendingMembers (a deleted user lingers as a phantom pending invite, blocking the group from submitting 
+  a proposal),
+  - dissolve a group that becomes empty (leaves an orphaned 0-member group),
+  - reassign/clear createdBy when the creator is deleted (branch-restriction logic in acceptInvite/inviteMembers later reads  
+  creator.branch for a user that no longer exists).
+
+  Compare with leaveGroup, which correctly dissolves empty groups and deletes their projects.
+
+  🟠 Medium — Evaluation writes aren't blocked on archived projects
+
+  submitEvaluation (projectController.ts:613) and saveStudentEvaluations (:829) never check project.isArchived. Every other   
+  write path (addUpdate, updateProject, uploadSubmissions, updateProjectStatus) guards against archived projects, but these   
+  two let a faculty/panel member mutate evaluations on a past-semester archived project. Add the same if (project.isArchived) 
+  return res.status(400)... guard.
+
+  🟡 Low — getActiveEvents query is inconsistent with the others
+
+  eventController.ts:60. Every other "currently active event" query in the codebase uses three $or clauses:
+
+  { extensionDate: { $exists: true, $ne: null, $gte: now } },
+  { extensionDate: { $exists: false }, endDate: { $gte: now } },
+  { extensionDate: null, endDate: { $gte: now } }
+
+  getActiveEvents (which drives the dashboard banners) has only the first two and omits the extensionDate: null fallback. An  
+  event whose extensionDate is explicitly null (rather than absent) with a future endDate would be hidden from the banner     
+  while still being treated as active by group/submission logic. It's a latent edge case, but the divergence is the kind of   
+  thing that bites later — worth aligning.
+
+  🟡 Low — Account enumeration in verifyForgotPasswordOtp
+
+  authController.ts:201. forgotPassword was hardened to return a generic message, but its companion still distinguishes "user 
+  not found" (Invalid request.) from "wrong OTP" (Invalid or expired OTP.), which re-leaks whether an email is registered.    
+  Return the same generic 400 in both cases.
+
+  🟡 Low — Faculty capacity counting ignores droppers
+
+  getFaculty (userController.ts:64) and the approval check in updateProjectStatus (projectController.ts:169) both derive a    
+  group's batch from members[0].rollNumber.substring(0,2) and ignore targetBatch. A dropper group (where targetBatch differs  
+  from the roll prefix) is counted under the wrong batch's limit, and currentStudentsCount += members.length counts
+  cross-batch members against a single batch. The whole load system is roll-prefix-based while the rest of the app honors     
+  targetBatch — so droppers can make a faculty look full/not-full for the wrong cohort.
+
+  ---
+  The remaining_bugs.md items (1–13) all check out as genuinely fixed in the current code. The above are issues not on that   
+  list.
+
+  Want me to fix any of these? I'd start with the chat authorization (#1) and the deleteUser cleanup (#2), since those are the
+  ones with real-world blast radius.
+
+● Fable 5's safety measures flagged this message for cybersecurity or biology topics. They may flag safe, normal content as   
+  well. These measures let us bring you Mythos-level capability in other areas sooner, and we're working to refine them.      
+  Switched to Opus 4.8. Send feedback with /feedback or learn more: https://support.claude.com/en/articles/15363606
