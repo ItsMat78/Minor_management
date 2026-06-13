@@ -8,6 +8,7 @@ import MenteeGroupDetails from '../components/MenteeGroupDetails';
 import AutoCreatePanelsModal from '../components/AutoCreatePanelsModal';
 import { GlobalEventBanner } from '../components/GlobalEventBanner';
 import * as Dialog from '@radix-ui/react-dialog';
+import { DndContext, PointerSensor, useSensor, useSensors, useDraggable, useDroppable, type DragEndEvent } from '@dnd-kit/core';
 import JSZip from 'jszip';
 import { useParticipatingBatches } from '../hooks/useParticipatingBatches';
 
@@ -151,12 +152,86 @@ const clustersToBranchAssignment = (clusters: string[]): Record<string, string> 
     return assign;
 };
 
-// Plain-English summary of a clustering for the admin UI.
-const describeBranchClusters = (assign: Record<string, string>): string => {
+// Plain-English summary sentences for a clustering, e.g.
+//   ["CSE & DSAI can form groups together.", "ECE is restricted to its own branch."]
+const summarizeBranchClusters = (assign: Record<string, string>): string[] => {
     const clusters = branchAssignmentToClusters(assign);
-    const mixed = clusters.filter(c => c.length > 1);
-    if (mixed.length === 0) return 'Single-branch only';
-    return clusters.map(c => c.join('+')).join(', ');
+    const joinAnd = (arr: string[]) => arr.length <= 1 ? (arr[0] || '') : `${arr.slice(0, -1).join(', ')} & ${arr[arr.length - 1]}`;
+    const multi = clusters.filter(c => c.length > 1);
+    const singles = clusters.filter(c => c.length === 1).map(c => c[0]);
+    const sentences = multi.map(c => `${joinAnd(c)} can form groups together.`);
+    if (singles.length === 1) sentences.push(`${singles[0]} is restricted to its own branch.`);
+    else if (singles.length > 1) sentences.push(`${joinAnd(singles)} are each restricted to their own branch.`);
+    return sentences;
+};
+
+// A draggable branch chip (drag id: `<batch>::b::<branch>`).
+const BranchChip: React.FC<{ id: string; label: string }> = ({ id, label }) => {
+    const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id });
+    const style = transform ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` } : undefined;
+    return (
+        <button
+            ref={setNodeRef}
+            type="button"
+            style={style}
+            {...listeners}
+            {...attributes}
+            className={`px-2.5 py-1 rounded-md text-[11px] font-black border bg-indigo-600 text-white border-indigo-600 cursor-grab active:cursor-grabbing select-none touch-none ${isDragging ? 'opacity-60 shadow-lg z-50 relative' : ''}`}
+        >
+            {label}
+        </button>
+    );
+};
+
+// A droppable cluster box (or the "new group" target when variant="new").
+const ClusterDrop: React.FC<{ id: string; variant?: 'cluster' | 'new'; children?: React.ReactNode }> = ({ id, variant = 'cluster', children }) => {
+    const { setNodeRef, isOver } = useDroppable({ id });
+    if (variant === 'new') {
+        return (
+            <div ref={setNodeRef} className={`flex items-center justify-center min-w-[88px] px-3 py-2 rounded-lg border-2 border-dashed text-[10px] font-bold uppercase tracking-wide transition-colors ${isOver ? 'border-indigo-400 bg-indigo-50 text-indigo-600' : 'border-neutral-300 text-neutral-400'}`}>
+                + New group
+            </div>
+        );
+    }
+    return (
+        <div ref={setNodeRef} className={`flex flex-wrap items-center gap-1.5 min-w-[80px] p-2 rounded-lg border-2 transition-colors ${isOver ? 'border-indigo-400 bg-indigo-50' : 'border-neutral-200 bg-neutral-50'}`}>
+            {children}
+        </div>
+    );
+};
+
+// Drag-and-drop cluster editor for one batch. Branches in the same box may group together; drag a
+// chip onto another box to merge, or onto "+ New group" to split it out. State is the same
+// per-branch assignment map used elsewhere — only the editing UI differs.
+const BranchClusterBuilder: React.FC<{ batch: string; assign: Record<string, string>; onMove: (branch: string, target: string) => void }> = ({ batch, assign, onMove }) => {
+    const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+    // Cluster ids in a stable order (by the first branch that uses them).
+    const order: string[] = [];
+    BRANCH_CODES.forEach(b => { const c = assign[b]; if (c && !order.includes(c)) order.push(c); });
+
+    const handleDragEnd = (e: DragEndEvent) => {
+        const { active, over } = e;
+        if (!over) return;
+        const branch = String(active.id).split('::b::')[1];
+        const overId = String(over.id);
+        const target = overId.endsWith('::new') ? 'NEW' : overId.split('::c::')[1];
+        if (branch && target) onMove(branch, target);
+    };
+
+    return (
+        <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+            <div className="flex flex-wrap items-stretch gap-2">
+                {order.map(cid => (
+                    <ClusterDrop key={cid} id={`${batch}::c::${cid}`}>
+                        {BRANCH_CODES.filter(b => assign[b] === cid).map(b => (
+                            <BranchChip key={b} id={`${batch}::b::${b}`} label={b} />
+                        ))}
+                    </ClusterDrop>
+                ))}
+                <ClusterDrop id={`${batch}::new`} variant="new" />
+            </div>
+        </DndContext>
+    );
 };
 
 const AdminDashboard: React.FC = () => {
@@ -240,9 +315,25 @@ const AdminDashboard: React.FC = () => {
     const [participatingBatches, setParticipatingBatches] = useState<string[]>([]);
     // Subset of participatingBatches whose groups must be single-branch this semester.
     const [branchRestrictedBatches, setBranchRestrictedBatches] = useState<string[]>([]);
-    // Per restricted batch, each branch's "group number" (1/2/3). Branches sharing a number may
-    // form a group together. Default (each branch its own number) = strict single-branch.
+    // Per restricted batch, each branch's cluster id. Branches sharing an id may group together.
+    // Default (each branch its own id) = strict single-branch. Edited via drag-and-drop.
     const [branchClusters, setBranchClusters] = useState<Record<string, Record<string, string>>>({});
+
+    // Move a branch into another cluster (drag-drop). target 'NEW' splits it into a fresh cluster.
+    const moveBranchToCluster = (batch: string, branch: string, target: string) => {
+        setBranchClusters(prev => {
+            const cur = prev[batch] || defaultBranchAssignment();
+            let targetId = target;
+            if (target === 'NEW') {
+                // Already alone in its cluster → nothing to split off.
+                const mates = BRANCH_CODES.filter(b => cur[b] === cur[branch]);
+                if (mates.length <= 1) return prev;
+                targetId = 'c' + Math.random().toString(36).slice(2, 8);
+            }
+            if (cur[branch] === targetId) return prev;
+            return { ...prev, [batch]: { ...cur, [branch]: targetId } };
+        });
+    };
     // Default mentorship limits applied to every faculty for the new semester (Group Formation modal).
     const [eventDefaultMaxGroups, setEventDefaultMaxGroups] = useState(7);
     const [eventDefaultMaxStudents, setEventDefaultMaxStudents] = useState(21);
@@ -4280,12 +4371,9 @@ const AdminDashboard: React.FC = () => {
                                 }} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
                             </div>
                             <div className="p-6 space-y-5 overflow-y-auto">
-                                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3">
-                                    <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-                                    <div>
-                                        <h4 className="text-sm font-bold text-amber-800">Important</h4>
-                                        <p className="text-xs text-amber-700 mt-0.5">Events control what features are visible to students and faculty. Activating an event will immediately show it across all dashboards.</p>
-                                    </div>
+                                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center gap-2.5">
+                                    <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                                    <p className="text-xs text-amber-800">Goes live on every dashboard the moment it's active.</p>
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-1.5">Event Type</label>
@@ -4301,7 +4389,7 @@ const AdminDashboard: React.FC = () => {
                                             <label className="block text-sm font-medium text-gray-700 mb-1.5">
                                                 Participating Batches <span className="text-red-500">*</span>
                                             </label>
-                                            <p className="text-[11px] text-neutral-500 mb-2">Select every batch doing the minor project this semester. Use 4-digit admission years (e.g. 2023).</p>
+                                            <p className="text-[11px] text-neutral-500 mb-2">Admission years taking the minor project this term.</p>
                                             <div className="flex flex-wrap gap-2 mb-2">
                                                 {(() => {
                                                     const currentYear = new Date().getFullYear();
@@ -4339,10 +4427,7 @@ const AdminDashboard: React.FC = () => {
                                         <div className="mt-3 p-3 bg-neutral-50 border border-neutral-200 rounded-xl">
                                             <p className="text-sm font-bold text-neutral-800">Restrict branch mixing</p>
                                             <p className="text-[11px] text-neutral-500 mt-0.5 mb-2">
-                                                Select the batches whose groups are branch-restricted — usually the 5th/6th-semester
-                                                batches. By default those groups must be single-branch; below each selected batch you
-                                                can choose which branches MAY still group together (e.g. CSE + DSAI, but not ECE).
-                                                Leave empty to allow mixed-branch groups for everyone.
+                                                Pick batches that can't freely mix branches (else everyone can). Arrange the allowed groupings below.
                                             </p>
                                             {participatingBatches.length === 0 ? (
                                                 <p className="text-[11px] text-neutral-400 italic">Select participating batches above first.</p>
@@ -4364,44 +4449,31 @@ const AdminDashboard: React.FC = () => {
                                                 </div>
                                             )}
 
-                                            {/* Per-batch branch clustering: which branches may group together */}
+                                            {/* Per-batch branch clustering: drag branches into boxes — branches in the same box may group together */}
                                             {branchRestrictedBatches.length > 0 && (
                                                 <div className="mt-3 space-y-2">
                                                     <p className="text-[11px] font-bold text-neutral-600 uppercase tracking-wide">Allowed branch groupings</p>
+                                                    <p className="text-[10px] text-neutral-400 -mt-1">Drag branches into the same box to let them team up; drop on “+ New group” to split.</p>
                                                     {[...branchRestrictedBatches].sort().map(batch => {
                                                         const assign = branchClusters[batch] || defaultBranchAssignment();
                                                         return (
                                                             <div key={batch} className="rounded-lg border border-amber-200 bg-white p-3">
-                                                                <div className="flex items-center justify-between mb-2">
+                                                                <div className="mb-2">
                                                                     <span className="text-xs font-black text-neutral-800">Batch {batch}</span>
-                                                                    <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">{describeBranchClusters(assign)}</span>
                                                                 </div>
-                                                                <div className="space-y-1.5">
-                                                                    {BRANCH_CODES.map(br => (
-                                                                        <div key={br} className="flex items-center gap-2">
-                                                                            <span className="w-12 text-xs font-bold text-neutral-700">{br}</span>
-                                                                            <div className="flex gap-1">
-                                                                                {['1', '2', '3'].map(g => {
-                                                                                    const active = (assign[br] || '') === g;
-                                                                                    return (
-                                                                                        <button
-                                                                                            key={g}
-                                                                                            type="button"
-                                                                                            onClick={() => setBranchClusters(prev => ({
-                                                                                                ...prev,
-                                                                                                [batch]: { ...(prev[batch] || defaultBranchAssignment()), [br]: g }
-                                                                                            }))}
-                                                                                            className={`px-2.5 py-1 rounded-md text-[11px] font-bold border transition-colors ${active ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-neutral-500 border-neutral-300 hover:border-indigo-300'}`}
-                                                                                        >
-                                                                                            Group {g}
-                                                                                        </button>
-                                                                                    );
-                                                                                })}
-                                                                            </div>
-                                                                        </div>
+                                                                <BranchClusterBuilder
+                                                                    batch={batch}
+                                                                    assign={assign}
+                                                                    onMove={(branch, target) => moveBranchToCluster(batch, branch, target)}
+                                                                />
+                                                                <div className="mt-2.5 pt-2 border-t border-neutral-100 space-y-0.5">
+                                                                    {summarizeBranchClusters(assign).map((s, i) => (
+                                                                        <p key={i} className="text-[11px] text-neutral-600 flex items-start gap-1.5">
+                                                                            <span className="text-amber-500 leading-4">•</span>
+                                                                            <span>{s}</span>
+                                                                        </p>
                                                                     ))}
                                                                 </div>
-                                                                <p className="text-[10px] text-neutral-400 mt-1.5">Branches with the same group number may form a group together.</p>
                                                             </div>
                                                         );
                                                     })}
@@ -4413,7 +4485,7 @@ const AdminDashboard: React.FC = () => {
                                     {eventForm.type === 'group_formation_project_proposal' && (
                                         <div className="mt-3">
                                             <label className="block text-sm font-medium text-gray-700 mb-1.5">Default Mentorship Limits (per faculty)</label>
-                                            <p className="text-[11px] text-neutral-500 mb-2">Applied to every faculty for this semester. Faculty added later this semester inherit these. You can still fine-tune individual faculty afterwards.</p>
+                                            <p className="text-[11px] text-neutral-500 mb-2">Applied to all faculty this term — fine-tune individuals later.</p>
                                             <div className="grid grid-cols-2 gap-3">
                                                 <div>
                                                     <label className="block text-[11px] text-neutral-500 mb-1">Max Groups</label>
@@ -4448,14 +4520,29 @@ const AdminDashboard: React.FC = () => {
 
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1.5">Deadline (End Date & Time)</label>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1.5">Deadline</label>
                                         <input type="datetime-local" value={eventForm.endDate} onChange={(e) => setEventForm(prev => ({ ...prev, endDate: e.target.value }))} className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm" />
                                     </div>
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1.5">Extension Date (Optional)</label>
-                                        <input type="datetime-local" value={eventForm.extensionDate} onChange={(e) => setEventForm(prev => ({ ...prev, extensionDate: e.target.value }))} className="w-full px-3 py-2.5 border border-orange-200 rounded-xl text-sm bg-orange-50/30" />
-                                        {eventForm.extensionDate && (<button onClick={() => setEventForm(prev => ({ ...prev, extensionDate: '' }))} className="text-xs text-red-500 mt-1 hover:underline">Remove extension</button>)}
-                                    </div>
+                                    {(() => {
+                                        const badExtension = !!eventForm.extensionDate && !!eventForm.endDate && new Date(eventForm.extensionDate) <= new Date(eventForm.endDate);
+                                        return (
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-1.5">Extension <span className="font-normal text-neutral-400">(optional)</span></label>
+                                                <input
+                                                    type="datetime-local"
+                                                    value={eventForm.extensionDate}
+                                                    min={eventForm.endDate || undefined}
+                                                    onChange={(e) => setEventForm(prev => ({ ...prev, extensionDate: e.target.value }))}
+                                                    className={`w-full px-3 py-2.5 border rounded-xl text-sm ${badExtension ? 'border-red-300 bg-red-50/40' : 'border-orange-200 bg-orange-50/30'}`}
+                                                />
+                                                {badExtension ? (
+                                                    <p className="text-[11px] text-red-500 font-semibold mt-1">Must be after the deadline.</p>
+                                                ) : eventForm.extensionDate ? (
+                                                    <button onClick={() => setEventForm(prev => ({ ...prev, extensionDate: '' }))} className="text-xs text-red-500 mt-1 hover:underline">Remove extension</button>
+                                                ) : null}
+                                            </div>
+                                        );
+                                    })()}
                                 </div>
 
                                 {(eventForm.type === 'mid_term_evaluation' || eventForm.type === 'end_term_evaluation') && (
@@ -4580,6 +4667,11 @@ const AdminDashboard: React.FC = () => {
                                     try {
                                         if (!eventForm.endDate || !adminPassword) {
                                             alert('Please fill in deadline and admin password.');
+                                            return;
+                                        }
+
+                                        if (eventForm.extensionDate && new Date(eventForm.extensionDate) <= new Date(eventForm.endDate)) {
+                                            alert('The extension date must be after the deadline.');
                                             return;
                                         }
 
