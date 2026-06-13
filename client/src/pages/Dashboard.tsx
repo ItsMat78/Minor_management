@@ -7,7 +7,7 @@ import FilePreview from '../components/FilePreview';
 import AdminDashboard from './AdminDashboard';
 import FacultyDashboard from './FacultyDashboard';
 import Chat from '../components/Chat';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import * as Dialog from '@radix-ui/react-dialog';
 import { GlobalEventBanner } from '../components/GlobalEventBanner';
 
@@ -805,11 +805,6 @@ const Dashboard: React.FC = () => {
                                             setEstimatedGroupNumber(null);
                                         }
                                     }}>
-                                        <Dialog.Trigger asChild>
-                                            <button className="px-4 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition-colors shadow-sm flex items-center gap-2">
-                                                <Plus className="w-4 h-4" /> Form Group ({selectedStudents.size + 1})
-                                            </button>
-                                        </Dialog.Trigger>
                                         <Dialog.Portal>
                                             <Dialog.Overlay className="fixed inset-0 bg-black/50 backdrop-blur-sm data-[state=open]:animate-overlayShow" />
                                             <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[calc(100%_-_2rem)] max-w-md bg-white p-6 rounded-2xl shadow-xl focus:outline-none data-[state=open]:animate-contentShow">
@@ -2004,6 +1999,64 @@ const Dashboard: React.FC = () => {
                     })()}
                 </main>
             </div > {/* Closing main content flex */}
+
+            {/* Floating "Form Group" button; ticked teammates' names appear as plain text to its left.
+                Hidden while the checkout dialog is open (would otherwise float over it). */}
+            {!group
+                && !isDialogOpen
+                && activeTab === 'directory'
+                && activeEvents?.some(e => e.type === 'group_formation_project_proposal') && (
+                <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-30 flex items-center gap-2 sm:gap-3 max-w-[calc(100vw-2rem)] sm:max-w-[calc(100vw-3rem)]">
+                    {/* The tray: one background panel holding all the picked names */}
+                    <AnimatePresence>
+                        {selectedStudents.size > 0 && (
+                            <motion.div
+                                layout
+                                initial={{ opacity: 0, scale: 0.9, x: 12 }}
+                                animate={{ opacity: 1, scale: 1, x: 0 }}
+                                exit={{ opacity: 0, scale: 0.9, x: 12 }}
+                                transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+                                className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 sm:px-4 py-2 sm:py-2.5 bg-white rounded-xl border border-neutral-200 shadow-lg shadow-neutral-300/40 min-w-0"
+                            >
+                                <AnimatePresence initial={false}>
+                                    {Array.from(selectedStudents).map(id => {
+                                        const s = students.find(stu => stu._id === id);
+                                        if (!s) return null;
+                                        return (
+                                            <motion.span
+                                                key={id}
+                                                layout
+                                                initial={{ opacity: 0, scale: 0.8 }}
+                                                animate={{ opacity: 1, scale: 1 }}
+                                                exit={{ opacity: 0, scale: 0.8 }}
+                                                transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+                                                className="flex items-center gap-1 text-sm font-semibold text-neutral-700 whitespace-nowrap"
+                                            >
+                                                {s.name}
+                                                <button
+                                                    onClick={() => toggleStudentSelection(s._id)}
+                                                    className="text-neutral-300 hover:text-red-500 transition-colors shrink-0"
+                                                    aria-label={`Remove ${s.name}`}
+                                                >
+                                                    <X className="w-3.5 h-3.5" />
+                                                </button>
+                                            </motion.span>
+                                        );
+                                    })}
+                                </AnimatePresence>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
+
+                    <motion.button
+                        layout
+                        onClick={() => setIsDialogOpen(true)}
+                        className="px-4 sm:px-5 py-2.5 bg-indigo-600 text-white rounded-xl font-bold text-sm shadow-lg shadow-indigo-300/50 hover:bg-indigo-700 active:scale-95 transition-colors flex items-center gap-2 whitespace-nowrap shrink-0"
+                    >
+                        <Plus className="w-4 h-4" /> Form Group ({selectedStudents.size + 1})
+                    </motion.button>
+                </div>
+            )}
 
             {/* Chat Sidebar */}
             {

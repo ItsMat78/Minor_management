@@ -7,6 +7,15 @@ import { sendEmail } from '../utils/emailService';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'secret';
 
+// Local-dev convenience: when LOG_OTP=true, print generated OTPs to the SERVER console so devs
+// (where SMTP may be unconfigured) can activate / sign in without a real email. Off by default,
+// so production never logs OTPs. Set LOG_OTP=true in server/.env to enable.
+const logOtpForDev = (email: string, otp: string, purpose: string) => {
+    if (process.env.LOG_OTP === 'true') {
+        console.log(`\n  🔑 [DEV OTP] ${purpose} — ${email}: ${otp}\n`);
+    }
+};
+
 export const login = async (req: Request, res: Response) => {
     try {
         const { email, password } = req.body;
@@ -26,8 +35,7 @@ export const login = async (req: Request, res: Response) => {
             user.otp = otp;
             user.otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 mins
             await user.save();
-
-
+            logOtpForDev(user.email, otp, 'Account activation');
 
             const subject = 'Your IIITNR Minor Portal Activation OTP';
             const text = `Your OTP to activate your account is: ${otp}\n\nThis code expires in 10 minutes.`;
@@ -126,8 +134,7 @@ export const resendOtp = async (req: Request, res: Response) => {
         user.otp = otp;
         user.otpExpires = new Date(Date.now() + 10 * 60 * 1000);
         await user.save();
-
-
+        logOtpForDev(user.email, otp, 'OTP resend');
 
         const subject = 'Your IIITNR Minor Portal Activation OTP';
         const text = `Your OTP to activate your account is: ${otp}\n\nThis code expires in 10 minutes.`;
@@ -174,8 +181,7 @@ export const forgotPassword = async (req: Request, res: Response) => {
         user.otp = otp;
         user.otpExpires = new Date(Date.now() + 10 * 60 * 1000);
         await user.save();
-
-
+        logOtpForDev(user.email, otp, 'Password reset / sign-in');
 
         const subject = 'Your IIITNR Minor Portal Password Reset OTP';
         const text = `Your OTP to sign in to the Minor Project Portal is: ${otp}\n\nThis code expires in 10 minutes.\n\nIf you did not request this, ignore this email.`;

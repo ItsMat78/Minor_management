@@ -45,6 +45,10 @@ const ProjectProposal: React.FC = () => {
     // Faculty are scoped to the student's branch ONLY when the student's batch is branch-restricted
     // this semester. Non-restricted batches see every faculty.
     const [isBatchBranchRestricted, setIsBatchBranchRestricted] = useState(false);
+    // When restricted, the set of branches the student's group (and therefore mentor) may belong to —
+    // i.e. their configured cluster, e.g. ["CSE","DSAI"]. Falls back to their own branch when no
+    // multi-branch cluster is set. null = not restricted / not yet computed.
+    const [allowedBranches, setAllowedBranches] = useState<string[] | null>(null);
 
     useEffect(() => {
         api.get('/users/faculty')
@@ -61,9 +65,28 @@ const ProjectProposal: React.FC = () => {
                     ? gf.branchRestrictedBatches.map(String)
                     : (gf?.branchRestricted ? ((gf.participatingBatches ?? []).map(String)) : []);
                 const myBatch = user?.targetBatch || (user?.rollNumber ? '20' + user.rollNumber.substring(0, 2) : '');
-                setIsBatchBranchRestricted(!!myBatch && restricted.includes(String(myBatch)));
+                const isRestricted = !!myBatch && restricted.includes(String(myBatch));
+                setIsBatchBranchRestricted(isRestricted);
+
+                // Resolve the student's allowed branch set = the cluster containing their branch
+                // (mirrors the server's per-batch clustering). A student in a CSE+DSAI cluster may
+                // pick any CSE *or* DSAI mentor; default (no cluster) is their own branch only.
+                const myBranchNorm = (user?.branch || '').trim().toUpperCase();
+                if (isRestricted && myBranchNorm) {
+                    const rawGroups = Array.isArray(gf?.branchRestrictionGroups) ? gf.branchRestrictionGroups : [];
+                    const entry = rawGroups.find((g: any) => String(g.batch) === String(myBatch));
+                    const clusters: string[][] = entry && Array.isArray(entry.clusters)
+                        ? entry.clusters
+                            .map((c: string) => String(c).split(',').map(s => s.trim().toUpperCase()).filter(Boolean))
+                            .filter((c: string[]) => c.length > 0)
+                        : [];
+                    const myCluster = clusters.find(c => c.includes(myBranchNorm));
+                    setAllowedBranches(myCluster && myCluster.length > 0 ? myCluster : [myBranchNorm]);
+                } else {
+                    setAllowedBranches(null);
+                }
             })
-            .catch(() => setIsBatchBranchRestricted(false));
+            .catch(() => { setIsBatchBranchRestricted(false); setAllowedBranches(null); });
 
         // Fetch group projects to check for existing faculty locks or edit data
         api.get('/groups/my')
@@ -148,12 +171,18 @@ const ProjectProposal: React.FC = () => {
     // to everyone, and a faculty already locked by a live proposal always stays visible so the lock
     // isn't broken. Students in non-restricted batches see all faculty.
     const myBranch = (user?.branch || '').trim().toUpperCase();
-    const branchFilterActive = isBatchBranchRestricted && !!myBranch;
+    // The branches a mentor may belong to for this student = their cluster (e.g. CSE+DSAI),
+    // falling back to just their own branch. A faculty is shown if ANY of their mentored branches
+    // is in this set, so a "DSAI,ECE" prof is visible to a CSE student clustered with DSAI, while
+    // an "ECE only" prof is hidden.
+    const allowed = (allowedBranches && allowedBranches.length > 0) ? allowedBranches : (myBranch ? [myBranch] : []);
+    const allowedLabel = allowed.join(' / ');
+    const branchFilterActive = isBatchBranchRestricted && allowed.length > 0;
     const facultyMatchesBranch = (f: Faculty): boolean => {
         if (!branchFilterActive) return true;
         const branches = (f.branch || '').split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
         if (branches.length === 0) return true; // open to all branches
-        return branches.includes(myBranch);
+        return branches.some(b => allowed.includes(b));
     };
     const visibleFaculty = facultyList.filter(f => facultyMatchesBranch(f) || f._id === lockedFacultyId);
     const hiddenByBranch = facultyList.length - visibleFaculty.length;
@@ -372,7 +401,7 @@ const ProjectProposal: React.FC = () => {
                                             <div className="mb-4 p-3 bg-indigo-50 border border-indigo-100 rounded-lg text-xs text-indigo-700 flex items-start gap-2">
                                                 <Info className="w-4 h-4 shrink-0 mt-0.5" />
                                                 <span>
-                                                    Your batch is branch-restricted, so only faculty who mentor <strong>{myBranch}</strong> projects are shown
+                                                    Your batch is branch-restricted, so only faculty who mentor <strong>{allowedLabel}</strong> projects are shown
                                                     {hiddenByBranch > 0 ? ` (${hiddenByBranch} from other branches hidden).` : '.'}
                                                 </span>
                                             </div>
@@ -439,10 +468,16 @@ const ProjectProposal: React.FC = () => {
                                                                 <div className="flex-1 min-w-0">
                                                                     <p className="font-semibold text-gray-900 truncate">{faculty.name}</p>
                                                                 <p className="text-xs text-indigo-600 mb-1 truncate">{faculty.email}</p>
-                                                                <div className="flex items-center gap-2 mt-1">
-                                                                    <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-600 rounded shrink-0">
-                                                                        {faculty.department}
-                                                                    </span>
+                                                                <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                                                                    {(() => {
+                                                                        const branches = (faculty.branch || '').split(',').map(b => b.trim().toUpperCase()).filter(Boolean);
+                                                                        if (branches.length === 0) {
+                                                                            return <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-600 rounded shrink-0">All branches</span>;
+                                                                        }
+                                                                        return branches.map(b => (
+                                                                            <span key={b} className="text-xs px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded shrink-0 font-medium">{b}</span>
+                                                                        ));
+                                                                    })()}
                                                                 </div>
                                                                 </div>
                                                             </div>

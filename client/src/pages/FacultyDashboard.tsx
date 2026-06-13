@@ -436,6 +436,7 @@ const FacultyDashboard: React.FC = () => {
     const [mentees, setMentees] = useState<any[]>([]);
     const [students, setStudents] = useState<any[]>([]);
     const [loadingStudents, setLoadingStudents] = useState(false);
+    const [pendingProposalCount, setPendingProposalCount] = useState(0);
     const [loadingMentees, setLoadingMentees] = useState(false);
     const [panelGroups, setPanelGroups] = useState<any[]>([]);
     const [manualMarksMode, setManualMarksMode] = useState(true);
@@ -483,6 +484,17 @@ const FacultyDashboard: React.FC = () => {
         }
     }, [mentees]);
 
+    // Eagerly fetch the pending proposal count on mount so the badge is visible
+    // before the faculty navigates to the Proposals tab.
+    useEffect(() => {
+        api.get('/projects/faculty')
+            .then(res => {
+                const pending = (res.data || []).filter((p: any) => p.status === 'Pending' || p.status === 'Draft');
+                setPendingProposalCount(pending.length);
+            })
+            .catch(() => {});
+    }, []);
+
     useEffect(() => {
         if (activeTab === 'proposals') {
             fetchProjects();
@@ -510,6 +522,9 @@ const FacultyDashboard: React.FC = () => {
         try {
             const res = await api.get('/projects/faculty');
             setProjects(res.data);
+            // Keep the badge count in sync whenever we do a full fetch.
+            const pending = (res.data || []).filter((p: any) => p.status === 'Pending' || p.status === 'Draft');
+            setPendingProposalCount(pending.length);
         } catch (error) {
             console.error("Failed to fetch projects", error);
         } finally {
@@ -556,7 +571,11 @@ const FacultyDashboard: React.FC = () => {
         setActionLoading(id);
         try {
             const res = await api.put(`/projects/${id}/status`, { status, feedback });
-            setProjects(prev => prev.map(p => p._id === id ? { ...p, status, feedback: res.data.feedback, updatedAt: res.data.updatedAt } : p));
+            setProjects(prev => {
+                const updated = prev.map(p => p._id === id ? { ...p, status, feedback: res.data.feedback, updatedAt: res.data.updatedAt } : p);
+                setPendingProposalCount(updated.filter(p => p.status === 'Pending' || (p.status as string) === 'Draft').length);
+                return updated;
+            });
 
             setFeedback('');
             // Close the modal once the decision is submitted — the list already reflects the new
@@ -751,13 +770,18 @@ const FacultyDashboard: React.FC = () => {
         }
     };
 
-    const SidebarItem = ({ icon, label, active, onClick }: any) => (
+    const SidebarItem = ({ icon, label, active, onClick, badge }: any) => (
         <button
             onClick={onClick}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${active ? 'bg-indigo-50 text-indigo-700' : 'text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900'}`}
         >
             {icon}
             {label}
+            {badge > 0 && (
+                <span className="ml-auto min-w-[20px] h-5 px-1.5 flex items-center justify-center rounded-full bg-red-500 text-white text-[11px] font-bold leading-none shadow-sm">
+                    {badge}
+                </span>
+            )}
         </button>
     );
 
@@ -877,6 +901,7 @@ const FacultyDashboard: React.FC = () => {
                         label="Project Proposals"
                         active={activeTab === 'proposals'}
                         onClick={() => selectTab('proposals')}
+                        badge={pendingProposalCount}
                     />
                     <SidebarItem
                         icon={<Users className="w-5 h-5" />}
