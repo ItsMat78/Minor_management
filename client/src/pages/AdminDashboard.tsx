@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
@@ -120,6 +120,45 @@ const SemesterRolloverButton: React.FC = () => {
     );
 };
 
+// The fixed set of branches used for per-batch group clustering.
+const BRANCH_CODES = ['CSE', 'DSAI', 'ECE'];
+
+// Each branch starts in its own group number → strict single-branch (the default).
+const defaultBranchAssignment = (): Record<string, string> =>
+    BRANCH_CODES.reduce((acc, b, i) => ({ ...acc, [b]: String(i + 1) }), {} as Record<string, string>);
+
+// Group branches by their assigned number → array of branch-code arrays, e.g. [["CSE","DSAI"],["ECE"]].
+const branchAssignmentToClusters = (assign: Record<string, string>): string[][] => {
+    const byGroup: Record<string, string[]> = {};
+    BRANCH_CODES.forEach(b => {
+        const g = assign?.[b] || b;
+        (byGroup[g] = byGroup[g] || []).push(b);
+    });
+    return Object.values(byGroup);
+};
+
+// Inverse: turn stored clusters (["CSE,DSAI","ECE"]) back into per-branch group numbers for editing.
+const clustersToBranchAssignment = (clusters: string[]): Record<string, string> => {
+    const assign: Record<string, string> = {};
+    let next = 1;
+    (clusters || []).forEach(c => {
+        const branches = String(c).split(',').map(s => s.trim().toUpperCase()).filter(b => BRANCH_CODES.includes(b));
+        if (branches.length === 0) return;
+        const g = String(next++);
+        branches.forEach(b => { assign[b] = g; });
+    });
+    BRANCH_CODES.forEach(b => { if (!assign[b]) assign[b] = String(next++); });
+    return assign;
+};
+
+// Plain-English summary of a clustering for the admin UI.
+const describeBranchClusters = (assign: Record<string, string>): string => {
+    const clusters = branchAssignmentToClusters(assign);
+    const mixed = clusters.filter(c => c.length > 1);
+    if (mixed.length === 0) return 'Single-branch only';
+    return clusters.map(c => c.join('+')).join(', ');
+};
+
 const AdminDashboard: React.FC = () => {
     const { user, logout } = useAuth();
     const [searchParams, setSearchParams] = useSearchParams();
@@ -168,8 +207,6 @@ const AdminDashboard: React.FC = () => {
     const [filterVerificationStatus, setFilterVerificationStatus] = useState<string>('All'); // Added verification filter
     const [filterFaculty, setFilterFaculty] = useState<string>('All'); // Added faculty filter
     const [viewGroup, setViewGroup] = useState<any>(null); // Re-added viewGroup state
-    const [exportBatch, setExportBatch] = useState<string>(''); // For export filtering (Require selection)
-    const [exportBranch, setExportBranch] = useState<string>('All');
     const [editingFaculty, setEditingFaculty] = useState<any>(null);
     const [showLimitSettings, setShowLimitSettings] = useState(false);
     const [sortOption, setSortOption] = useState<string>('Default'); // Added sort state
@@ -203,6 +240,9 @@ const AdminDashboard: React.FC = () => {
     const [participatingBatches, setParticipatingBatches] = useState<string[]>([]);
     // Subset of participatingBatches whose groups must be single-branch this semester.
     const [branchRestrictedBatches, setBranchRestrictedBatches] = useState<string[]>([]);
+    // Per restricted batch, each branch's "group number" (1/2/3). Branches sharing a number may
+    // form a group together. Default (each branch its own number) = strict single-branch.
+    const [branchClusters, setBranchClusters] = useState<Record<string, Record<string, string>>>({});
     // Default mentorship limits applied to every faculty for the new semester (Group Formation modal).
     const [eventDefaultMaxGroups, setEventDefaultMaxGroups] = useState(7);
     const [eventDefaultMaxStudents, setEventDefaultMaxStudents] = useState(21);
@@ -300,6 +340,13 @@ const AdminDashboard: React.FC = () => {
     const [adminBatchImportErrors, setAdminBatchImportErrors] = useState<{ row: number; message: string }[]>([]);
     const [adminBatchImportSuccess, setAdminBatchImportSuccess] = useState<string | null>(null);
     const [adminEvalSearchQuery, setAdminEvalSearchQuery] = useState('');
+    const [adminEvalBranch, setAdminEvalBranch] = useState<string>('All');
+    // "Export Final Sheet" options modal (Evaluations tab)
+    const [showFinalExportModal, setShowFinalExportModal] = useState(false);
+    const [finalExportBatch, setFinalExportBatch] = useState('');
+    const [finalExportBranch, setFinalExportBranch] = useState('All');
+    const [finalExportPanelRows, setFinalExportPanelRows] = useState(true);
+    const [finalExportGroupInfo, setFinalExportGroupInfo] = useState(true);
 
     const ADMIN_RUBRIC_CONFIG: any = {
         'mid-term': {
@@ -395,6 +442,7 @@ const AdminDashboard: React.FC = () => {
     };
 
     const [isCompleteExporting, setIsCompleteExporting] = useState(false);
+    const [isAllSemestersExporting, setIsAllSemestersExporting] = useState(false);
 
     const handleCompleteExport = async () => {
         setIsCompleteExporting(true);
@@ -478,26 +526,22 @@ const AdminDashboard: React.FC = () => {
                 }
             } catch (e) { console.error('Failed snapshot export'); }
 
-            // e) Panel distribution export — fetch all panels (no batch filter) to avoid missing
-            //    panels whose batchYear doesn't appear in activeBatches
-            const panelBatchesDone = new Set<string>();
+            // e) Panel distribution — the composition sheet (which faculty + groups sit on each
+            //    panel). Always export ALL current panels in one file so it's present regardless of
+            //    how active batches were detected; also add cleaner per-batch breakdowns.
+            try {
+                const res = await api.get('/panels/export', { responseType: 'blob' });
+                if (res.data.type !== 'application/json' && res.data.size > 0) {
+                    zip.file('Panel_Distribution/Panels_All_Batches.xlsx', res.data);
+                }
+            } catch (e) { console.error('Failed panels export (all batches)'); }
             for (const batch of activeBatches) {
                 try {
                     const res = await api.get(`/panels/export?batchYear=${batch}`, { responseType: 'blob' });
                     if (res.data.type !== 'application/json' && res.data.size > 0) {
                         zip.file(`Panel_Distribution/Panel_Distribution_Batch_${batch}.xlsx`, res.data);
-                        panelBatchesDone.add(batch);
                     }
                 } catch (e) { console.error('Failed panels export for batch', batch); }
-            }
-            // Fallback: export all panels at once in case some batches were missed
-            if (panelBatchesDone.size === 0) {
-                try {
-                    const res = await api.get('/panels/export', { responseType: 'blob' });
-                    if (res.data.type !== 'application/json' && res.data.size > 0) {
-                        zip.file('Panel_Distribution/Panels_All_Batches.xlsx', res.data);
-                    }
-                } catch (e) { console.error('Failed panels export (all batches)'); }
             }
 
             // f) Evaluation data export (full marks + grades) per batch
@@ -525,6 +569,100 @@ const AdminDashboard: React.FC = () => {
             alert('Failed to generate complete export.');
         } finally {
             setIsCompleteExporting(false);
+        }
+    };
+
+    // Adds one academic session's export files into `zip` under `prefix`. When `session` is given,
+    // it pulls that archived session's data; otherwise the current live data. Faculty directory and
+    // the all-history snapshot are added once at the ZIP root by the caller, not here.
+    const addSemesterFolderToZip = async (zip: JSZip, prefix: string, batches: string[], session?: string) => {
+        const sParam = session ? `&session=${encodeURIComponent(session)}` : '';
+        const sParam1 = session ? `?session=${encodeURIComponent(session)}` : '';
+
+        // Official IIITNR format — one sheet per batch (contains every student + project).
+        for (const batch of batches) {
+            try {
+                const res = await api.get(`/panels/export-official?batchYear=${batch}${sParam}`, { responseType: 'blob' });
+                if (res.status !== 204 && res.data.type !== 'application/json' && res.data.size > 0) {
+                    const acadEnd = Number(batch) + 4;
+                    zip.file(`${prefix}Official_Format/MINOR_Project_Batch_${batch}-${acadEnd}.xlsx`, res.data);
+                }
+            } catch (e) { console.error('official export failed', prefix, batch); }
+        }
+
+        // Panel distribution (faculty per panel + groups) — all panels of the session in one file.
+        try {
+            const res = await api.get(`/panels/export${sParam1}`, { responseType: 'blob' });
+            if (res.status !== 204 && res.data.type !== 'application/json' && res.data.size > 0) {
+                zip.file(`${prefix}Panel_Distribution/Panels.xlsx`, res.data);
+            }
+        } catch (e) { console.error('panels export failed', prefix); }
+
+        // Evaluation marks + grades — all groups of the session in one file.
+        try {
+            const res = await api.get(`/panels/export-evaluations?evalType=full${sParam}`, { responseType: 'blob' });
+            if (res.status !== 204 && res.data.type !== 'application/json' && res.data.size > 0) {
+                zip.file(`${prefix}Evaluations/Evaluations_Full.xlsx`, res.data);
+            }
+        } catch (e) { console.error('evaluations export failed', prefix); }
+
+        // Student directory — current semester only. For past semesters the roster is captured in
+        // the Official Format sheets (archived users aren't kept as a per-term directory).
+        if (!session) {
+            for (const batch of batches) {
+                try {
+                    const res = await api.get(`/users/students/export?batch=${batch}`, { responseType: 'blob' });
+                    if (res.status !== 204 && res.data.type !== 'application/json' && res.data.size > 0) {
+                        zip.file(`${prefix}Students/Students_Batch_${batch}.xlsx`, res.data);
+                    }
+                } catch (e) { console.error('student export failed', prefix, batch); }
+            }
+        }
+    };
+
+    // Builds one ZIP with a folder per academic session (current + every archived session),
+    // each folder containing that semester's exports.
+    const handleAllSemestersExport = async () => {
+        setIsAllSemestersExporting(true);
+        try {
+            const { data } = await api.get('/admin/export-sessions');
+            const current: { session: string; batches: string[] } = data?.current || { session: 'Current', batches: [] };
+            const archived: { session: string; batches: string[] }[] = Array.isArray(data?.archived) ? data.archived : [];
+
+            const zip = new JSZip();
+            const safe = (s: string) => s.replace(/[\\/:*?"<>|]/g, '-').trim();
+
+            // Current semester folder
+            await addSemesterFolderToZip(zip, `${safe(current.session)} (current)/`, current.batches, undefined);
+            // Past semesters
+            for (const s of archived) {
+                await addSemesterFolderToZip(zip, `${safe(s.session)}/`, s.batches, s.session);
+            }
+
+            // Faculty directory (current) + all-history snapshot — once at the root.
+            try {
+                const res = await api.get('/users/faculty/export', { responseType: 'blob' });
+                if (res.data.type !== 'application/json' && res.data.size > 0) zip.file('Faculty_Directory.xlsx', res.data);
+            } catch { /* ignore */ }
+            try {
+                const res = await api.get('/import/snapshot/export', { responseType: 'blob' });
+                if (res.data.size > 0) zip.file('All_History_Snapshot.json', res.data);
+            } catch { /* ignore */ }
+
+            const blob = await zip.generateAsync({ type: 'blob' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `MINOR_Project_All_Semesters_${new Date().toISOString().split('T')[0]}.zip`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+        } catch (error) {
+            console.error('All-semesters export failed', error);
+            alert('Failed to generate all-semesters export.');
+        } finally {
+            setIsAllSemestersExporting(false);
         }
     };
 
@@ -842,6 +980,20 @@ const AdminDashboard: React.FC = () => {
         }
     };
 
+    // Evaluations tab: narrow each panel's groups to those that include a member of the selected
+    // branch. Filtering on members (not the project) keeps mixed-branch groups visible under any
+    // of their branches. 'All' is a no-op.
+    const adminEvalBranchFiltered = useMemo(() => {
+        if (adminEvalBranch === 'All') return adminEvalPanelGroups;
+        const want = adminEvalBranch.trim().toUpperCase();
+        return adminEvalPanelGroups.map((p: any) => ({
+            ...p,
+            groups: (p.groups || []).filter((g: any) =>
+                (g.members || []).some((m: any) => (m.branch || '').trim().toUpperCase() === want)
+            )
+        }));
+    }, [adminEvalPanelGroups, adminEvalBranch]);
+
     const fetchAdminEvalPanelGroups = async (batch: string, silent = false) => {
         if (!batch) return;
         if (!silent) setAdminEvalLoading(true);
@@ -858,11 +1010,13 @@ const AdminDashboard: React.FC = () => {
     const handleAdminBatchDownload = async (mode: string) => {
         try {
             const dateStr = new Date().toISOString().split('T')[0];
-            const res = await api.get(`/panels/admin-eval-batch-template?batchYear=${adminEvalBatch}&evalType=${adminEvalSubTab}&marksMode=${mode}`, { responseType: 'blob' });
+            const branchParam = adminEvalBranch !== 'All' ? `&branch=${adminEvalBranch}` : '';
+            const branchSuffix = adminEvalBranch !== 'All' ? `_${adminEvalBranch}` : '';
+            const res = await api.get(`/panels/admin-eval-batch-template?batchYear=${adminEvalBatch}&evalType=${adminEvalSubTab}&marksMode=${mode}${branchParam}`, { responseType: 'blob' });
             const url = URL.createObjectURL(new Blob([res.data]));
             const a = document.createElement('a');
             a.href = url;
-            a.download = `Batch_${adminEvalBatch}_${adminEvalSubTab}_AllPanels_Template_${dateStr}.xlsx`;
+            a.download = `Batch_${adminEvalBatch}${branchSuffix}_${adminEvalSubTab}_AllPanels_Template_${dateStr}.xlsx`;
             a.click();
             URL.revokeObjectURL(url);
         } catch {
@@ -895,17 +1049,39 @@ const AdminDashboard: React.FC = () => {
     };
 
     const handleAdminBatchExportFinal = async () => {
+        if (!finalExportBatch) { alert('Please select a batch.'); return; }
         try {
             const dateStr = new Date().toISOString().split('T')[0];
-            const res = await api.get(`/panels/admin-eval-batch-final?batchYear=${adminEvalBatch}&evalType=full`, { responseType: 'blob' });
+            const branchParam = finalExportBranch !== 'All' ? `&branch=${finalExportBranch}` : '';
+            const branchSuffix = finalExportBranch !== 'All' ? `_${finalExportBranch}` : '';
+            const res = await api.get(
+                `/panels/admin-eval-batch-final?batchYear=${finalExportBatch}&evalType=full${branchParam}&panelRows=${finalExportPanelRows}&groupInfo=${finalExportGroupInfo}`,
+                { responseType: 'blob' }
+            );
             const url = URL.createObjectURL(new Blob([res.data]));
             const a = document.createElement('a');
             a.href = url;
-            a.download = `Batch_${adminEvalBatch}_AllPanels_FinalMarks_${dateStr}.xlsx`;
+            a.download = `Batch_${finalExportBatch}${branchSuffix}_FinalMarks_${dateStr}.xlsx`;
+            a.click();
+            URL.revokeObjectURL(url);
+            setShowFinalExportModal(false);
+        } catch {
+            alert('Failed to export batch final sheet.');
+        }
+    };
+
+    const handleDownloadImportTemplate = async () => {
+        try {
+            const type = smartImportTarget === 'faculty' ? 'faculty' : 'student';
+            const res = await api.get(`/users/import-template?type=${type}`, { responseType: 'blob' });
+            const url = URL.createObjectURL(new Blob([res.data]));
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${type}_import_template.xlsx`;
             a.click();
             URL.revokeObjectURL(url);
         } catch {
-            alert('Failed to export batch final sheet.');
+            alert('Failed to download import template.');
         }
     };
 
@@ -1125,17 +1301,18 @@ const AdminDashboard: React.FC = () => {
         return stats;
     };
 
-    const handleExportPanels = async () => {
-        if (!exportBatch || exportBatch === 'All') { alert('Please select a specific batch first.'); return; }
+    const handleExportPanels = async (batchArg?: string) => {
+        const batch = batchArg;
+        if (!batch || batch === 'All') { alert('Please select a specific batch first.'); return; }
         try {
-            const response = await api.get(`/panels/export?batchYear=${exportBatch}`, {
+            const response = await api.get(`/panels/export?batchYear=${batch}`, {
                 responseType: 'blob',
             });
             const url = window.URL.createObjectURL(new Blob([response.data]));
             const link = document.createElement('a');
             link.href = url;
             const dateStr = new Date().toISOString().split('T')[0];
-            link.setAttribute('download', `Panels_Batch_${exportBatch}_${dateStr}.xlsx`);
+            link.setAttribute('download', `Panels_Batch_${batch}_${dateStr}.xlsx`);
             document.body.appendChild(link);
             link.click();
             link.remove();
@@ -1165,85 +1342,6 @@ const AdminDashboard: React.FC = () => {
             alert('Failed to export panels. Please try again.');
         } finally {
             setExportingPanelsFromTab(false);
-        }
-    };
-
-    const handleExportEvaluations = async (type: 'midterm' | 'full') => {
-        if (!exportBatch || exportBatch === 'All') { alert('Please select a specific batch first.'); return; }
-        try {
-            const branchParam = exportBranch && exportBranch !== 'All' ? `&branch=${exportBranch}` : '';
-            const response = await api.get(`/panels/export-evaluations?batchYear=${exportBatch}&evalType=${type}${branchParam}`, {
-                responseType: 'blob',
-            });
-            const url = window.URL.createObjectURL(new Blob([response.data]));
-            const link = document.createElement('a');
-            link.href = url;
-            const dateStr = new Date().toISOString().split('T')[0];
-            const branchSuffix = exportBranch && exportBranch !== 'All' ? `_${exportBranch}` : '';
-            link.setAttribute('download', `Evaluations_${type}_Batch_${exportBatch}${branchSuffix}_${dateStr}.xlsx`);
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
-        } catch (error) {
-            console.error('Export failed', error);
-            alert('Failed to export evaluations');
-        }
-    };
-
-    const handleExportOfficial = async () => {
-        if (!exportBatch || exportBatch === 'All') { alert('Please select a specific batch first.'); return; }
-        try {
-            const response = await api.get(`/panels/export-official?batchYear=${exportBatch}`, {
-                responseType: 'blob',
-            });
-            const url = window.URL.createObjectURL(new Blob([response.data]));
-            const link = document.createElement('a');
-            link.href = url;
-            const acadEnd = Number(exportBatch) + 4;
-            link.setAttribute('download', `MINOR_Project_Batch_${exportBatch}-${acadEnd}.xlsx`);
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
-        } catch (error) {
-            console.error('Official export failed', error);
-            alert('Failed to export official format');
-        }
-    };
-
-    const handleExportStudents = async () => {
-        if (!exportBatch || exportBatch === 'All') { alert('Please select a specific batch first.'); return; }
-        try {
-            const response = await api.get(`/users/students/export?batch=${exportBatch}`, {
-                responseType: 'blob',
-            });
-            const url = window.URL.createObjectURL(new Blob([response.data]));
-            const link = document.createElement('a');
-            link.href = url;
-            const dateStr = new Date().toISOString().split('T')[0];
-            link.setAttribute('download', `Students_Batch_${exportBatch}_${dateStr}.xlsx`);
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
-        } catch (error) {
-            console.error('Export failed', error);
-            alert('Failed to export students');
-        }
-    };
-
-    const handleExportFaculty = async () => {
-        try {
-            const response = await api.get('/users/faculty/export', { responseType: 'blob' });
-            const url = window.URL.createObjectURL(new Blob([response.data]));
-            const link = document.createElement('a');
-            link.href = url;
-            const dateStr = new Date().toISOString().split('T')[0];
-            link.setAttribute('download', `Faculty_${dateStr}.xlsx`);
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
-        } catch (error) {
-            console.error('Faculty export failed', error);
-            alert('Failed to export faculty');
         }
     };
 
@@ -1983,108 +2081,108 @@ const AdminDashboard: React.FC = () => {
 
                                 {activeTab === 'faculty' && (
                                     <div className="space-y-4">
-                                    <button
-                                        onClick={openDefaultLimitsModal}
-                                        className="w-full flex items-center justify-between px-6 py-4 bg-white rounded-xl border border-indigo-200 shadow-sm hover:border-indigo-400 hover:shadow-md transition-all group"
-                                    >
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-9 h-9 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center group-hover:bg-indigo-600 group-hover:text-white transition-colors">
-                                                <Settings className="w-5 h-5" />
+                                        <button
+                                            onClick={openDefaultLimitsModal}
+                                            className="w-full flex items-center justify-between px-6 py-4 bg-white rounded-xl border border-indigo-200 shadow-sm hover:border-indigo-400 hover:shadow-md transition-all group"
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-9 h-9 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                                                    <Settings className="w-5 h-5" />
+                                                </div>
+                                                <div className="text-left">
+                                                    <p className="font-bold text-neutral-900 text-sm">Set Default Mentorship Limit for All Faculty</p>
+                                                    <p className="text-xs text-neutral-500 mt-0.5">Apply a global max-groups and max-students cap to every faculty member instantly.</p>
+                                                </div>
                                             </div>
-                                            <div className="text-left">
-                                                <p className="font-bold text-neutral-900 text-sm">Set Default Mentorship Limit for All Faculty</p>
-                                                <p className="text-xs text-neutral-500 mt-0.5">Apply a global max-groups and max-students cap to every faculty member instantly.</p>
-                                            </div>
-                                        </div>
-                                        <ChevronRight className="w-5 h-5 text-neutral-400 group-hover:text-indigo-600 transition-colors" />
-                                    </button>
-                                    <div className="bg-white rounded-xl border border-neutral-200 shadow-sm overflow-visible">
-                                        <table className="w-full text-left text-sm">
-                                            <thead className="bg-neutral-50 border-b border-neutral-200">
-                                                <tr>
-                                                    <th className="px-6 py-3 font-semibold text-neutral-500">Faculty</th>
-                                                    <th className="px-6 py-3 font-semibold text-neutral-500">Load</th>
-                                                    <th className="px-6 py-3 font-semibold text-neutral-500">Verified</th>
-                                                    <th className="px-6 py-3 font-semibold text-neutral-500 text-right">Actions</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-neutral-100">
-                                                {faculty
-                                                    .filter((f: any) => f.name?.toLowerCase().includes(searchTerm.toLowerCase()) || f.email?.toLowerCase().includes(searchTerm.toLowerCase()))
-                                                    .sort((a: any, b: any) => {
-                                                        if (sortOption === 'Name (A-Z)') return a.name.localeCompare(b.name);
-                                                        if (sortOption === 'Name (Z-A)') return b.name.localeCompare(a.name);
-                                                        if (sortOption === 'Load (High-Low)') return (b.currentGroups || 0) - (a.currentGroups || 0);
-                                                        if (sortOption === 'Load (Low-High)') return (a.currentGroups || 0) - (b.currentGroups || 0);
-                                                        return 0;
-                                                    })
-                                                    .map((f: any) => (
-                                                        <tr key={f._id} className="hover:bg-neutral-50">
-                                                            <td className="px-6 py-4">
-                                                                <div className="flex items-center gap-3">
-                                                                    {f.photoUrl ? (
-                                                                        <img src={f.photoUrl} alt={f.name} className="w-9 h-9 rounded-full object-cover shrink-0 border border-neutral-200" />
-                                                                    ) : (
-                                                                        <div className="w-9 h-9 rounded-full bg-orange-100 text-orange-700 flex items-center justify-center font-bold text-sm shrink-0">
-                                                                            {f.name?.charAt(0) || 'F'}
+                                            <ChevronRight className="w-5 h-5 text-neutral-400 group-hover:text-indigo-600 transition-colors" />
+                                        </button>
+                                        <div className="bg-white rounded-xl border border-neutral-200 shadow-sm overflow-visible">
+                                            <table className="w-full text-left text-sm">
+                                                <thead className="bg-neutral-50 border-b border-neutral-200">
+                                                    <tr>
+                                                        <th className="px-6 py-3 font-semibold text-neutral-500">Faculty</th>
+                                                        <th className="px-6 py-3 font-semibold text-neutral-500">Load</th>
+                                                        <th className="px-6 py-3 font-semibold text-neutral-500">Verified</th>
+                                                        <th className="px-6 py-3 font-semibold text-neutral-500 text-right">Actions</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-neutral-100">
+                                                    {faculty
+                                                        .filter((f: any) => f.name?.toLowerCase().includes(searchTerm.toLowerCase()) || f.email?.toLowerCase().includes(searchTerm.toLowerCase()))
+                                                        .sort((a: any, b: any) => {
+                                                            if (sortOption === 'Name (A-Z)') return a.name.localeCompare(b.name);
+                                                            if (sortOption === 'Name (Z-A)') return b.name.localeCompare(a.name);
+                                                            if (sortOption === 'Load (High-Low)') return (b.currentGroups || 0) - (a.currentGroups || 0);
+                                                            if (sortOption === 'Load (Low-High)') return (a.currentGroups || 0) - (b.currentGroups || 0);
+                                                            return 0;
+                                                        })
+                                                        .map((f: any) => (
+                                                            <tr key={f._id} className="hover:bg-neutral-50">
+                                                                <td className="px-6 py-4">
+                                                                    <div className="flex items-center gap-3">
+                                                                        {f.photoUrl ? (
+                                                                            <img src={f.photoUrl} alt={f.name} className="w-9 h-9 rounded-full object-cover shrink-0 border border-neutral-200" />
+                                                                        ) : (
+                                                                            <div className="w-9 h-9 rounded-full bg-orange-100 text-orange-700 flex items-center justify-center font-bold text-sm shrink-0">
+                                                                                {f.name?.charAt(0) || 'F'}
+                                                                            </div>
+                                                                        )}
+                                                                        <div className="flex flex-col gap-0.5">
+                                                                            <span className="font-semibold text-neutral-900">{f.name}</span>
+                                                                            <span className="text-xs text-neutral-400">{f.email}</span>
+                                                                            {f.department && <span className="text-xs text-neutral-400">{f.department}</span>}
                                                                         </div>
-                                                                    )}
-                                                                    <div className="flex flex-col gap-0.5">
-                                                                        <span className="font-semibold text-neutral-900">{f.name}</span>
-                                                                        <span className="text-xs text-neutral-400">{f.email}</span>
-                                                                        {f.department && <span className="text-xs text-neutral-400">{f.department}</span>}
                                                                     </div>
-                                                                </div>
-                                                            </td>
-                                                            <td className="px-6 py-4">
-                                                                <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold border ${(f.currentGroups || 0) > 0 ? 'bg-indigo-50 text-indigo-700 border-indigo-100' : 'bg-neutral-100 text-neutral-500 border-neutral-200'}`}>
-                                                                    {f.currentGroups || 0} Groups
-                                                                </span>
-                                                            </td>
-                                                            <td className="px-6 py-4">
-                                                                {f.isVerified ? (
-                                                                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-100">
-                                                                        <ShieldCheck className="w-3.5 h-3.5" /> Verified
+                                                                </td>
+                                                                <td className="px-6 py-4">
+                                                                    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold border ${(f.currentGroups || 0) > 0 ? 'bg-indigo-50 text-indigo-700 border-indigo-100' : 'bg-neutral-100 text-neutral-500 border-neutral-200'}`}>
+                                                                        {f.currentGroups || 0} Groups
                                                                     </span>
-                                                                ) : (
-                                                                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-rose-50 text-rose-700 border border-rose-100">
-                                                                        <ShieldOff className="w-3.5 h-3.5" /> Unverified
-                                                                    </span>
-                                                                )}
-                                                            </td>
-                                                            <td className="px-6 py-4 text-right">
-                                                                <div className="flex items-center justify-end gap-2">
-                                                                    <a
-                                                                        href={`mailto:${f.email}`}
-                                                                        className="px-3 py-2 rounded-lg hover:bg-blue-100 text-blue-600 hover:text-blue-700 transition-colors font-medium text-xs flex items-center gap-1.5 border border-blue-200 hover:border-blue-300 cursor-pointer"
-                                                                        title="Send email"
-                                                                    >
-                                                                        <Mail className="w-4 h-4" /> Mail
-                                                                    </a>
-                                                                    <button
-                                                                        onClick={() => handleToggleFacultyVerification(f)}
-                                                                        className={`p-1.5 rounded-lg transition-colors ${f.isVerified ? 'hover:bg-rose-50 text-neutral-400 hover:text-rose-600' : 'hover:bg-emerald-50 text-neutral-400 hover:text-emerald-600'}`}
-                                                                        title={f.isVerified ? 'Revoke verification' : 'Verify faculty'}
-                                                                    >
-                                                                        {f.isVerified ? <UserX className="w-4 h-4" /> : <UserCheck className="w-4 h-4" />}
-                                                                    </button>
-                                                                    <button
-                                                                        onClick={() => handleEditFaculty(f)}
-                                                                        className="px-3 py-2 rounded-lg bg-neutral-900 text-white hover:bg-neutral-800 transition-colors font-medium text-xs flex items-center gap-1.5 shadow-sm"
-                                                                        title="Settings"
-                                                                    >
-                                                                        <Settings className="w-3.5 h-3.5" /> Manage
-                                                                    </button>
-                                                                </div>
-                                                            </td>
-                                                        </tr>
-                                                    ))}
-                                                {faculty.length === 0 && (
-                                                    <tr><td colSpan={4} className="px-6 py-8 text-center text-neutral-400">No faculty found.</td></tr>
-                                                )}
-                                            </tbody>
-                                        </table>
-                                    </div>
+                                                                </td>
+                                                                <td className="px-6 py-4">
+                                                                    {f.isVerified ? (
+                                                                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-100">
+                                                                            <ShieldCheck className="w-3.5 h-3.5" /> Verified
+                                                                        </span>
+                                                                    ) : (
+                                                                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-rose-50 text-rose-700 border border-rose-100">
+                                                                            <ShieldOff className="w-3.5 h-3.5" /> Unverified
+                                                                        </span>
+                                                                    )}
+                                                                </td>
+                                                                <td className="px-6 py-4 text-right">
+                                                                    <div className="flex items-center justify-end gap-2">
+                                                                        <a
+                                                                            href={`mailto:${f.email}`}
+                                                                            className="px-3 py-2 rounded-lg hover:bg-blue-100 text-blue-600 hover:text-blue-700 transition-colors font-medium text-xs flex items-center gap-1.5 border border-blue-200 hover:border-blue-300 cursor-pointer"
+                                                                            title="Send email"
+                                                                        >
+                                                                            <Mail className="w-4 h-4" /> Mail
+                                                                        </a>
+                                                                        <button
+                                                                            onClick={() => handleToggleFacultyVerification(f)}
+                                                                            className={`p-1.5 rounded-lg transition-colors ${f.isVerified ? 'hover:bg-rose-50 text-neutral-400 hover:text-rose-600' : 'hover:bg-emerald-50 text-neutral-400 hover:text-emerald-600'}`}
+                                                                            title={f.isVerified ? 'Revoke verification' : 'Verify faculty'}
+                                                                        >
+                                                                            {f.isVerified ? <UserX className="w-4 h-4" /> : <UserCheck className="w-4 h-4" />}
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => handleEditFaculty(f)}
+                                                                            className="px-3 py-2 rounded-lg bg-neutral-900 text-white hover:bg-neutral-800 transition-colors font-medium text-xs flex items-center gap-1.5 shadow-sm"
+                                                                            title="Settings"
+                                                                        >
+                                                                            <Settings className="w-3.5 h-3.5" /> Manage
+                                                                        </button>
+                                                                    </div>
+                                                                </td>
+                                                            </tr>
+                                                        ))}
+                                                    {faculty.length === 0 && (
+                                                        <tr><td colSpan={4} className="px-6 py-8 text-center text-neutral-400">No faculty found.</td></tr>
+                                                    )}
+                                                </tbody>
+                                            </table>
+                                        </div>
                                     </div>
                                 )}
 
@@ -2615,6 +2713,14 @@ const AdminDashboard: React.FC = () => {
                                                                                         ? ev.branchRestrictedBatches.map(String)
                                                                                         : (ev.branchRestricted ? evPbs : [])
                                                                                 );
+                                                                                // Rehydrate the per-batch branch clustering for editing.
+                                                                                const loadedClusters: Record<string, Record<string, string>> = {};
+                                                                                if (Array.isArray(ev.branchRestrictionGroups)) {
+                                                                                    ev.branchRestrictionGroups.forEach((g: any) => {
+                                                                                        if (g && g.batch) loadedClusters[String(g.batch)] = clustersToBranchAssignment(g.clusters || []);
+                                                                                    });
+                                                                                }
+                                                                                setBranchClusters(loadedClusters);
                                                                                 if (typeof ev.defaultMaxGroups === 'number') setEventDefaultMaxGroups(ev.defaultMaxGroups);
                                                                                 if (typeof ev.defaultMaxStudents === 'number') setEventDefaultMaxStudents(ev.defaultMaxStudents);
                                                                                 setRubricMode('builder');
@@ -2730,225 +2836,11 @@ const AdminDashboard: React.FC = () => {
                                 {activeTab === 'exports' && (
                                     <div className="max-w-3xl mx-auto space-y-6">
 
-                                        {/* ── Evaluation Exports Divider ──────────────────────── */}
-                                        <div className="flex items-center gap-4">
-                                            <div className="flex-1 h-px bg-neutral-200" />
-                                            <span className="text-xs font-bold text-neutral-400 uppercase tracking-widest">Evaluation Exports</span>
-                                            <div className="flex-1 h-px bg-neutral-200" />
-                                        </div>
-
-                                        {/* Evaluation Panels Export */}
-                                        <div className="bg-white rounded-2xl border border-neutral-200 p-6 flex items-center justify-between shadow-sm">
-                                            <div className="flex items-center gap-4">
-                                                <div className="h-12 w-12 bg-orange-50 rounded-xl flex items-center justify-center text-orange-600">
-                                                    <Users className="w-6 h-6" />
-                                                </div>
-                                                <div>
-                                                    <h3 className="text-lg font-bold text-neutral-900">Evaluation Panels Export</h3>
-                                                    <p className="text-sm text-neutral-500">Export panels, faculty, and group mapping (Blank Template).</p>
-                                                </div>
-                                            </div>
-                                            <div className="flex items-center gap-3">
-                                                <select
-                                                    value={exportBatch}
-                                                    onChange={(e) => setExportBatch(e.target.value)}
-                                                    className="px-3 py-2 bg-neutral-50 rounded-lg border border-neutral-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-orange-500/20"
-                                                >
-                                                    <option value="">Select Batch</option>
-                                                    {participatingBatchYears.map(year => (
-                                                        <option key={year} value={year}>{year}-{parseInt(year) + 4}</option>
-                                                    ))}
-                                                </select>
-                                                <button
-                                                    onClick={handleExportPanels}
-                                                    className="px-6 py-2 bg-neutral-900 text-white rounded-lg font-medium hover:bg-neutral-800 transition-colors flex items-center gap-2"
-                                                >
-                                                    <Download className="w-4 h-4" /> Export Excel
-                                                </button>
-                                            </div>
-                                        </div>
-
-                                        {/* Evaluation Data Export */}
-                                        <div className="bg-white rounded-2xl border border-neutral-200 p-6 flex flex-col gap-6 shadow-sm">
-                                            <div className="flex items-center justify-between">
-                                                <div className="flex items-center gap-4">
-                                                    <div className="h-12 w-12 bg-blue-50 rounded-xl flex items-center justify-center text-blue-600">
-                                                        <FileText className="w-6 h-6" />
-                                                    </div>
-                                                    <div>
-                                                        <h3 className="text-lg font-bold text-neutral-900">Evaluation Data Export</h3>
-                                                        <p className="text-sm text-neutral-500">Export evaluation marks and grades for each group.</p>
-                                                    </div>
-                                                </div>
-                                                <div className="flex items-center gap-2">
-                                                    <select
-                                                        value={exportBranch}
-                                                        onChange={(e) => setExportBranch(e.target.value)}
-                                                        className="px-3 py-1.5 bg-neutral-50 rounded-lg border border-neutral-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                                                    >
-                                                        <option value="All">All Branches</option>
-                                                        <option value="CSE">CSE</option>
-                                                        <option value="ECE">ECE</option>
-                                                        <option value="DSAI">DSAI</option>
-                                                    </select>
-                                                    <select
-                                                        value={exportBatch}
-                                                        onChange={(e) => setExportBatch(e.target.value)}
-                                                        className="px-3 py-1.5 bg-neutral-50 rounded-lg border border-neutral-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                                                    >
-                                                        <option value="">Select Batch</option>
-                                                        {participatingBatchYears.map(year => (
-                                                            <option key={year} value={year}>{year}-{parseInt(year) + 4}</option>
-                                                        ))}
-                                                    </select>
-                                                </div>
-                                            </div>
-
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                <button
-                                                    onClick={() => handleExportEvaluations('midterm')}
-                                                    className="flex items-center justify-center gap-3 p-4 border border-neutral-200 rounded-xl hover:bg-neutral-50 transition-colors group"
-                                                >
-                                                    <div className="h-10 w-10 bg-blue-50 rounded-lg flex items-center justify-center text-blue-600 group-hover:scale-110 transition-transform">
-                                                        <Download className="w-5 h-5" />
-                                                    </div>
-                                                    <div className="text-left">
-                                                        <div className="font-bold text-neutral-900">Midterm Evaluation</div>
-                                                        <div className="text-xs text-neutral-500">Only midterm marks populated</div>
-                                                    </div>
-                                                </button>
-
-                                                <button
-                                                    onClick={() => handleExportEvaluations('full')}
-                                                    className="flex items-center justify-center gap-3 p-4 border border-blue-200 bg-blue-50/30 rounded-xl hover:bg-blue-50 transition-colors group"
-                                                >
-                                                    <div className="h-10 w-10 bg-blue-600 rounded-lg flex items-center justify-center text-white group-hover:scale-110 transition-transform shadow-md shadow-blue-200">
-                                                        <Download className="w-5 h-5" />
-                                                    </div>
-                                                    <div className="text-left">
-                                                        <div className="font-bold text-neutral-900">Midterm + Endterm</div>
-                                                        <div className="text-xs text-neutral-500">Combined evaluation data</div>
-                                                    </div>
-                                                </button>
-                                            </div>
-                                        </div>
-
-                                        {/* ── General Exports Divider ─────────────────────────── */}
+                                        {/* ── Exports Divider ─────────────────────────────────── */}
                                         <div className="flex items-center gap-4 py-2">
                                             <div className="flex-1 h-px bg-neutral-200" />
-                                            <span className="text-xs font-bold text-neutral-400 uppercase tracking-widest">General Exports</span>
+                                            <span className="text-xs font-bold text-neutral-400 uppercase tracking-widest">Exports</span>
                                             <div className="flex-1 h-px bg-neutral-200" />
-                                        </div>
-
-
-                                        <div className="bg-white rounded-2xl border border-neutral-200 p-6 flex items-center justify-between shadow-sm">
-                                            <div className="flex items-center gap-4">
-                                                <div className="h-12 w-12 bg-emerald-50 rounded-xl flex items-center justify-center text-emerald-600">
-                                                    <Users className="w-6 h-6" />
-                                                </div>
-                                                <div>
-                                                    <h3 className="text-lg font-bold text-neutral-900">Student Directory Export</h3>
-                                                    <p className="text-sm text-neutral-500">Export student list, roll numbers, and group status.</p>
-                                                </div>
-                                            </div>
-                                            <div className="flex items-center gap-3">
-                                                <select
-                                                    value={exportBatch}
-                                                    onChange={(e) => setExportBatch(e.target.value)}
-                                                    className="px-3 py-2 bg-neutral-50 rounded-lg border border-neutral-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                                                >
-                                                    <option value="">Select Batch</option>
-                                                    {participatingBatchYears.map(year => (
-                                                        <option key={year} value={year}>{year}-{parseInt(year) + 4}</option>
-                                                    ))}
-                                                </select>
-                                                <button
-                                                    onClick={handleExportStudents}
-                                                    className="px-6 py-2 bg-neutral-900 text-white rounded-lg font-medium hover:bg-neutral-800 transition-colors flex items-center gap-2"
-                                                >
-                                                    <Download className="w-4 h-4" /> Export Excel
-                                                </button>
-                                            </div>
-                                        </div>
-
-                                        {/* ── Faculty Export ─────────────────────────────────── */}
-                                        <div className="bg-white rounded-2xl border border-neutral-200 p-6 flex items-center justify-between shadow-sm">
-                                            <div className="flex items-center gap-4">
-                                                <div className="h-12 w-12 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600">
-                                                    <Users className="w-6 h-6" />
-                                                </div>
-                                                <div>
-                                                    <h3 className="text-lg font-bold text-neutral-900">Faculty Directory Export</h3>
-                                                    <p className="text-sm text-neutral-500">Export faculty list with department, limits, and account status.</p>
-                                                </div>
-                                            </div>
-                                            <button
-                                                onClick={handleExportFaculty}
-                                                className="px-6 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition-colors flex items-center gap-2"
-                                            >
-                                                <Download className="w-4 h-4" /> Export Excel
-                                            </button>
-                                        </div>
-
-                                        {/* ── Snapshot Export ──────────────────────────────────── */}
-                                        {/* Official IIITNR Format Export — 5th position */}
-                                        <div className="bg-white rounded-2xl border border-emerald-200 p-6 flex items-center justify-between shadow-sm">
-                                            <div className="flex items-center gap-4">
-                                                <div className="h-12 w-12 bg-emerald-50 rounded-xl flex items-center justify-center text-emerald-600">
-                                                    <FileText className="w-6 h-6" />
-                                                </div>
-                                                <div>
-                                                    <h3 className="text-lg font-bold text-neutral-900">Official IIITNR Format Export</h3>
-                                                    <p className="text-sm text-neutral-500">Export in the exact format of the official MINOR Project Excel sheet (K, Name, Roll No, Dept, Title, Area, Supervisor).</p>
-                                                </div>
-                                            </div>
-                                            <div className="flex items-center gap-3">
-                                                <select
-                                                    value={exportBatch}
-                                                    onChange={(e) => setExportBatch(e.target.value)}
-                                                    className="px-3 py-2 bg-neutral-50 rounded-lg border border-neutral-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                                                >
-                                                    <option value="">Select Batch</option>
-                                                    {participatingBatchYears.map(year => (
-                                                        <option key={year} value={year}>{year}-{parseInt(year) + 4}</option>
-                                                    ))}
-                                                </select>
-                                                <button
-                                                    onClick={handleExportOfficial}
-                                                    className="px-6 py-2 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 transition-colors flex items-center gap-2"
-                                                >
-                                                    <Download className="w-4 h-4" /> Export Excel
-                                                </button>
-                                            </div>
-                                        </div>
-
-                                        {/* ── Snapshot Export ──────────────────────────────────── */}
-                                        <div className="bg-white rounded-2xl border border-neutral-200 p-6 flex items-center justify-between shadow-sm">
-                                            <div className="flex items-center gap-4">
-                                                <div className="h-12 w-12 bg-violet-50 rounded-xl flex items-center justify-center text-violet-600">
-                                                    <Download className="w-6 h-6" />
-                                                </div>
-                                                <div>
-                                                    <h3 className="text-lg font-bold text-neutral-900">Evaluations &amp; Projects Snapshot</h3>
-                                                    <p className="text-sm text-neutral-500">Archives only <strong>evaluations and project data</strong> from completed semesters as a portable JSON file. Does not include users, groups, or panels.</p>
-                                                </div>
-                                            </div>
-                                            <button
-                                                onClick={async () => {
-                                                    try {
-                                                        const res = await api.get('/import/snapshot/export', { responseType: 'blob' });
-                                                        const url = URL.createObjectURL(new Blob([res.data]));
-                                                        const a = document.createElement('a');
-                                                        a.href = url;
-                                                        a.download = `snapshot_${new Date().toISOString().slice(0, 10)}.json`;
-                                                        a.click();
-                                                        URL.revokeObjectURL(url);
-                                                    } catch { alert('Snapshot export failed'); }
-                                                }}
-                                                className="px-6 py-2 bg-violet-600 text-white rounded-lg font-medium hover:bg-violet-700 transition-colors flex items-center gap-2"
-                                            >
-                                                <Download className="w-4 h-4" /> Export Snapshot
-                                            </button>
                                         </div>
 
                                         {/* ── Complete Export ──────────────────────────────────────── */}
@@ -2961,9 +2853,9 @@ const AdminDashboard: React.FC = () => {
                                                     <Download className="w-7 h-7" />
                                                 </div>
                                                 <div className="flex-1">
-                                                    <h3 className="text-xl font-black text-indigo-950">Complete Database Export</h3>
-                                                    <p className="text-sm text-indigo-700 font-medium">Download everything in one ZIP file.</p>
-                                                    <p className="text-xs text-neutral-500 mt-1">Includes Students, Faculty, Official Formats, Snapshots, and Panel Distributions for all active batches.</p>
+                                                    <h3 className="text-xl font-black text-indigo-950">Complete Export — This Semester</h3>
+                                                    <p className="text-sm text-indigo-700 font-medium">Everything for the active semester in one ZIP.</p>
+                                                    <p className="text-xs text-neutral-500 mt-1">Bundles the active semester's students, faculty, official-format sheets, panel distribution (which faculty sit on each panel), and evaluation marks, plus an all-history projects &amp; evaluations snapshot.</p>
                                                 </div>
                                             </div>
                                             <button
@@ -2978,6 +2870,35 @@ const AdminDashboard: React.FC = () => {
                                                 )}
                                             </button>
                                         </div>
+
+                                        {/* ── All-Semesters Export ──────────────────────────────────── */}
+                                        <div className="bg-white rounded-2xl border-2 border-violet-200 p-6 flex flex-col md:flex-row items-center justify-between shadow-md relative overflow-hidden">
+                                            <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
+                                                <ArchiveIcon className="w-24 h-24 text-violet-900" />
+                                            </div>
+                                            <div className="flex items-center gap-4 relative z-10 w-full mb-4 md:mb-0">
+                                                <div className="h-14 w-14 bg-violet-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-violet-200 shrink-0">
+                                                    <ArchiveIcon className="w-7 h-7" />
+                                                </div>
+                                                <div className="flex-1">
+                                                    <h3 className="text-xl font-black text-violet-950">Complete Export — All Semesters</h3>
+                                                    <p className="text-sm text-violet-700 font-medium">Full history: one folder per academic session.</p>
+                                                    <p className="text-xs text-neutral-500 mt-1">A ZIP with a folder for the current semester and each archived session in the database — official-format sheets, panel distribution, and evaluation marks per term. (Student/faculty directories are bundled for the current term; past-term rosters are inside the official-format sheets.)</p>
+                                                </div>
+                                            </div>
+                                            <button
+                                                onClick={handleAllSemestersExport}
+                                                disabled={isAllSemestersExporting}
+                                                className="w-full md:w-auto px-6 py-3 bg-violet-600 text-white rounded-xl font-bold hover:bg-violet-700 transition-all shadow-lg shadow-violet-200 flex items-center justify-center gap-2 relative z-10 shrink-0 whitespace-nowrap disabled:opacity-75 disabled:cursor-not-allowed"
+                                            >
+                                                {isAllSemestersExporting ? (
+                                                    <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Compiling history…</>
+                                                ) : (
+                                                    <><Download className="w-5 h-5" /> Download All</>
+                                                )}
+                                            </button>
+                                        </div>
+
 
                                         {/* ── Divider ──────────────────────────────────────────── */}
                                         <div className="flex items-center gap-4 py-2">
@@ -3078,34 +2999,52 @@ const AdminDashboard: React.FC = () => {
 
                                 {activeTab === 'evaluations' && (
                                     <div className="space-y-6 pb-20">
-                                        {/* Batch selector + sub-tabs row */}
-                                        <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-                                            <div className="flex items-center gap-3">
-                                                <label className="text-xs font-semibold text-neutral-500 uppercase tracking-wide whitespace-nowrap">Filter by batch</label>
-                                                <select
-                                                    value={adminEvalBatch}
-                                                    onChange={(e) => setAdminEvalBatch(e.target.value)}
-                                                    className="px-3 py-2 bg-white rounded-xl border border-neutral-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer hover:border-indigo-300 transition-colors"
-                                                >
-                                                    <option value="">Select batch…</option>
-                                                    {participatingBatchYears.map(year => (
-                                                        <option key={year} value={year}>{year}–{parseInt(year) + 4}</option>
-                                                    ))}
-                                                </select>
+                                        {/* Filters & evaluation phase — one tidy bar with clear labels */}
+                                        <div className="flex flex-col lg:flex-row lg:items-end gap-x-6 gap-y-4 bg-white rounded-2xl border border-neutral-200 p-4 shadow-sm">
+                                            <div className="flex flex-wrap items-end gap-4 mr-auto">
+                                                <div className="flex flex-col gap-1.5">
+                                                    <label className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider">Batch</label>
+                                                    <select
+                                                        value={adminEvalBatch}
+                                                        onChange={(e) => setAdminEvalBatch(e.target.value)}
+                                                        className="px-3 py-2 bg-neutral-50 rounded-lg border border-neutral-200 text-sm font-semibold text-neutral-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer hover:border-indigo-300 transition-colors min-w-[150px]"
+                                                    >
+                                                        <option value="">Select batch…</option>
+                                                        {participatingBatchYears.map(year => (
+                                                            <option key={year} value={year}>{year}–{parseInt(year) + 4}</option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                                <div className="flex flex-col gap-1.5">
+                                                    <label className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider">Branch</label>
+                                                    <select
+                                                        value={adminEvalBranch}
+                                                        onChange={(e) => setAdminEvalBranch(e.target.value)}
+                                                        className="px-3 py-2 bg-neutral-50 rounded-lg border border-neutral-200 text-sm font-semibold text-neutral-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer hover:border-indigo-300 transition-colors min-w-[130px]"
+                                                    >
+                                                        <option value="All">All branches</option>
+                                                        <option value="CSE">CSE</option>
+                                                        <option value="DSAI">DSAI</option>
+                                                        <option value="ECE">ECE</option>
+                                                    </select>
+                                                </div>
                                             </div>
-                                            <div className="flex gap-1 bg-white rounded-xl border border-neutral-200 p-1 w-fit shadow-sm">
-                                                <button
-                                                    onClick={() => setAdminEvalSubTab('mid-term')}
-                                                    className={`px-4 py-1.5 rounded-lg font-bold text-sm transition-colors ${adminEvalSubTab === 'mid-term' ? 'bg-indigo-600 text-white shadow-sm' : 'text-neutral-600 hover:bg-neutral-100'}`}
-                                                >
-                                                    Mid-Term Eval
-                                                </button>
-                                                <button
-                                                    onClick={() => setAdminEvalSubTab('end-term')}
-                                                    className={`px-4 py-1.5 rounded-lg font-bold text-sm transition-colors ${adminEvalSubTab === 'end-term' ? 'bg-indigo-600 text-white shadow-sm' : 'text-neutral-600 hover:bg-neutral-100'}`}
-                                                >
-                                                    End-Term Eval
-                                                </button>
+                                            <div className="flex flex-col gap-1.5">
+                                                <label className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider">Evaluation phase</label>
+                                                <div className="flex gap-1 bg-neutral-100 rounded-lg p-1 w-fit">
+                                                    <button
+                                                        onClick={() => setAdminEvalSubTab('mid-term')}
+                                                        className={`px-4 py-1.5 rounded-md font-bold text-sm transition-colors ${adminEvalSubTab === 'mid-term' ? 'bg-indigo-600 text-white shadow-sm' : 'text-neutral-600 hover:bg-white'}`}
+                                                    >
+                                                        Mid-Term
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setAdminEvalSubTab('end-term')}
+                                                        className={`px-4 py-1.5 rounded-md font-bold text-sm transition-colors ${adminEvalSubTab === 'end-term' ? 'bg-indigo-600 text-white shadow-sm' : 'text-neutral-600 hover:bg-white'}`}
+                                                    >
+                                                        End-Term
+                                                    </button>
+                                                </div>
                                             </div>
                                         </div>
 
@@ -3122,7 +3061,7 @@ const AdminDashboard: React.FC = () => {
                                             <div className="text-center py-20">
                                                 <div className="w-8 h-8 border-2 border-indigo-300 border-t-indigo-600 rounded-full animate-spin mx-auto" />
                                             </div>
-                                        ) : adminEvalPanelGroups.filter((p: any) => p.groups.length > 0).length === 0 ? (
+                                        ) : adminEvalBranchFiltered.filter((p: any) => p.groups.length > 0).length === 0 ? (
                                             <div className="text-center py-20 bg-white rounded-3xl border border-neutral-200">
                                                 <FileText className="w-8 h-8 text-neutral-300 mx-auto mb-4" />
                                                 <h3 className="text-lg font-bold text-neutral-900 mb-2">No Evaluation Room Configured</h3>
@@ -3130,10 +3069,29 @@ const AdminDashboard: React.FC = () => {
                                             </div>
                                         ) : (
                                             <div className="space-y-5">
+                                                {/* Panel allocation (composition only) — sits under the filters, before the list */}
+                                                <div className="flex flex-col sm:flex-row sm:items-center gap-3 p-4 bg-white rounded-2xl border border-neutral-200 shadow-sm">
+                                                    <div className="flex items-center gap-3 mr-auto">
+                                                        <div className="h-9 w-9 bg-orange-50 rounded-lg flex items-center justify-center text-orange-600 shrink-0">
+                                                            <Users className="w-4 h-4" />
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-sm font-bold text-neutral-800">Panel Allocation</p>
+                                                            <p className="text-[11px] text-neutral-500">Which faculty &amp; groups sit on each panel. Useful for emailing.</p>
+                                                        </div>
+                                                    </div>
+                                                    <button
+                                                        onClick={() => handleExportPanels(adminEvalBatch)}
+                                                        className="flex items-center gap-2 px-4 py-2 bg-white border border-orange-200 text-orange-700 rounded-lg text-xs font-bold hover:bg-orange-50 transition-colors shadow-sm shrink-0"
+                                                    >
+                                                        <Download className="w-3.5 h-3.5" /> Export Panels
+                                                    </button>
+                                                </div>
+
                                                 {/* Context bar: eval type title + counter + search */}
                                                 {(() => {
-                                                    const total = adminEvalPanelGroups.reduce((s: number, p: any) => s + p.groups.length, 0);
-                                                    const evaled = adminEvalPanelGroups.reduce((s: number, p: any) =>
+                                                    const total = adminEvalBranchFiltered.reduce((s: number, p: any) => s + p.groups.length, 0);
+                                                    const evaled = adminEvalBranchFiltered.reduce((s: number, p: any) =>
                                                         s + p.groups.filter((g: any) =>
                                                             (g.project?.studentEvaluations || []).some((e: any) =>
                                                                 e.evalType === adminEvalSubTab && (e.marks ?? 0) > 0
@@ -3171,50 +3129,62 @@ const AdminDashboard: React.FC = () => {
                                                     );
                                                 })()}
 
-                                                {/* Single batch toolbar */}
-                                                <div className="flex flex-col sm:flex-row sm:items-center gap-3 p-4 bg-indigo-50/50 border border-indigo-100 rounded-2xl">
-                                                    <div className="flex items-center gap-3 mr-auto flex-wrap">
-                                                        <span className="text-xs font-bold text-indigo-700 uppercase tracking-wider">EVALUATIONS</span>
-                                                        <div className="flex items-center gap-2 border-l border-indigo-200 pl-3">
-                                                            <button
-                                                                onClick={() => setAdminEvalManualMarksMode(!adminEvalManualMarksMode)}
-                                                                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${adminEvalManualMarksMode ? 'bg-indigo-600' : 'bg-neutral-300'}`}
-                                                            >
-                                                                <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${adminEvalManualMarksMode ? 'translate-x-4.5' : 'translate-x-1'}`} />
-                                                            </button>
-                                                            <span className="text-[10px] font-bold text-neutral-600 select-none cursor-pointer uppercase tracking-wider" onClick={() => setAdminEvalManualMarksMode(!adminEvalManualMarksMode)}>
-                                                                {adminEvalManualMarksMode ? 'Direct Mode' : 'Rubric Mode'}
-                                                            </span>
+                                                {/* Actions — marks templates / upload / final sheet */}
+                                                <div className="bg-white rounded-2xl border border-neutral-200 shadow-sm">
+                                                    {/* Marks entry */}
+                                                    <div className="flex flex-col lg:flex-row lg:items-center gap-3 p-4">
+                                                        <div className="flex items-center gap-3 mr-auto">
+                                                            <span className="text-xs font-bold text-neutral-500 uppercase tracking-wider">Marks entry</span>
+                                                            <div className="flex gap-1 bg-neutral-100 rounded-lg p-1">
+                                                                <button
+                                                                    onClick={() => setAdminEvalManualMarksMode(false)}
+                                                                    className={`px-3 py-1 rounded-md text-xs font-bold transition-colors ${!adminEvalManualMarksMode ? 'bg-indigo-600 text-white shadow-sm' : 'text-neutral-600 hover:bg-white'}`}
+                                                                >
+                                                                    Rubric
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => setAdminEvalManualMarksMode(true)}
+                                                                    className={`px-3 py-1 rounded-md text-xs font-bold transition-colors ${adminEvalManualMarksMode ? 'bg-indigo-600 text-white shadow-sm' : 'text-neutral-600 hover:bg-white'}`}
+                                                                >
+                                                                    Direct
+                                                                </button>
+                                                            </div>
                                                         </div>
-                                                    </div>
-                                                    <div className="flex flex-wrap items-center gap-3">
-                                                        <button
-                                                            onClick={() => handleAdminBatchDownload(adminEvalManualMarksMode ? 'direct' : 'rubric')}
-                                                            className="flex items-center gap-2 px-4 py-2 bg-white border border-indigo-200 text-indigo-700 rounded-lg text-xs font-bold hover:bg-indigo-50 transition-colors shadow-sm"
-                                                        >
-                                                            <Download className="w-3.5 h-3.5" /> Download All Templates
-                                                        </button>
-                                                        <label className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold cursor-pointer shadow-sm transition-colors ${adminBatchImporting ? 'bg-neutral-100 text-neutral-400 border border-neutral-200' : 'bg-white border border-emerald-200 text-emerald-700 hover:bg-emerald-50'}`}>
-                                                            <Upload className="w-3.5 h-3.5" />
-                                                            {adminBatchImporting ? 'Uploading…' : 'Upload All Evaluations'}
-                                                            <input
-                                                                type="file"
-                                                                accept=".xlsx"
-                                                                className="hidden"
-                                                                disabled={adminBatchImporting}
-                                                                onChange={(e) => {
-                                                                    const f = e.target.files?.[0];
-                                                                    if (f) handleAdminBatchImport(f, adminEvalManualMarksMode ? 'direct' : 'rubric');
-                                                                    e.target.value = '';
+                                                        <div className="flex flex-wrap items-center gap-2">
+                                                            <button
+                                                                onClick={() => handleAdminBatchDownload(adminEvalManualMarksMode ? 'direct' : 'rubric')}
+                                                                className="flex items-center gap-2 px-4 py-2 bg-white border border-indigo-200 text-indigo-700 rounded-lg text-xs font-bold hover:bg-indigo-50 transition-colors shadow-sm"
+                                                            >
+                                                                <Download className="w-3.5 h-3.5" /> Download Templates
+                                                            </button>
+                                                            <label className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold cursor-pointer shadow-sm transition-colors ${adminBatchImporting ? 'bg-neutral-100 text-neutral-400 border border-neutral-200' : 'bg-white border border-emerald-200 text-emerald-700 hover:bg-emerald-50'}`}>
+                                                                <Upload className="w-3.5 h-3.5" />
+                                                                {adminBatchImporting ? 'Uploading…' : 'Upload Evaluations'}
+                                                                <input
+                                                                    type="file"
+                                                                    accept=".xlsx"
+                                                                    className="hidden"
+                                                                    disabled={adminBatchImporting}
+                                                                    onChange={(e) => {
+                                                                        const f = e.target.files?.[0];
+                                                                        if (f) handleAdminBatchImport(f, adminEvalManualMarksMode ? 'direct' : 'rubric');
+                                                                        e.target.value = '';
+                                                                    }}
+                                                                />
+                                                            </label>
+                                                            <button
+                                                                onClick={() => {
+                                                                    setFinalExportBatch(adminEvalBatch);
+                                                                    setFinalExportBranch(adminEvalBranch);
+                                                                    setFinalExportPanelRows(true);
+                                                                    setFinalExportGroupInfo(true);
+                                                                    setShowFinalExportModal(true);
                                                                 }}
-                                                            />
-                                                        </label>
-                                                        <button
-                                                            onClick={handleAdminBatchExportFinal}
-                                                            className="flex items-center gap-2 px-4 py-2 bg-white border border-amber-200 text-amber-700 rounded-lg text-xs font-bold hover:bg-amber-50 transition-colors shadow-sm"
-                                                        >
-                                                            <FileText className="w-3.5 h-3.5" /> Export Final Sheet
-                                                        </button>
+                                                                className="flex items-center gap-2 px-4 py-2 bg-white border border-amber-200 text-amber-700 rounded-lg text-xs font-bold hover:bg-amber-50 transition-colors shadow-sm"
+                                                            >
+                                                                <FileText className="w-3.5 h-3.5" /> Export Final Sheet
+                                                            </button>
+                                                        </div>
                                                     </div>
                                                 </div>
 
@@ -3238,7 +3208,7 @@ const AdminDashboard: React.FC = () => {
                                                 )}
 
                                                 {/* Panel sections */}
-                                                {adminEvalPanelGroups.map((pData: any, idx: number) => {
+                                                {adminEvalBranchFiltered.map((pData: any, idx: number) => {
                                                     const searchQ = adminEvalSearchQuery.toLowerCase().trim();
                                                     const visibleGroups = searchQ
                                                         ? pData.groups.filter((g: any) => {
@@ -4096,12 +4066,36 @@ const AdminDashboard: React.FC = () => {
                                         </button>
                                     </div>
                                 </>)}
-                                {editingUser.role === 'Faculty' && (
+                                {editingUser.role === 'Faculty' && (<>
                                     <div className="flex flex-col gap-1">
                                         <label className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Department</label>
                                         <input className="border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" value={editUserForm.department} onChange={e => setEditUserForm((f: any) => ({ ...f, department: e.target.value }))} />
                                     </div>
-                                )}
+                                    <div className="flex flex-col gap-1">
+                                        <label className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Branches mentored</label>
+                                        <p className="text-[11px] text-neutral-400">Students only see faculty whose branches include theirs. Select none to stay visible to every branch.</p>
+                                        <div className="flex gap-2 mt-1">
+                                            {BRANCH_CODES.map(br => {
+                                                const set = new Set(String(editUserForm.branch || '').split(',').map((s: string) => s.trim().toUpperCase()).filter(Boolean));
+                                                const active = set.has(br);
+                                                return (
+                                                    <button
+                                                        key={br}
+                                                        type="button"
+                                                        onClick={() => {
+                                                            const next = new Set(set);
+                                                            if (active) next.delete(br); else next.add(br);
+                                                            setEditUserForm((f: any) => ({ ...f, branch: Array.from(next).join(',') }));
+                                                        }}
+                                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors ${active ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-neutral-600 border-neutral-300 hover:border-indigo-300'}`}
+                                                    >
+                                                        {br}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                </>)}
                             </div>
                             <div className="px-6 py-4 border-t border-neutral-100 flex justify-end gap-3">
                                 <button onClick={() => setEditingUser(null)} className="px-4 py-2 rounded-lg border border-neutral-200 text-sm font-medium text-neutral-600 hover:bg-neutral-50">Cancel</button>
@@ -4343,11 +4337,12 @@ const AdminDashboard: React.FC = () => {
 
                                     {eventForm.type === 'group_formation_project_proposal' && (
                                         <div className="mt-3 p-3 bg-neutral-50 border border-neutral-200 rounded-xl">
-                                            <p className="text-sm font-bold text-neutral-800">Restrict to same branch</p>
+                                            <p className="text-sm font-bold text-neutral-800">Restrict branch mixing</p>
                                             <p className="text-[11px] text-neutral-500 mt-0.5 mb-2">
-                                                Select the batches whose groups must be single-branch (CSE / DSAI / ECE cannot mix) —
-                                                usually the 5th/6th-semester batches. Those students will only see same-branch peers
-                                                when forming groups. Leave empty to allow mixed-branch groups for everyone.
+                                                Select the batches whose groups are branch-restricted — usually the 5th/6th-semester
+                                                batches. By default those groups must be single-branch; below each selected batch you
+                                                can choose which branches MAY still group together (e.g. CSE + DSAI, but not ECE).
+                                                Leave empty to allow mixed-branch groups for everyone.
                                             </p>
                                             {participatingBatches.length === 0 ? (
                                                 <p className="text-[11px] text-neutral-400 italic">Select participating batches above first.</p>
@@ -4364,6 +4359,50 @@ const AdminDashboard: React.FC = () => {
                                                             >
                                                                 {y}
                                                             </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                            )}
+
+                                            {/* Per-batch branch clustering: which branches may group together */}
+                                            {branchRestrictedBatches.length > 0 && (
+                                                <div className="mt-3 space-y-2">
+                                                    <p className="text-[11px] font-bold text-neutral-600 uppercase tracking-wide">Allowed branch groupings</p>
+                                                    {[...branchRestrictedBatches].sort().map(batch => {
+                                                        const assign = branchClusters[batch] || defaultBranchAssignment();
+                                                        return (
+                                                            <div key={batch} className="rounded-lg border border-amber-200 bg-white p-3">
+                                                                <div className="flex items-center justify-between mb-2">
+                                                                    <span className="text-xs font-black text-neutral-800">Batch {batch}</span>
+                                                                    <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">{describeBranchClusters(assign)}</span>
+                                                                </div>
+                                                                <div className="space-y-1.5">
+                                                                    {BRANCH_CODES.map(br => (
+                                                                        <div key={br} className="flex items-center gap-2">
+                                                                            <span className="w-12 text-xs font-bold text-neutral-700">{br}</span>
+                                                                            <div className="flex gap-1">
+                                                                                {['1', '2', '3'].map(g => {
+                                                                                    const active = (assign[br] || '') === g;
+                                                                                    return (
+                                                                                        <button
+                                                                                            key={g}
+                                                                                            type="button"
+                                                                                            onClick={() => setBranchClusters(prev => ({
+                                                                                                ...prev,
+                                                                                                [batch]: { ...(prev[batch] || defaultBranchAssignment()), [br]: g }
+                                                                                            }))}
+                                                                                            className={`px-2.5 py-1 rounded-md text-[11px] font-bold border transition-colors ${active ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-neutral-500 border-neutral-300 hover:border-indigo-300'}`}
+                                                                                        >
+                                                                                            Group {g}
+                                                                                        </button>
+                                                                                    );
+                                                                                })}
+                                                                            </div>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                                <p className="text-[10px] text-neutral-400 mt-1.5">Branches with the same group number may form a group together.</p>
+                                                            </div>
                                                         );
                                                     })}
                                                 </div>
@@ -4536,7 +4575,7 @@ const AdminDashboard: React.FC = () => {
                                 </div>
                             </div>
                             <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-3">
-                                <button onClick={() => { setShowCreateEvent(false); setEditingEvent(null); setAdminPassword(''); setRubricSections([]); setRubricPanelAggregation('average'); setParticipatingBatches([]); setBranchRestrictedBatches([]); }} className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition">Cancel</button>
+                                <button onClick={() => { setShowCreateEvent(false); setEditingEvent(null); setAdminPassword(''); setRubricSections([]); setRubricPanelAggregation('average'); setParticipatingBatches([]); setBranchRestrictedBatches([]); setBranchClusters({}); }} className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition">Cancel</button>
                                 <button onClick={async () => {
                                     try {
                                         if (!eventForm.endDate || !adminPassword) {
@@ -4600,6 +4639,12 @@ const AdminDashboard: React.FC = () => {
                                             payload.defaultMaxStudents = eventDefaultMaxStudents;
                                             payload.defaultMaxGroups = eventDefaultMaxGroups;
                                             payload.branchRestrictedBatches = branchRestrictedBatches;
+                                            // Per-batch clustering: serialize each restricted batch's assignment to
+                                            // comma-joined clusters. The server drops singleton-only configs.
+                                            payload.branchRestrictionGroups = branchRestrictedBatches.map(batch => ({
+                                                batch,
+                                                clusters: branchAssignmentToClusters(branchClusters[batch] || defaultBranchAssignment()).map(c => c.join(','))
+                                            }));
                                             // Keep the legacy boolean in sync for any older read paths.
                                             payload.branchRestricted = branchRestrictedBatches.length > 0;
                                         }
@@ -4613,6 +4658,7 @@ const AdminDashboard: React.FC = () => {
                                         setAdminPassword('');
                                         setParticipatingBatches([]);
                                         setBranchRestrictedBatches([]);
+                                        setBranchClusters({});
                                         const res = await api.get('/events');
                                         setEvents(Array.isArray(res.data) ? res.data : []);
                                     } catch (e: any) {
@@ -4913,6 +4959,30 @@ const AdminDashboard: React.FC = () => {
                                                 <input type="text" value={createUserForm.department} onChange={e => setCreateUserForm(p => ({ ...p, department: e.target.value }))} className="w-full px-4 py-2.5 rounded-xl border border-neutral-200 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all text-sm" placeholder="CSE" />
                                             </div>
                                             <div>
+                                                <label className="block text-sm font-bold text-neutral-700 mb-1.5">Branches mentored</label>
+                                                <p className="text-[11px] text-neutral-400 mb-1.5">Students only see faculty whose branches include theirs. Select none to stay visible to every branch.</p>
+                                                <div className="flex gap-2">
+                                                    {BRANCH_CODES.map(br => {
+                                                        const set = new Set(String(createUserForm.branch || '').split(',').map(s => s.trim().toUpperCase()).filter(Boolean));
+                                                        const active = set.has(br);
+                                                        return (
+                                                            <button
+                                                                key={br}
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    const next = new Set(set);
+                                                                    if (active) next.delete(br); else next.add(br);
+                                                                    setCreateUserForm(p => ({ ...p, branch: Array.from(next).join(',') }));
+                                                                }}
+                                                                className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors ${active ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-neutral-600 border-neutral-300 hover:border-indigo-300'}`}
+                                                            >
+                                                                {br}
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                            <div>
                                                 <label className="block text-sm font-bold text-neutral-700 mb-1.5">Expertise <span className="font-normal text-neutral-400">(optional)</span></label>
                                                 <input type="text" value={createUserForm.expertise} onChange={e => setCreateUserForm(p => ({ ...p, expertise: e.target.value }))} className="w-full px-4 py-2.5 rounded-xl border border-neutral-200 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all text-sm" placeholder="Machine Learning, NLP..." />
                                             </div>
@@ -4927,6 +4997,88 @@ const AdminDashboard: React.FC = () => {
                                 )}
                             </div>
                         </motion.div>
+                    </div>
+                )}
+
+                {/* Export Final Sheet options modal (Evaluations tab) */}
+                {showFinalExportModal && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm">
+                        <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden flex flex-col animate-in fade-in zoom-in duration-200">
+                            <div className="px-6 py-4 border-b border-neutral-100 flex items-center justify-between">
+                                <h3 className="text-lg font-bold text-neutral-900 flex items-center gap-2">
+                                    <FileText className="w-5 h-5 text-amber-600" /> Export Final Sheet
+                                </h3>
+                                <button onClick={() => setShowFinalExportModal(false)} className="p-1.5 rounded-lg hover:bg-neutral-100 text-neutral-400"><X className="w-5 h-5" /></button>
+                            </div>
+                            <div className="px-6 py-5 space-y-4">
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="flex flex-col gap-1">
+                                        <label className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Batch</label>
+                                        <select
+                                            value={finalExportBatch}
+                                            onChange={(e) => setFinalExportBatch(e.target.value)}
+                                            className="border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                                        >
+                                            <option value="">Select batch…</option>
+                                            {participatingBatchYears.map(year => (
+                                                <option key={year} value={year}>{year}–{parseInt(year) + 4}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div className="flex flex-col gap-1">
+                                        <label className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Branch</label>
+                                        <select
+                                            value={finalExportBranch}
+                                            onChange={(e) => setFinalExportBranch(e.target.value)}
+                                            className="border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                                        >
+                                            <option value="All">All branches</option>
+                                            <option value="CSE">CSE</option>
+                                            <option value="DSAI">DSAI</option>
+                                            <option value="ECE">ECE</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div className="flex items-center justify-between p-3 bg-neutral-50 rounded-xl border border-neutral-100">
+                                    <div className="pr-3">
+                                        <p className="text-sm font-bold text-neutral-800">Include panel rows</p>
+                                        <p className="text-[11px] text-neutral-500">The "Panel 1 | faculty | room" banner rows between groups.</p>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setFinalExportPanelRows(v => !v)}
+                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors shrink-0 ${finalExportPanelRows ? 'bg-indigo-600' : 'bg-neutral-300'}`}
+                                    >
+                                        <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${finalExportPanelRows ? 'translate-x-6' : 'translate-x-1'}`} />
+                                    </button>
+                                </div>
+
+                                <div className="flex items-center justify-between p-3 bg-neutral-50 rounded-xl border border-neutral-100">
+                                    <div className="pr-3">
+                                        <p className="text-sm font-bold text-neutral-800">Show group info</p>
+                                        <p className="text-[11px] text-neutral-500">Group No. &amp; project title columns. Off = a flat list of students &amp; marks only.</p>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setFinalExportGroupInfo(v => !v)}
+                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors shrink-0 ${finalExportGroupInfo ? 'bg-indigo-600' : 'bg-neutral-300'}`}
+                                    >
+                                        <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${finalExportGroupInfo ? 'translate-x-6' : 'translate-x-1'}`} />
+                                    </button>
+                                </div>
+                            </div>
+                            <div className="px-6 py-4 border-t border-neutral-100 flex justify-end gap-3">
+                                <button onClick={() => setShowFinalExportModal(false)} className="px-4 py-2 rounded-lg border border-neutral-200 text-sm font-medium text-neutral-600 hover:bg-neutral-50">Cancel</button>
+                                <button
+                                    onClick={handleAdminBatchExportFinal}
+                                    disabled={!finalExportBatch}
+                                    className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                                >
+                                    <Download className="w-4 h-4" /> Export
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 )}
 
@@ -5762,7 +5914,15 @@ const AdminDashboard: React.FC = () => {
                                         <div className="bg-indigo-50 border border-indigo-100 p-4 rounded-xl text-sm text-indigo-800 space-y-1.5">
                                             <p><strong>Instructions:</strong> Upload an Excel (.xlsx, .xls) or CSV file.</p>
                                             <p>Required columns for <b>Students</b>: Name (or FullName), Email, RollNumber. (Optional: Branch, Semester)</p>
-                                            <p>Required columns for <b>Faculty</b>: Name (or FullName), Email, Department. (Optional: Expertise)</p>
+                                            <p>Required columns for <b>Faculty</b>: Name (or FullName), Email, <b>Branch</b>. (Optional: Department, Expertise)</p>
+                                            <p className="text-xs text-indigo-700">Branch must be one of <b>CSE, DSAI, ECE</b> — faculty may mentor several, comma-separated (e.g. <code>CSE,DSAI</code>). Use the template below for a ready-made dropdown.</p>
+                                            <button
+                                                type="button"
+                                                onClick={handleDownloadImportTemplate}
+                                                className="mt-1 inline-flex items-center gap-2 px-3 py-1.5 bg-white border border-indigo-200 text-indigo-700 text-xs font-bold rounded-lg hover:bg-indigo-100 transition-colors"
+                                            >
+                                                <Download className="w-3.5 h-3.5" /> Download {smartImportTarget === 'faculty' ? 'faculty' : 'student'} template
+                                            </button>
                                         </div>
                                         <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl text-sm text-amber-800 space-y-1">
                                             <p className="font-semibold">Recommended import order</p>
