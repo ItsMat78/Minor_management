@@ -3757,7 +3757,7 @@ const AdminDashboard: React.FC = () => {
                                     </div>
                                     <div className="flex flex-col gap-2 shrink-0">
                                         <button
-                                            onClick={() => handleEditUser(editingFaculty)}
+                                            onClick={() => handleEditUser({ ...editingFaculty, role: 'Faculty' })}
                                             className="px-4 py-2 text-sm font-medium border border-amber-200 text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-xl transition-colors flex items-center gap-2"
                                         >
                                             <Pencil className="w-4 h-4" /> Edit Profile

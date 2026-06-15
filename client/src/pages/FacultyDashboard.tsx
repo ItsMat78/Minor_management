@@ -399,8 +399,11 @@ const renderEvalCard = (item: any, activeTab: string, handleOpenEvaluation: any,
     );
 };
 
+// Branches a faculty can declare they mentor. Empty selection = visible to every branch.
+const BRANCH_CODES = ['CSE', 'DSAI', 'ECE'];
+
 const FacultyDashboard: React.FC = () => {
-    const { user, logout, activeEvents } = useAuth();
+    const { user, logout, activeEvents, refreshUser } = useAuth();
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
     const initialTab = searchParams.get('tab') as 'directory' | 'proposals' | 'mentees' | 'profile' | 'mid-term' | 'end-term' | 'archive' | null;
@@ -421,6 +424,42 @@ const FacultyDashboard: React.FC = () => {
 
     const [archivedProjects, setArchivedProjects] = useState<any[]>([]);
     const [loadingArchive, setLoadingArchive] = useState(false);
+
+    // Self-service profile editing (My Profile tab).
+    const [editingProfile, setEditingProfile] = useState(false);
+    const [profileForm, setProfileForm] = useState({ name: '', department: '', expertise: '', branch: '' });
+    const [savingProfile, setSavingProfile] = useState(false);
+    const [profileError, setProfileError] = useState('');
+
+    const openProfileEditor = () => {
+        setProfileError('');
+        setProfileForm({
+            name: user?.name || '',
+            department: user?.department || '',
+            expertise: (user?.expertise || []).join(', '),
+            branch: user?.branch || '',
+        });
+        setEditingProfile(true);
+    };
+
+    const handleSaveProfile = async () => {
+        setSavingProfile(true);
+        setProfileError('');
+        try {
+            await api.put('/users/me', {
+                name: profileForm.name.trim(),
+                department: profileForm.department.trim(),
+                expertise: profileForm.expertise.split(',').map(s => s.trim()).filter(Boolean),
+                branch: profileForm.branch,
+            });
+            await refreshUser();
+            setEditingProfile(false);
+        } catch (err: any) {
+            setProfileError(err?.response?.data?.message || 'Failed to save profile.');
+        } finally {
+            setSavingProfile(false);
+        }
+    };
 
     useEffect(() => {
         const current = searchParams.get('tab');
@@ -1104,16 +1143,108 @@ const FacultyDashboard: React.FC = () => {
                                 </div>
                                 <h2 className="text-3xl font-bold text-neutral-900">{user?.name}</h2>
                                 <p className="text-lg text-neutral-500 mt-2">{user?.email}</p>
-                                <div className="mt-8 flex justify-center gap-4">
-                                    <div className="px-6 py-3 bg-neutral-50 rounded-2xl border border-neutral-100">
-                                        <p className="text-xs text-neutral-500 uppercase tracking-wider font-bold">Role</p>
-                                        <p className="font-semibold text-neutral-900">{user?.role}</p>
+
+                                {!editingProfile ? (
+                                    <>
+                                        <div className="mt-8 flex flex-wrap justify-center gap-4">
+                                            <div className="px-6 py-3 bg-neutral-50 rounded-2xl border border-neutral-100">
+                                                <p className="text-xs text-neutral-500 uppercase tracking-wider font-bold">Role</p>
+                                                <p className="font-semibold text-neutral-900">{user?.role}</p>
+                                            </div>
+                                            <div className="px-6 py-3 bg-neutral-50 rounded-2xl border border-neutral-100">
+                                                <p className="text-xs text-neutral-500 uppercase tracking-wider font-bold">Department</p>
+                                                <p className="font-semibold text-neutral-900">{user?.department || 'N/A'}</p>
+                                            </div>
+                                            <div className="px-6 py-3 bg-neutral-50 rounded-2xl border border-neutral-100">
+                                                <p className="text-xs text-neutral-500 uppercase tracking-wider font-bold">Branches mentored</p>
+                                                <p className="font-semibold text-neutral-900">{user?.branch ? user.branch.split(',').join(', ') : 'All branches'}</p>
+                                            </div>
+                                        </div>
+                                        {user?.expertise && user.expertise.length > 0 && (
+                                            <div className="mt-4 flex flex-wrap justify-center gap-2">
+                                                {user.expertise.map((e, i) => (
+                                                    <span key={i} className="px-3 py-1 bg-indigo-50 text-indigo-700 rounded-full text-xs font-semibold">{e}</span>
+                                                ))}
+                                            </div>
+                                        )}
+                                        <button
+                                            onClick={openProfileEditor}
+                                            className="mt-8 inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold transition-colors"
+                                        >
+                                            <Settings className="w-4 h-4" /> Edit Profile
+                                        </button>
+                                    </>
+                                ) : (
+                                    <div className="mt-8 text-left flex flex-col gap-4">
+                                        <div className="flex flex-col gap-1">
+                                            <label className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Name</label>
+                                            <input
+                                                className="border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                                                value={profileForm.name}
+                                                onChange={e => setProfileForm(f => ({ ...f, name: e.target.value }))}
+                                            />
+                                        </div>
+                                        <div className="flex flex-col gap-1">
+                                            <label className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Department</label>
+                                            <input
+                                                className="border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                                                value={profileForm.department}
+                                                onChange={e => setProfileForm(f => ({ ...f, department: e.target.value }))}
+                                            />
+                                        </div>
+                                        <div className="flex flex-col gap-1">
+                                            <label className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Areas of expertise</label>
+                                            <input
+                                                className="border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                                                placeholder="e.g. Machine Learning, Networks, IoT"
+                                                value={profileForm.expertise}
+                                                onChange={e => setProfileForm(f => ({ ...f, expertise: e.target.value }))}
+                                            />
+                                            <p className="text-[11px] text-neutral-400">Separate multiple areas with commas.</p>
+                                        </div>
+                                        <div className="flex flex-col gap-1">
+                                            <label className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Branches mentored</label>
+                                            <p className="text-[11px] text-neutral-400">Students only see faculty whose branches include theirs. Select none to stay visible to every branch.</p>
+                                            <div className="flex gap-2 mt-1">
+                                                {BRANCH_CODES.map(br => {
+                                                    const set = new Set(String(profileForm.branch || '').split(',').map(s => s.trim().toUpperCase()).filter(Boolean));
+                                                    const active = set.has(br);
+                                                    return (
+                                                        <button
+                                                            key={br}
+                                                            type="button"
+                                                            onClick={() => {
+                                                                const next = new Set(set);
+                                                                if (active) next.delete(br); else next.add(br);
+                                                                setProfileForm(f => ({ ...f, branch: BRANCH_CODES.filter(b => next.has(b)).join(',') }));
+                                                            }}
+                                                            className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors ${active ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-neutral-600 border-neutral-300 hover:border-indigo-300'}`}
+                                                        >
+                                                            {br}
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                        {profileError && <p className="text-sm text-red-600">{profileError}</p>}
+                                        <div className="flex justify-end gap-3 mt-2">
+                                            <button
+                                                onClick={() => { setEditingProfile(false); setProfileError(''); }}
+                                                disabled={savingProfile}
+                                                className="px-4 py-2 rounded-lg border border-neutral-200 text-sm font-medium text-neutral-600 hover:bg-neutral-50 disabled:opacity-50"
+                                            >
+                                                Cancel
+                                            </button>
+                                            <button
+                                                onClick={handleSaveProfile}
+                                                disabled={savingProfile}
+                                                className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold disabled:opacity-50"
+                                            >
+                                                {savingProfile ? 'Saving…' : 'Save changes'}
+                                            </button>
+                                        </div>
                                     </div>
-                                    <div className="px-6 py-3 bg-neutral-50 rounded-2xl border border-neutral-100">
-                                        <p className="text-xs text-neutral-500 uppercase tracking-wider font-bold">Department</p>
-                                        <p className="font-semibold text-neutral-900">{user?.department || 'N/A'}</p>
-                                    </div>
-                                </div>
+                                )}
                             </div>
                         </div>
                     ) : (

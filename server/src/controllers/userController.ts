@@ -245,6 +245,48 @@ export const updateUser = async (req: Request, res: Response) => {
     }
 };
 
+// Fields a user may change on their OWN profile (self-service). Scoped by role:
+// branch/department/expertise are faculty-descriptive only. A student's branch is
+// derived from their roll number and must stay admin-controlled, so it is NOT
+// self-editable. Capacity/verification/participation fields are admin-only everywhere.
+const SELF_EDITABLE_FIELDS: Record<string, string[]> = {
+    [UserRole.FACULTY]: ['name', 'department', 'expertise', 'branch'],
+    [UserRole.STUDENT]: ['name'],
+    [UserRole.ADMIN]: ['name'],
+};
+
+export const updateMyProfile = async (req: Request, res: Response) => {
+    try {
+        const userId = (req as any).user.id;
+        const me = await User.findById(userId);
+        if (!me) return res.status(404).json({ message: 'User not found' });
+
+        const allowed = SELF_EDITABLE_FIELDS[me.role] || [];
+        const updates: Record<string, any> = Object.fromEntries(
+            Object.entries(req.body).filter(([key]) => allowed.includes(key))
+        );
+
+        // Faculty branches: accept a comma-separated subset of the three branches
+        // (mirrors the import rule). An empty selection means "visible to all branches".
+        if (me.role === UserRole.FACULTY && 'branch' in updates) {
+            const VALID_BRANCHES = ['CSE', 'DSAI', 'ECE'];
+            const parts = String(updates.branch || '')
+                .split(',').map((s: string) => s.trim().toUpperCase()).filter(Boolean);
+            const invalid = parts.filter((p: string) => !VALID_BRANCHES.includes(p));
+            if (invalid.length > 0) {
+                return res.status(400).json({ message: `Invalid branch value${invalid.length > 1 ? 's' : ''}: ${invalid.join(', ')}. Allowed: CSE, DSAI, ECE.` });
+            }
+            updates.branch = Array.from(new Set(parts)).join(',');
+        }
+
+        const updated = await User.findByIdAndUpdate(userId, updates, { new: true }).select('-password');
+        res.json(updated);
+    } catch (error) {
+        console.error("Error updating own profile:", error);
+        res.status(500).json({ message: 'Server error' });
+    }
+};
+
 export const exportFaculty = async (req: Request, res: Response) => {
     try {
         const faculty = await User.find({ role: UserRole.FACULTY })
