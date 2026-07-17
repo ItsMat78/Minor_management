@@ -998,7 +998,7 @@ const FacultyDashboard: React.FC = () => {
                         </div>
                     </div>
                     <a
-                        href="/userManual.pdf"
+                        href="/facultyManual.pdf"
                         target="_blank"
                         rel="noopener noreferrer"
                         className="w-full mb-2 flex items-center justify-center gap-2 rounded-xl border border-neutral-200 py-2.5 text-sm font-medium text-neutral-600 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-100 transition-all"
