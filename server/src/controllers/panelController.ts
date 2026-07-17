@@ -884,6 +884,23 @@ async function getPanelWithGroups(panelId: string) {
     return { panel, groups: panelGroups, panelNumber };
 }
 
+// Fixed (non-rubric) lead columns of the evaluation template, in sheet order. The rubric
+// columns start at TPL_FIXED_COLS + 1 and Remarks is the last column.
+// Both template writers AND both import parsers read these by index, so this is the single
+// place the layout is defined — never hardcode these positions at a call site.
+const TPL_COL = {
+    groupId: 1,      // hidden
+    studentId: 2,    // hidden
+    groupNo: 3,
+    projectTitle: 4,
+    mentor: 5,
+    studentName: 6,
+    rollNo: 7,
+    attendance: 8,
+    stars: 9,
+} as const;
+const TPL_FIXED_COLS = Object.keys(TPL_COL).length;
+
 // Returns ordered list of rubric columns for the template (and import parser).
 // For end-term: includes mid-term cols first, then end-term cols.
 // section: 'guide' | 'panel1' | 'panel2'
@@ -938,8 +955,7 @@ export const downloadEvaluationTemplate = async (req: any, res: Response) => {
         const { panel, groups, panelNumber } = data;
         const marksMode = (req.query.marksMode as string) || 'rubric';
         const rubricCols = getTemplateRubricCols(evalType, marksMode);
-        // FIXED_COLS = 8: 2 hidden IDs + Group No + Project Title + Name + Roll + Attendance + Stars
-        const FIXED = 8;
+        const FIXED = TPL_FIXED_COLS;
         const totalCols = FIXED + rubricCols.length + 1; // +1 for Remarks
 
         const workbook = new ExcelJS.Workbook();
@@ -952,10 +968,11 @@ export const downloadEvaluationTemplate = async (req: any, res: Response) => {
 
         ws.columns = [
             { width: 0, hidden: true }, { width: 0, hidden: true }, // IDs
-            { width: 10 }, { width: 30 }, { width: 22 }, { width: 14 }, // Group/Project/Name/Roll
-            { width: 22 }, { width: 10 },                               // Attendance/Stars
+            { width: 10 }, { width: 30 }, { width: 22 },            // Group/Project/Mentor
+            { width: 22 }, { width: 14 },                           // Name/Roll
+            { width: 22 }, { width: 10 },                           // Attendance/Stars
             ...rubricCols.map(() => ({ width: 20 })),
-            { width: 25 }                                               // Remarks
+            { width: 25 }                                           // Remarks
         ];
 
         const evalLabel = evalType === 'mid-term' ? 'MID-TERM' : 'END-TERM';
@@ -964,7 +981,7 @@ export const downloadEvaluationTemplate = async (req: any, res: Response) => {
         let excelRowNum = headerBlockRows + 1;
 
         if (marksMode === 'direct') {
-            const superLabels = ['', '', '', '', '', '', '', ''];
+            const superLabels: string[] = Array(FIXED).fill('');
             superLabels.push('MID-TERM EVALUATION', '', '');
             if (evalType === 'end-term') {
                 superLabels.push('END-TERM EVALUATION', '', '');
@@ -989,7 +1006,7 @@ export const downloadEvaluationTemplate = async (req: any, res: Response) => {
 
         const headerLabels = [
             '__GROUP_ID__', '__STUDENT_ID__',
-            'Group No.', 'Project Title', 'Student Name', 'Roll No.',
+            'Group No.', 'Project Title', 'Mentor', 'Student Name', 'Roll No.',
             'Attendance (Present/Absent)', 'Stars (1-5)',
             ...rubricCols.map(c => c.headerLabel),
             'Remarks'
@@ -1023,19 +1040,18 @@ export const downloadEvaluationTemplate = async (req: any, res: Response) => {
                     g._id.toString(), m._id.toString(),
                     mIdx === 0 ? g.name : '',
                     mIdx === 0 ? (g.project?.title || '') : '',
+                    mIdx === 0 ? (g.project?.faculty?.name || '') : '',
                     m.name || '', m.rollNumber || '',
                     'Present', '',
                     ...rubricCols.map(() => ''),
                     ''
                 ]);
 
-                // Attendance dropdown (col 7)
-                (row.getCell(7) as any).dataValidation = {
+                (row.getCell(TPL_COL.attendance) as any).dataValidation = {
                     type: 'list', allowBlank: false, formulae: ['"Present,Absent"'],
                     showErrorMessage: true, error: 'Must be Present or Absent', errorTitle: 'Invalid'
                 };
-                // Stars dropdown (col 8)
-                (row.getCell(8) as any).dataValidation = {
+                (row.getCell(TPL_COL.stars) as any).dataValidation = {
                     type: 'list', allowBlank: true, formulae: ['"1,2,3,4,5"'],
                     showErrorMessage: true, error: 'Must be 1-5', errorTitle: 'Invalid'
                 };
@@ -1059,10 +1075,12 @@ export const downloadEvaluationTemplate = async (req: any, res: Response) => {
 
             if (members.length > 1) {
                 const groupEndRow = groupStartRow + members.length - 1;
-                ws.mergeCells(groupStartRow, 3, groupEndRow, 3);
-                ws.mergeCells(groupStartRow, 4, groupEndRow, 4);
-                ws.getCell(groupStartRow, 3).alignment = { horizontal: 'center', vertical: 'middle' };
-                ws.getCell(groupStartRow, 4).alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+                ws.mergeCells(groupStartRow, TPL_COL.groupNo, groupEndRow, TPL_COL.groupNo);
+                ws.mergeCells(groupStartRow, TPL_COL.projectTitle, groupEndRow, TPL_COL.projectTitle);
+                ws.mergeCells(groupStartRow, TPL_COL.mentor, groupEndRow, TPL_COL.mentor);
+                ws.getCell(groupStartRow, TPL_COL.groupNo).alignment = { horizontal: 'center', vertical: 'middle' };
+                ws.getCell(groupStartRow, TPL_COL.projectTitle).alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+                ws.getCell(groupStartRow, TPL_COL.mentor).alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
             }
         });
 
@@ -1093,7 +1111,7 @@ export const importEvaluationTemplate = async (req: any, res: Response) => {
         if (!data) return res.status(404).json({ message: 'Panel not found' });
 
         const rubricCols = getTemplateRubricCols(evalType, marksMode);
-        const FIXED = 8;
+        const FIXED = TPL_FIXED_COLS;
         const remarksColIdx = FIXED + rubricCols.length + 1;
 
         const workbook = new ExcelJS.Workbook();
@@ -1127,13 +1145,13 @@ export const importEvaluationTemplate = async (req: any, res: Response) => {
                 return '';
             };
 
-            const groupId = getCell(1);
-            const studentId = getCell(2);
+            const groupId = getCell(TPL_COL.groupId);
+            const studentId = getCell(TPL_COL.studentId);
             if (!groupId || !studentId || groupId.length !== 24 || studentId.length !== 24) continue;
 
-            const groupName = getCell(3);
-            const attendance = getCell(7);
-            const starsRaw = getCell(8);
+            const groupName = getCell(TPL_COL.groupNo);
+            const attendance = getCell(TPL_COL.attendance);
+            const starsRaw = getCell(TPL_COL.stars);
 
             if (!['Present', 'Absent'].includes(attendance))
                 errors.push({ row: r, message: `Group ${groupName}: Attendance must be "Present" or "Absent", got "${attendance}"` });
@@ -1289,10 +1307,12 @@ export const exportPanelFinalSheet = async (req: any, res: Response) => {
         const cols: any[] = [
             { header: 'Group No.', width: 10 },
             { header: 'Project Title', width: 35 },
+            { header: 'Mentor', width: 22 },
             { header: 'Student Name', width: 25 },
             { header: 'Roll No.', width: 15 },
             { header: 'Attendance', width: 12 }
         ];
+        const BASE = cols.length; // lead (non-marks) columns, before any rubric columns are pushed
 
         // Helper: read rubric field from panel1 (with fallback to legacy panel) or panel2
         const getP = (se: any, section: 'panel1' | 'panel2', key: string) =>
@@ -1318,7 +1338,7 @@ export const exportPanelFinalSheet = async (req: any, res: Response) => {
 
         let excelRowNum = headerBlockRows + 1;
 
-        const superLabels = ['', '', '', '', ''];
+        const superLabels: string[] = Array(BASE).fill('');
         if (includeMid) superLabels.push('MID-TERM EVALUATION', '', '');
         if (includeEnd) superLabels.push('END-TERM EVALUATION', '', '');
         superLabels.push('OVERALL', '');
@@ -1327,22 +1347,19 @@ export const exportPanelFinalSheet = async (req: any, res: Response) => {
         sRow.font = { bold: true, color: { argb: 'FF000000' } };
         sRow.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
         sRow.eachCell((cell, colNum) => {
-            if (colNum <= 5) return;
+            if (colNum <= BASE) return;
             cell.border = border;
             cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFED7D31' } };
         });
 
-        if (includeMid && !includeEnd) {
-            ws.mergeCells(excelRowNum, 6, excelRowNum, 8);
-            ws.mergeCells(excelRowNum, 9, excelRowNum, 10);
-        } else if (!includeMid && includeEnd) {
-            ws.mergeCells(excelRowNum, 6, excelRowNum, 8);
-            ws.mergeCells(excelRowNum, 9, excelRowNum, 10);
-        } else if (includeMid && includeEnd) {
-            ws.mergeCells(excelRowNum, 6, excelRowNum, 8);
-            ws.mergeCells(excelRowNum, 9, excelRowNum, 11);
-            ws.mergeCells(excelRowNum, 12, excelRowNum, 13);
-        }
+        let cursor = BASE;
+        const midStart = cursor + 1; if (includeMid) cursor += 3;
+        const endStart = cursor + 1; if (includeEnd) cursor += 3;
+        const overallStart = cursor + 1;
+
+        if (includeMid) ws.mergeCells(excelRowNum, midStart, excelRowNum, midStart + 2);
+        if (includeEnd) ws.mergeCells(excelRowNum, endStart, excelRowNum, endStart + 2);
+        ws.mergeCells(excelRowNum, overallStart, excelRowNum, overallStart + 1);
         excelRowNum++;
 
         const hRow = ws.addRow(cols.map(c => c.header));
@@ -1367,6 +1384,7 @@ export const exportPanelFinalSheet = async (req: any, res: Response) => {
                 const rowData: any[] = [
                     mIdx === 0 ? g.name : '',
                     mIdx === 0 ? g.project?.title || '' : '',
+                    mIdx === 0 ? g.project?.faculty?.name || '' : '',
                     m.name || '',
                     m.rollNumber || '',
                     primarySE ? (primarySE.attendance === 'present' ? 'Present' : 'Absent') : '',
@@ -1463,7 +1481,7 @@ export const downloadBatchEvaluationTemplate = async (req: any, res: Response) =
           .populate({ path: 'project', populate: { path: 'faculty', select: 'name email photoUrl' } }) as any[];
 
         const rubricCols = getTemplateRubricCols(evalType, marksMode);
-        const FIXED = 8;
+        const FIXED = TPL_FIXED_COLS;
         const totalCols = FIXED + rubricCols.length + 1;
 
         const workbook = new ExcelJS.Workbook();
@@ -1475,11 +1493,12 @@ export const downloadBatchEvaluationTemplate = async (req: any, res: Response) =
         };
 
         ws.columns = [
-            { width: 0, hidden: true }, { width: 0, hidden: true },
-            { width: 10 }, { width: 30 }, { width: 22 }, { width: 14 },
-            { width: 22 }, { width: 10 },
+            { width: 0, hidden: true }, { width: 0, hidden: true }, // IDs
+            { width: 10 }, { width: 30 }, { width: 22 },            // Group/Project/Mentor
+            { width: 22 }, { width: 14 },                           // Name/Roll
+            { width: 22 }, { width: 10 },                           // Attendance/Stars
             ...rubricCols.map(() => ({ width: 20 })),
-            { width: 25 }
+            { width: 25 }                                           // Remarks
         ];
 
         const evalLabel = evalType === 'mid-term' ? 'MID-TERM' : 'END-TERM';
@@ -1487,7 +1506,7 @@ export const downloadBatchEvaluationTemplate = async (req: any, res: Response) =
         let excelRowNum = headerBlockRows + 1;
 
         if (marksMode === 'direct') {
-            const superLabels = ['', '', '', '', '', '', '', ''];
+            const superLabels: string[] = Array(FIXED).fill('');
             superLabels.push('MID-TERM EVALUATION', '', '');
             if (evalType === 'end-term') superLabels.push('END-TERM EVALUATION', '', '');
             superLabels.push('');
@@ -1507,7 +1526,7 @@ export const downloadBatchEvaluationTemplate = async (req: any, res: Response) =
 
         const headerLabels = [
             '__GROUP_ID__', '__STUDENT_ID__',
-            'Group No.', 'Project Title', 'Student Name', 'Roll No.',
+            'Group No.', 'Project Title', 'Mentor', 'Student Name', 'Roll No.',
             'Attendance (Present/Absent)', 'Stars (1-5)',
             ...rubricCols.map(c => c.headerLabel),
             'Remarks'
@@ -1564,16 +1583,17 @@ export const downloadBatchEvaluationTemplate = async (req: any, res: Response) =
                         g._id.toString(), m._id.toString(),
                         mIdx === 0 ? g.name : '',
                         mIdx === 0 ? (g.project?.title || '') : '',
+                        mIdx === 0 ? (g.project?.faculty?.name || '') : '',
                         m.name || '', m.rollNumber || '',
                         'Present', '',
                         ...rubricCols.map(() => ''),
                         ''
                     ]);
-                    (row.getCell(7) as any).dataValidation = {
+                    (row.getCell(TPL_COL.attendance) as any).dataValidation = {
                         type: 'list', allowBlank: false, formulae: ['"Present,Absent"'],
                         showErrorMessage: true, error: 'Must be Present or Absent', errorTitle: 'Invalid'
                     };
-                    (row.getCell(8) as any).dataValidation = {
+                    (row.getCell(TPL_COL.stars) as any).dataValidation = {
                         type: 'list', allowBlank: true, formulae: ['"1,2,3,4,5"'],
                         showErrorMessage: true, error: 'Must be 1-5', errorTitle: 'Invalid'
                     };
@@ -1595,10 +1615,12 @@ export const downloadBatchEvaluationTemplate = async (req: any, res: Response) =
 
                 if (members.length > 1) {
                     const groupEndRow = groupStartRow + members.length - 1;
-                    ws.mergeCells(groupStartRow, 3, groupEndRow, 3);
-                    ws.mergeCells(groupStartRow, 4, groupEndRow, 4);
-                    ws.getCell(groupStartRow, 3).alignment = { horizontal: 'center', vertical: 'middle' };
-                    ws.getCell(groupStartRow, 4).alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+                    ws.mergeCells(groupStartRow, TPL_COL.groupNo, groupEndRow, TPL_COL.groupNo);
+                    ws.mergeCells(groupStartRow, TPL_COL.projectTitle, groupEndRow, TPL_COL.projectTitle);
+                    ws.mergeCells(groupStartRow, TPL_COL.mentor, groupEndRow, TPL_COL.mentor);
+                    ws.getCell(groupStartRow, TPL_COL.groupNo).alignment = { horizontal: 'center', vertical: 'middle' };
+                    ws.getCell(groupStartRow, TPL_COL.projectTitle).alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+                    ws.getCell(groupStartRow, TPL_COL.mentor).alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
                 }
             });
         }
@@ -1627,7 +1649,7 @@ export const importBatchEvaluationTemplate = async (req: any, res: Response) => 
         if (!req.file) return res.status(400).json({ message: 'No file uploaded.' });
 
         const rubricCols = getTemplateRubricCols(evalType, marksMode);
-        const FIXED = 8;
+        const FIXED = TPL_FIXED_COLS;
         const remarksColIdx = FIXED + rubricCols.length + 1;
 
         const workbook = new ExcelJS.Workbook();
@@ -1658,13 +1680,13 @@ export const importBatchEvaluationTemplate = async (req: any, res: Response) => 
                 return '';
             };
 
-            const groupId = getCell(1);
-            const studentId = getCell(2);
+            const groupId = getCell(TPL_COL.groupId);
+            const studentId = getCell(TPL_COL.studentId);
             if (!groupId || !studentId || groupId.length !== 24 || studentId.length !== 24) continue;
 
-            const groupName = getCell(3);
-            const attendance = getCell(7);
-            const starsRaw = getCell(8);
+            const groupName = getCell(TPL_COL.groupNo);
+            const attendance = getCell(TPL_COL.attendance);
+            const starsRaw = getCell(TPL_COL.stars);
 
             if (!['Present', 'Absent'].includes(attendance))
                 errors.push({ row: r, message: `Group ${groupName}: Attendance must be "Present" or "Absent", got "${attendance}"` });
@@ -1795,8 +1817,8 @@ export const exportBatchFinalSheet = async (req: any, res: Response) => {
         const wantBranch = branchQ && branchQ !== 'All' ? branchQ.trim().toUpperCase() : null;
         const groupMatchesBranch = (g: any) => !wantBranch || (g.members || []).some((m: any) => (m.branch || '').trim().toUpperCase() === wantBranch);
         // Layout options (default both on): panel separator rows, and the group columns (Group No.
-        // + Project Title with per-group merging). Turning groupInfo off yields a flat per-student
-        // list of marks; turning panelRows off drops the "Panel N | faculty" banner rows.
+        // + Project Title + Mentor with per-group merging). Turning groupInfo off yields a flat
+        // per-student list of marks; turning panelRows off drops the "Panel N | faculty" banner rows.
         const includePanelRows = req.query.panelRows !== 'false';
         const includeGroupInfo = req.query.groupInfo !== 'false';
 
@@ -1834,6 +1856,7 @@ export const exportBatchFinalSheet = async (req: any, res: Response) => {
             ? [
                 { header: 'Group No.', width: 10 },
                 { header: 'Project Title', width: 35 },
+                { header: 'Mentor', width: 22 },
                 { header: 'Student Name', width: 25 },
                 { header: 'Roll No.', width: 15 },
                 { header: 'Attendance', width: 12 }
@@ -1930,6 +1953,7 @@ export const exportBatchFinalSheet = async (req: any, res: Response) => {
                     if (includeGroupInfo) {
                         rowData.push(mIdx === 0 ? g.name : '');
                         rowData.push(mIdx === 0 ? g.project?.title || '' : '');
+                        rowData.push(mIdx === 0 ? g.project?.faculty?.name || '' : '');
                     }
                     rowData.push(
                         m.name || '', m.rollNumber || '',
@@ -1977,8 +2001,10 @@ export const exportBatchFinalSheet = async (req: any, res: Response) => {
                     const groupEndRow = groupStartRow + members.length - 1;
                     ws.mergeCells(groupStartRow, 1, groupEndRow, 1);
                     ws.mergeCells(groupStartRow, 2, groupEndRow, 2);
+                    ws.mergeCells(groupStartRow, 3, groupEndRow, 3);
                     ws.getCell(groupStartRow, 1).alignment = { horizontal: 'center', vertical: 'middle' };
                     ws.getCell(groupStartRow, 2).alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+                    ws.getCell(groupStartRow, 3).alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
                 }
             });
         }

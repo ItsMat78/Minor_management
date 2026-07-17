@@ -5149,7 +5149,7 @@ const AdminDashboard: React.FC = () => {
                                 <div className="flex items-center justify-between p-3 bg-neutral-50 rounded-xl border border-neutral-100">
                                     <div className="pr-3">
                                         <p className="text-sm font-bold text-neutral-800">Show group info</p>
-                                        <p className="text-[11px] text-neutral-500">Group No. &amp; project title columns. Off = a flat list of students &amp; marks only.</p>
+                                        <p className="text-[11px] text-neutral-500">Group No., project title &amp; mentor columns. Off = a flat list of students &amp; marks only.</p>
                                     </div>
                                     <button
                                         type="button"

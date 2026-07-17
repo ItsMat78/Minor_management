@@ -375,15 +375,19 @@ export const exportStudents = async (req: Request, res: Response) => {
             return res.status(204).end();
         }
 
-        // Get group status (current semester only — exclude archived groups from past semesters)
-        const groups = await Group.find({ isArchived: { $ne: true } }, 'members name project');
+        // Get group status (current semester only — exclude archived groups from past semesters).
+        // 'status' must stay in the projection — it backs the Project Status column — and the
+        // project's faculty is the group's guide.
+        const groups = await Group.find({ isArchived: { $ne: true } }, 'members name project status')
+            .populate({ path: 'project', select: 'faculty', populate: { path: 'faculty', select: 'name' } });
         const studentGroupMap = new Map();
 
-        groups.forEach(g => {
-            g.members.forEach(m => {
+        groups.forEach((g: any) => {
+            g.members.forEach((m: any) => {
                 studentGroupMap.set(m.toString(), {
                     groupName: g.name,
-                    status: g.status
+                    status: g.status,
+                    guide: g.project?.faculty?.name || ''
                 });
             });
         });
@@ -398,6 +402,7 @@ export const exportStudents = async (req: Request, res: Response) => {
                 "Semester": s.semester || 'N/A',
                 "Group Status": groupInfo ? 'In Group' : 'Unassigned',
                 "Group Name": groupInfo ? groupInfo.groupName : '',
+                "Guide": groupInfo ? groupInfo.guide : '',
                 "Project Status": groupInfo ? groupInfo.status : ''
             };
         });
