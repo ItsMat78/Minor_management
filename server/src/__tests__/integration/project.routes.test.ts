@@ -321,3 +321,78 @@ describe('GET /api/projects', () => {
         expect(titles).not.toContain('Someone else');
     });
 });
+
+// ── GET /api/projects/admin/proposals ────────────────────────────────────────
+
+describe('GET /api/projects/admin/proposals', () => {
+    it('returns 403 for a faculty user', async () => {
+        const faculty = await createTestUser({ role: UserRole.FACULTY, email: 'fac-prop@t.ac.in' });
+        const res = await request(app)
+            .get('/api/projects/admin/proposals')
+            .set('x-auth-token', generateToken(faculty));
+        expect(res.status).toBe(403);
+    });
+
+    it('returns 403 for a student user', async () => {
+        const student = await createTestUser({ role: UserRole.STUDENT, email: 'stu-prop@t.ac.in' });
+        const res = await request(app)
+            .get('/api/projects/admin/proposals')
+            .set('x-auth-token', generateToken(student));
+        expect(res.status).toBe(403);
+    });
+
+    it('returns every faculty\'s active proposals with faculty and members populated', async () => {
+        const admin = await createTestUser({ role: UserRole.ADMIN, email: 'admin-prop@t.ac.in' });
+        const facultyA = await createTestUser({ role: UserRole.FACULTY, email: 'fac-a@t.ac.in' });
+        const facultyB = await createTestUser({ role: UserRole.FACULTY, email: 'fac-b@t.ac.in' });
+
+        const { group: groupA } = await createTestGroup(2);
+        await createTestProject(groupA._id, { faculty: facultyA._id, title: 'Proposal A' });
+        const { group: groupB } = await createTestGroup(1);
+        await createTestProject(groupB._id, { faculty: facultyB._id, title: 'Proposal B' });
+
+        const res = await request(app)
+            .get('/api/projects/admin/proposals')
+            .set('x-auth-token', generateToken(admin));
+
+        expect(res.status).toBe(200);
+        const titles = res.body.map((p: any) => p.title);
+        expect(titles).toContain('Proposal A');
+        expect(titles).toContain('Proposal B');
+
+        const a = res.body.find((p: any) => p.title === 'Proposal A');
+        expect(a.faculty.name).toBe(facultyA.name);
+        expect(a.group.members).toHaveLength(2);
+        expect(a.group.members[0].rollNumber).toBeDefined();
+    });
+
+    it('returns just the pending count when countOnly is set', async () => {
+        const admin = await createTestUser({ role: UserRole.ADMIN, email: 'admin-count@t.ac.in' });
+        const { group: g1 } = await createTestGroup(1);
+        await createTestProject(g1._id, { title: 'Pending one', status: 'Pending' });
+        const { group: g2 } = await createTestGroup(1);
+        await createTestProject(g2._id, { title: 'Already approved', status: 'Approved' });
+
+        const res = await request(app)
+            .get('/api/projects/admin/proposals?countOnly=1')
+            .set('x-auth-token', generateToken(admin));
+
+        expect(res.status).toBe(200);
+        expect(res.body.pending).toBe(1);
+        expect(Array.isArray(res.body)).toBe(false);
+    });
+
+    it('excludes archived projects', async () => {
+        const admin = await createTestUser({ role: UserRole.ADMIN, email: 'admin-arch@t.ac.in' });
+        const { group } = await createTestGroup(1);
+        const archived = await createTestProject(group._id, { title: 'Old semester' });
+        await Project.findByIdAndUpdate(archived._id, { isArchived: true });
+
+        const res = await request(app)
+            .get('/api/projects/admin/proposals')
+            .set('x-auth-token', generateToken(admin));
+
+        expect(res.status).toBe(200);
+        expect(res.body.map((p: any) => p.title)).not.toContain('Old semester');
+    });
+});

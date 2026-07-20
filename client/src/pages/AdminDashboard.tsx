@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
-import { Search, Users, Clock, CheckCircle, FileText, X, LogOut, ChevronDown, ChevronUp, ChevronRight, Settings, Menu, Calendar, Download, AlertCircle, AlertTriangle, Save, Pencil, LayoutGrid, MoreVertical, Plus, Edit3, Power, Info, Trash2, Upload, Mail, Copy, Check, UserCheck, UserX, ShieldCheck, ShieldOff, Archive as ArchiveIcon } from 'lucide-react';
+import { Search, Users, Clock, CheckCircle, XCircle, FileText, X, LogOut, ChevronDown, ChevronUp, ChevronRight, Settings, Menu, Calendar, Download, AlertCircle, AlertTriangle, Save, Pencil, LayoutGrid, MoreVertical, Plus, Edit3, Power, Info, Trash2, Upload, Mail, Copy, Check, UserCheck, UserX, ShieldCheck, ShieldOff, Archive as ArchiveIcon } from 'lucide-react';
 import { motion } from 'framer-motion';
 import MenteeGroupDetails from '../components/MenteeGroupDetails';
 import AutoCreatePanelsModal from '../components/AutoCreatePanelsModal';
@@ -237,8 +237,8 @@ const BranchClusterBuilder: React.FC<{ batch: string; assign: Record<string, str
 const AdminDashboard: React.FC = () => {
     const { user, logout } = useAuth();
     const [searchParams, setSearchParams] = useSearchParams();
-    const initialAdminTab = searchParams.get('tab') as 'overview' | 'students' | 'groups' | 'faculty' | 'events' | 'exports' | 'panels' | 'archive' | 'evaluations' | null;
-    const [activeTab, setActiveTab] = useState<'overview' | 'students' | 'groups' | 'faculty' | 'events' | 'exports' | 'panels' | 'archive' | 'evaluations'>(initialAdminTab || 'overview');
+    const initialAdminTab = searchParams.get('tab') as 'overview' | 'students' | 'groups' | 'faculty' | 'proposals' | 'events' | 'exports' | 'panels' | 'archive' | 'evaluations' | null;
+    const [activeTab, setActiveTab] = useState<'overview' | 'students' | 'groups' | 'faculty' | 'proposals' | 'events' | 'exports' | 'panels' | 'archive' | 'evaluations'>(initialAdminTab || 'overview');
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
     // Participating batches from server (active GF event), used for all batch dropdowns
@@ -260,6 +260,16 @@ const AdminDashboard: React.FC = () => {
     const [stats, setStats] = useState<any>(null);
     const [loading, setLoading] = useState(false);
     const [panels, setPanels] = useState<any[]>([]);
+
+    // Proposals tab — every active proposal, bucketed by supervising faculty
+    const [proposals, setProposals] = useState<any[]>([]);
+    const [proposalStatusFilter, setProposalStatusFilter] = useState<'Pending' | 'Approved' | 'Rejected' | 'All'>('Pending');
+    const [proposalSearch, setProposalSearch] = useState('');
+    const [collapsedProposalFaculty, setCollapsedProposalFaculty] = useState<string[]>([]);
+    const [selectedProposal, setSelectedProposal] = useState<any | null>(null);
+    const [proposalFeedback, setProposalFeedback] = useState('');
+    const [proposalActionLoading, setProposalActionLoading] = useState<string | null>(null);
+    const [pendingProposalCount, setPendingProposalCount] = useState(0);
 
     const [showAutoCreateModal, setShowAutoCreateModal] = useState(false);
     const [autoCreateFaculties, setAutoCreateFaculties] = useState<any[]>([]);
@@ -849,6 +859,8 @@ const AdminDashboard: React.FC = () => {
                         const groupsRes = await api.get('/groups');
                         setGroups(Array.isArray(groupsRes.data) ? groupsRes.data : []);
                     }
+                } else if (activeTab === 'proposals') {
+                    await fetchProposals();
                 } else if (activeTab === 'overview') {
                     const res = await api.get('/admin/stats');
                     setStats(res.data);
@@ -882,6 +894,87 @@ const AdminDashboard: React.FC = () => {
     useEffect(() => {
         setSortOption('Default');
     }, [activeTab]);
+
+    const fetchProposals = async () => {
+        const res = await api.get('/projects/admin/proposals');
+        const list = Array.isArray(res.data) ? res.data : [];
+        setProposals(list);
+        setPendingProposalCount(list.filter((p: any) => p.status === 'Pending' || p.status === 'Draft').length);
+    };
+
+    // Eagerly load the pending count on mount so the sidebar badge is visible
+    // before the admin ever opens the Proposals tab.
+    useEffect(() => {
+        api.get('/projects/admin/proposals?countOnly=1')
+            .then(res => setPendingProposalCount(res.data?.pending ?? 0))
+            .catch(() => { });
+    }, []);
+
+    // Same decision flow the faculty gets — the status endpoint already accepts Admin
+    // and enforces the supervisor's group/student limits on approval.
+    const handleProposalAction = async (id: string, status: 'Approved' | 'Rejected') => {
+        setProposalActionLoading(status);
+        try {
+            await api.put(`/projects/${id}/status`, { status, feedback: proposalFeedback });
+            setProposalFeedback('');
+            if (selectedProposal && selectedProposal._id === id) {
+                setSelectedProposal(null);
+            }
+            // Refetch rather than patch: approving one proposal deletes the group's
+            // competing proposals server-side, so local state would go stale.
+            await fetchProposals();
+        } catch (error: any) {
+            console.error(`Failed to ${status} proposal`, error);
+            alert(error.response?.data?.message || `Failed to ${status} proposal`);
+        } finally {
+            setProposalActionLoading(null);
+        }
+    };
+
+    // Bucket the proposals under their supervisor. Faculty is optional on a project,
+    // so anything unassigned collects in its own bucket rather than disappearing.
+    const proposalsByFaculty = useMemo(() => {
+        const q = proposalSearch.trim().toLowerCase();
+
+        const matches = proposals.filter((p: any) => {
+            if (proposalStatusFilter === 'Pending') {
+                if (p.status !== 'Pending' && p.status !== 'Draft') return false;
+            } else if (proposalStatusFilter !== 'All' && p.status !== proposalStatusFilter) {
+                return false;
+            }
+            if (filterBatch !== 'All' && p.group && getGroupBatchYear(p.group) !== filterBatch) return false;
+            if (!q) return true;
+            return (
+                (p.title || '').toLowerCase().includes(q) ||
+                (p.faculty?.name || '').toLowerCase().includes(q) ||
+                (p.group?.name || '').toString().toLowerCase().includes(q) ||
+                (p.group?.members || []).some((m: any) =>
+                    (m.name || '').toLowerCase().includes(q) || (m.rollNumber || '').toLowerCase().includes(q)
+                )
+            );
+        });
+
+        const buckets = new Map<string, { id: string; name: string; department?: string; photoUrl?: string; items: any[] }>();
+        matches.forEach((p: any) => {
+            const id = p.faculty?._id || 'unassigned';
+            if (!buckets.has(id)) {
+                buckets.set(id, {
+                    id,
+                    name: p.faculty?.name || 'Unassigned',
+                    department: p.faculty?.department,
+                    photoUrl: p.faculty?.photoUrl,
+                    items: [],
+                });
+            }
+            buckets.get(id)!.items.push(p);
+        });
+
+        return Array.from(buckets.values()).sort((a, b) => {
+            if (a.id === 'unassigned') return 1;
+            if (b.id === 'unassigned') return -1;
+            return a.name.localeCompare(b.name);
+        });
+    }, [proposals, proposalStatusFilter, proposalSearch, filterBatch]);
 
     // Fetch admin eval panel groups when batch changes
     useEffect(() => {
@@ -1176,13 +1269,18 @@ const AdminDashboard: React.FC = () => {
         }
     };
 
-    const SidebarItem = ({ icon, label, active, onClick }: any) => (
+    const SidebarItem = ({ icon, label, active, onClick, badge }: any) => (
         <button
             onClick={onClick}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${active ? 'bg-indigo-50 text-indigo-700' : 'text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900'}`}
         >
             {icon}
-            {label}
+            <span className="flex-1 text-left">{label}</span>
+            {badge > 0 && (
+                <span className="shrink-0 min-w-[20px] px-1.5 py-0.5 rounded-full bg-rose-500 text-white text-[10px] font-bold leading-none flex items-center justify-center">
+                    {badge}
+                </span>
+            )}
         </button>
     );
 
@@ -1659,6 +1757,13 @@ const AdminDashboard: React.FC = () => {
                         onClick={() => setActiveTab('faculty')}
                     />
                     <SidebarItem
+                        icon={<FileText className="w-5 h-5" />}
+                        label="Proposals"
+                        active={activeTab === 'proposals'}
+                        onClick={() => setActiveTab('proposals')}
+                        badge={pendingProposalCount}
+                    />
+                    <SidebarItem
                         icon={<Users className="w-5 h-5" />}
                         label="Evaluation Panels"
                         active={activeTab === 'panels'}
@@ -1734,6 +1839,7 @@ const AdminDashboard: React.FC = () => {
                             {activeTab === 'students' && 'Student Directory'}
                             {activeTab === 'groups' && 'Group Directory'}
                             {activeTab === 'faculty' && 'Faculty Directory'}
+                            {activeTab === 'proposals' && 'Project Proposals'}
                             {activeTab === 'panels' && 'Evaluation Panels'}
                             {activeTab === 'events' && 'Setup Events'}
                             {activeTab === 'exports' && 'Data — Imports & Exports'}
@@ -2423,6 +2529,125 @@ const AdminDashboard: React.FC = () => {
                                     </>
                                 )}
 
+
+                                {activeTab === 'proposals' && (
+                                    <div className="space-y-6">
+                                        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 bg-white rounded-2xl border border-neutral-200 p-5 shadow-sm">
+                                            <div className="flex items-center gap-4">
+                                                <div className="h-12 w-12 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600">
+                                                    <FileText className="w-6 h-6" />
+                                                </div>
+                                                <div>
+                                                    <h3 className="text-lg font-bold text-neutral-900">Proposals by Supervisor</h3>
+                                                    <p className="text-xs text-neutral-500">Review and decide on any active proposal on the supervisor's behalf.</p>
+                                                </div>
+                                            </div>
+                                            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                                                <div className="relative">
+                                                    <Search className="w-4 h-4 text-neutral-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                                                    <input
+                                                        value={proposalSearch}
+                                                        onChange={(e) => setProposalSearch(e.target.value)}
+                                                        placeholder="Search title, supervisor, group, student..."
+                                                        className="w-full sm:w-72 pl-9 pr-4 py-2.5 rounded-xl border border-neutral-200 text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition"
+                                                    />
+                                                </div>
+                                                <div className="flex bg-neutral-100 p-1 rounded-xl shrink-0">
+                                                    {(['Pending', 'Approved', 'Rejected', 'All'] as const).map(s => (
+                                                        <button
+                                                            key={s}
+                                                            onClick={() => setProposalStatusFilter(s)}
+                                                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${proposalStatusFilter === s ? 'bg-white text-indigo-600 shadow-sm' : 'text-neutral-500 hover:text-neutral-700'}`}
+                                                        >
+                                                            {s}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {proposalsByFaculty.length === 0 ? (
+                                            <div className="text-center py-16 bg-white rounded-2xl border border-dashed border-neutral-200">
+                                                <div className="w-14 h-14 bg-neutral-50 rounded-full flex items-center justify-center mx-auto mb-4 text-neutral-300">
+                                                    <FileText className="w-7 h-7" />
+                                                </div>
+                                                <p className="text-sm font-bold text-neutral-500">No {proposalStatusFilter !== 'All' ? proposalStatusFilter.toLowerCase() : ''} proposals found</p>
+                                                <p className="text-xs text-neutral-400 mt-1">Try a different status filter or clear the search.</p>
+                                            </div>
+                                        ) : (
+                                            proposalsByFaculty.map(bucket => {
+                                                const collapsed = collapsedProposalFaculty.includes(bucket.id);
+                                                const pendingHere = bucket.items.filter((p: any) => p.status === 'Pending' || p.status === 'Draft').length;
+                                                return (
+                                                    <div key={bucket.id} className="bg-white rounded-2xl border border-neutral-200 shadow-sm overflow-hidden">
+                                                        <button
+                                                            onClick={() => setCollapsedProposalFaculty(prev => collapsed ? prev.filter(id => id !== bucket.id) : [...prev, bucket.id])}
+                                                            className="w-full flex items-center gap-4 p-5 hover:bg-neutral-50 transition-colors text-left"
+                                                        >
+                                                            {bucket.photoUrl ? (
+                                                                <img src={bucket.photoUrl} alt={bucket.name} className="h-11 w-11 rounded-xl object-cover border border-neutral-200 shrink-0" />
+                                                            ) : (
+                                                                <div className="h-11 w-11 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold shrink-0">
+                                                                    {bucket.name.charAt(0)}
+                                                                </div>
+                                                            )}
+                                                            <div className="flex-1 min-w-0">
+                                                                <p className="font-bold text-neutral-900 truncate">{bucket.name}</p>
+                                                                <p className="text-xs text-neutral-500 truncate">{bucket.department || 'No department on record'}</p>
+                                                            </div>
+                                                            {pendingHere > 0 && (
+                                                                <span className="shrink-0 px-2.5 py-1 rounded-lg bg-amber-50 text-amber-700 text-[10px] font-bold uppercase tracking-wider">
+                                                                    {pendingHere} pending
+                                                                </span>
+                                                            )}
+                                                            <span className="shrink-0 px-2.5 py-1 rounded-lg bg-neutral-100 text-neutral-600 text-[10px] font-bold uppercase tracking-wider">
+                                                                {bucket.items.length} total
+                                                            </span>
+                                                            {collapsed ? <ChevronDown className="w-5 h-5 text-neutral-400 shrink-0" /> : <ChevronUp className="w-5 h-5 text-neutral-400 shrink-0" />}
+                                                        </button>
+
+                                                        {!collapsed && (
+                                                            <div className="border-t border-neutral-100 divide-y divide-neutral-100">
+                                                                {bucket.items.map((p: any) => (
+                                                                    <div key={p._id} className="flex flex-col sm:flex-row sm:items-center gap-4 p-5 hover:bg-neutral-50/50 transition-colors">
+                                                                        <div className="flex-1 min-w-0">
+                                                                            <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                                                                                <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest bg-indigo-50 px-2 py-0.5 rounded">
+                                                                                    G-{p.group?.name ?? 'TBD'}
+                                                                                </span>
+                                                                                <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${p.status === 'Approved' ? 'bg-green-100 text-green-700' :
+                                                                                    p.status === 'Rejected' ? 'bg-red-100 text-red-700' :
+                                                                                        'bg-amber-100 text-amber-700'
+                                                                                    }`}>
+                                                                                    {p.status}
+                                                                                </span>
+                                                                                {p.group && (
+                                                                                    <span className="text-[10px] text-neutral-400 font-bold uppercase tracking-wider">
+                                                                                        Batch {getGroupBatchYear(p.group)}
+                                                                                    </span>
+                                                                                )}
+                                                                            </div>
+                                                                            <p className="font-bold text-neutral-900 text-sm truncate">{p.title}</p>
+                                                                            <p className="text-xs text-neutral-500 truncate mt-0.5">
+                                                                                {(p.group?.members || []).map((m: any) => m.name).join(', ') || 'No members listed'}
+                                                                            </p>
+                                                                        </div>
+                                                                        <button
+                                                                            onClick={() => { setSelectedProposal(p); setProposalFeedback(p.feedback || ''); }}
+                                                                            className="shrink-0 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all active:scale-95"
+                                                                        >
+                                                                            Review Details <ChevronRight className="w-4 h-4" />
+                                                                        </button>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })
+                                        )}
+                                    </div>
+                                )}
 
                                 {activeTab === 'panels' && (
                                     <div className="space-y-6">
@@ -3609,6 +3834,189 @@ const AdminDashboard: React.FC = () => {
                         )}
                     </div>
                 </main>
+
+                {/* Proposal Review Modal — mirrors the faculty proposal review */}
+                <Dialog.Root open={!!selectedProposal} onOpenChange={(open) => { if (!open) { setSelectedProposal(null); setProposalFeedback(''); } }}>
+                    <Dialog.Portal>
+                        <Dialog.Overlay className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 transition-opacity" />
+                        <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[calc(100%_-_2rem)] max-w-4xl bg-white rounded-3xl shadow-2xl z-50 overflow-hidden max-h-[90vh] flex flex-col focus:outline-none border border-neutral-100">
+                            <div className="flex items-center justify-between p-6 border-b border-neutral-100 bg-neutral-50/50 shrink-0">
+                                <div className="flex items-center gap-4">
+                                    <div className="p-3 bg-indigo-600 rounded-2xl text-white shadow-lg shadow-indigo-200">
+                                        <FileText className="w-6 h-6" />
+                                    </div>
+                                    <div>
+                                        <Dialog.Title className="text-xl font-bold text-neutral-900 leading-none mb-1">
+                                            {selectedProposal?.title}
+                                        </Dialog.Title>
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            <span className="text-xs font-bold text-indigo-600 uppercase tracking-widest bg-indigo-50 px-2 py-0.5 rounded">G-{selectedProposal?.group?.name ?? 'TBD'}</span>
+                                            <span className="text-[10px] text-neutral-400 font-medium">• Supervisor {selectedProposal?.faculty?.name || 'Unassigned'}</span>
+                                            <span className="text-[10px] text-neutral-400 font-medium">• Submitted {new Date(selectedProposal?.createdAt || Date.now()).toLocaleDateString()}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <Dialog.Close className="p-2 rounded-full hover:bg-neutral-100 transition-colors">
+                                    <X className="w-5 h-5 text-neutral-500" />
+                                </Dialog.Close>
+                            </div>
+
+                            <div className="flex-1 overflow-hidden flex flex-col lg:flex-row">
+                                {/* Left: details & team */}
+                                <div className="lg:w-3/5 p-6 sm:p-8 overflow-y-auto space-y-10 border-r border-neutral-100 bg-white">
+                                    <div>
+                                        <h4 className="flex items-center gap-3 text-[10px] font-black text-neutral-400 uppercase tracking-[0.2em] mb-5">
+                                            Project Overview
+                                            <div className="h-px flex-1 bg-neutral-100"></div>
+                                        </h4>
+                                        <p className="text-neutral-700 leading-relaxed text-sm whitespace-pre-wrap">
+                                            {selectedProposal?.description || "No description provided."}
+                                        </p>
+                                    </div>
+
+                                    {(selectedProposal?.tags?.filter((t: string) => t && t.trim()).length ?? 0) > 0 && (
+                                        <div>
+                                            <h4 className="flex items-center gap-3 text-[10px] font-black text-neutral-400 uppercase tracking-[0.2em] mb-4">
+                                                Technologies & Focus
+                                                <div className="h-px flex-1 bg-neutral-100"></div>
+                                            </h4>
+                                            <div className="flex flex-wrap gap-2">
+                                                {selectedProposal?.tags?.filter((t: string) => t && t.trim()).map((tag: string, i: number) => (
+                                                    <span key={i} className="px-3 py-1.5 bg-indigo-50/50 border border-indigo-100 text-indigo-700 rounded-xl text-[11px] font-bold">
+                                                        {tag}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <div>
+                                        <h4 className="flex items-center gap-3 text-[10px] font-black text-neutral-400 uppercase tracking-[0.2em] mb-5">
+                                            Team Composition
+                                            <div className="h-px flex-1 bg-neutral-100"></div>
+                                        </h4>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                            {(selectedProposal?.group?.members || []).map((m: any, idx: number) => (
+                                                <div key={m._id} className="flex items-center gap-4 p-4 bg-neutral-50 border border-neutral-100 rounded-[24px] shadow-sm">
+                                                    {m.photoUrl ? (
+                                                        <img src={m.photoUrl} alt={m.name} className="w-12 h-12 rounded-2xl object-cover shrink-0 border border-neutral-200" />
+                                                    ) : (
+                                                        <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center font-bold text-lg shrink-0">
+                                                            {m.name?.charAt(0)}
+                                                        </div>
+                                                    )}
+                                                    <div className="overflow-hidden">
+                                                        <p className="font-bold text-neutral-900 text-sm truncate mb-0.5">{m.name}</p>
+                                                        <div className="flex items-center gap-2">
+                                                            <p className="text-[11px] text-neutral-500 font-mono font-bold">{m.rollNumber}</p>
+                                                            {idx === 0 && <span className="text-[9px] bg-neutral-900 text-white px-1.5 py-0.5 rounded-md font-black tracking-tighter shrink-0">LEADER</span>}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                            {(selectedProposal?.group?.members || []).length === 0 && (
+                                                <p className="text-xs text-neutral-400 font-bold uppercase tracking-widest">No members listed</p>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Right: assets & decision */}
+                                <div className="lg:w-2/5 p-6 sm:p-8 bg-neutral-50/50 overflow-y-auto space-y-10 border-l border-neutral-100">
+                                    <div>
+                                        <h4 className="flex items-center gap-3 text-[10px] font-black text-neutral-400 uppercase tracking-[0.2em] mb-5 px-1">
+                                            Project Assets
+                                            <div className="h-px flex-1 bg-neutral-200/50"></div>
+                                        </h4>
+                                        {selectedProposal?.attachments && selectedProposal.attachments.length > 0 ? (
+                                            <div className="grid grid-cols-1 gap-3">
+                                                {selectedProposal.attachments.map((url: string, i: number) => {
+                                                    const fileName = url.split('/').pop()?.split('-').pop() || `File ${i + 1}`;
+                                                    const isLink = url.startsWith('http') && !url.includes('/uploads/');
+                                                    return (
+                                                        <a
+                                                            key={i}
+                                                            href={url}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="flex items-center gap-4 p-4 bg-white border border-neutral-200 rounded-2xl hover:border-indigo-500 hover:shadow-lg group transition-all"
+                                                        >
+                                                            <div className="p-3 bg-indigo-50 text-indigo-600 rounded-xl group-hover:bg-indigo-600 group-hover:text-white transition-colors border border-indigo-100/50">
+                                                                {isLink ? <LayoutGrid className="w-5 h-5" /> : <FileText className="w-5 h-5" />}
+                                                            </div>
+                                                            <div className="flex-1 min-w-0">
+                                                                <p className="text-xs font-bold text-neutral-900 truncate mb-0.5">
+                                                                    {isLink ? "External Resource" : fileName}
+                                                                </p>
+                                                                <p className="text-[9px] text-neutral-400 font-black uppercase tracking-widest leading-none">
+                                                                    {isLink ? "Digital Link" : "Document Asset"}
+                                                                </p>
+                                                            </div>
+                                                            <ChevronRight className="w-4 h-4 text-neutral-300 group-hover:text-indigo-600 transition-all" />
+                                                        </a>
+                                                    );
+                                                })}
+                                            </div>
+                                        ) : (
+                                            <div className="p-6 sm:p-10 border-2 border-dashed border-neutral-200 rounded-3xl text-center bg-white/50">
+                                                <div className="w-12 h-12 bg-neutral-50 rounded-full flex items-center justify-center mx-auto mb-3 text-neutral-300">
+                                                    <ArchiveIcon className="w-6 h-6" />
+                                                </div>
+                                                <p className="text-xs text-neutral-400 font-bold uppercase tracking-widest">No Attachments</p>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div className="pt-6 border-t border-neutral-200">
+                                        <h4 className="flex items-center gap-2 text-xs font-black text-neutral-400 uppercase tracking-widest mb-4">Project Action</h4>
+
+                                        {(selectedProposal?.status === 'Pending' || selectedProposal?.status === 'Draft' || selectedProposal?.status === 'Rejected') ? (
+                                            <div className="flex flex-col gap-4">
+                                                <label className="block text-[10px] font-black text-neutral-400 uppercase tracking-[0.2em] px-1">Review & Decision</label>
+                                                <div className="flex gap-4">
+                                                    <div className="flex-1">
+                                                        <textarea
+                                                            value={proposalFeedback}
+                                                            onChange={(e) => setProposalFeedback(e.target.value)}
+                                                            placeholder="Add remarks or reasons for feedback..."
+                                                            className="w-full px-5 py-4 rounded-3xl border border-neutral-200 focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 bg-white text-sm transition-all h-[152px] resize-none shadow-sm"
+                                                        />
+                                                    </div>
+                                                    <div className="flex flex-col gap-3 shrink-0 w-32">
+                                                        <button
+                                                            onClick={() => selectedProposal && handleProposalAction(selectedProposal._id, 'Approved')}
+                                                            disabled={!!proposalActionLoading}
+                                                            className="flex-1 px-4 bg-emerald-500 hover:bg-emerald-600 text-white rounded-3xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-emerald-100 transition-all flex flex-col items-center justify-center gap-2 active:scale-95 disabled:opacity-50 group"
+                                                        >
+                                                            {proposalActionLoading === 'Approved' ? <div className="animate-spin rounded-full h-5 w-5 border-2 border-white/30 border-t-white" /> : <><CheckCircle className="w-6 h-6 transition-transform group-hover:scale-110" /> Approve</>}
+                                                        </button>
+                                                        <button
+                                                            onClick={() => selectedProposal && handleProposalAction(selectedProposal._id, 'Rejected')}
+                                                            disabled={!!proposalActionLoading}
+                                                            className="flex-1 px-4 bg-white border-2 border-red-50 text-red-500 hover:bg-red-50 hover:border-red-100 hover:text-red-600 rounded-3xl font-black text-[10px] uppercase tracking-widest transition-all flex flex-col items-center justify-center gap-2 active:scale-95 disabled:opacity-50 group"
+                                                        >
+                                                            {proposalActionLoading === 'Rejected' ? <div className="animate-spin rounded-full h-5 w-5 border-2 border-red-500/30 border-t-red-500" /> : <><XCircle className="w-6 h-6 transition-transform group-hover:scale-110" /> Reject</>}
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div className="p-5 bg-emerald-50 border border-emerald-100 rounded-2xl">
+                                                <div className="flex items-center gap-2 text-emerald-700 font-black text-[10px] uppercase tracking-widest mb-2">
+                                                    <CheckCircle className="w-4 h-4" /> Approved
+                                                </div>
+                                                <p className="text-xs text-emerald-800/80 leading-relaxed">
+                                                    {selectedProposal?.feedback || 'This proposal has been approved by the supervisor. No action pending.'}
+                                                </p>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        </Dialog.Content>
+                    </Dialog.Portal>
+                </Dialog.Root>
+
                 {/* Edit Faculty Modal */}
                 {/* Faculty Profile Dialog */}
 

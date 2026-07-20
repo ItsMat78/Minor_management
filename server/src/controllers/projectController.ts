@@ -112,6 +112,37 @@ export const getFacultyProjects = async (req: Request, res: Response) => {
     }
 };
 
+// Admin view of every active (non-archived) proposal, with the faculty and the full
+// member list populated so the admin can review and decide exactly like the faculty does.
+export const getAdminProposals = async (req: Request, res: Response) => {
+    try {
+        if ((req as any).user.role !== UserRole.ADMIN) {
+            return res.status(403).json({ message: 'Not authorized' });
+        }
+
+        // The sidebar badge only needs the count — skip the full populated payload for it.
+        if (req.query.countOnly) {
+            const pending = await Project.countDocuments({
+                isArchived: { $ne: true },
+                status: { $in: ['Pending', 'Draft'] }
+            });
+            return res.json({ pending });
+        }
+
+        const projects = await Project.find({ isArchived: { $ne: true } })
+            .populate('faculty', 'name email department photoUrl')
+            .populate({
+                path: 'group',
+                populate: { path: 'members', select: 'name email rollNumber branch photoUrl' }
+            })
+            .sort({ createdAt: -1 });
+
+        res.json(projects);
+    } catch (error) {
+        res.status(500).json({ message: 'Server error', error });
+    }
+};
+
 export const updateProjectStatus = async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
