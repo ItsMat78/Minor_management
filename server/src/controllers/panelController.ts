@@ -732,113 +732,161 @@ export const exportPanels = async (req: any, res: Response) => {
             else { cell.font = { bold: true, size: 10, color: { argb: 'FF0070C0' } }; cell.fill = fill('FFF2F2F2'); }
         });
 
-        // INDIVIDUAL PANEL SHEETS — composition only: the groups (and their members) under each
-        // panel. No evaluation marks; this export is purely "who sits where / which groups".
+        // INDIVIDUAL PANEL SHEETS — one sheet per panel, laid out like the official IIITNR
+        // "evaluation format" template: institution header, a Panel No. / Panel Members line,
+        // a two-row marks header (MID-TERM / END-TERM / averages / total / grade — left blank
+        // for the board to fill in during evaluation), the group roster, then a signature block.
+        // Columns span A(spacer) B..Q, mirroring the reference sheet's 17-column layout.
         (panels as any[]).forEach((panel: any, pi: number) => {
             const pg = panelGroups[pi]; const chairId = panelChairs[pi];
             const ws = workbook.addWorksheet(`Panel ${pi + 1}`);
             ws.columns = [
-                { width: 4 }, { width: 12 }, { width: 30 }, { width: 18 }, { width: 14 }, { width: 46 }, { width: 30 },
+                { width: 3 },   // A spacer
+                { width: 8 },   // B Group No.
+                { width: 26 },  // C Student's name
+                { width: 13 },  // D Roll no.
+                { width: 12 },  // E Department
+                { width: 42 },  // F Title of the Project
+                { width: 22 },  // G Supervisor Name
+                { width: 8 },   // H E1 (15)
+                { width: 8 },   // I E2 (15)
+                { width: 9 },   // J Guide (15)
+                { width: 16 },  // K Average Marks (30)
+                { width: 8 },   // L E1 (35)
+                { width: 8 },   // M E2 (35)
+                { width: 9 },   // N Guide (35)
+                { width: 16 },  // O Average Marks (70)
+                { width: 11 },  // P Total (100)
+                { width: 9 },   // Q Grade
             ];
-            const LAST = 7;
+            const FIRST = 2, LAST = 17; // data spans columns B..Q
 
-            const sheetInstRows = [
+            // ---- Institution header (rows 1-4, each merged across B..Q) ----
+            const instRows = [
                 'Dr. SPM International Institute of Information Technology, Naya Raipur',
                 '(A Joint Initiative of Govt. of Chhattisgarh and NTPC)',
-                'Email: iiitnr@iiitnr.ac.in  |  Tel: (0771) 2474040  |  Web: www.iiitnr.ac.in',
-                `MINOR PROJECT - ${semStr} Semester  |  Panel Allocation  |  Batch ${panel.batchYear}  |  Academic Year ${acadYear}`,
+                'Email: iiitnr@iiitnr.ac.in, Tel: (0771) 2474040, Web: www.iiitnr.ac.in',
+                `MINOR PROJECT EVALUATION- B.Tech. ${semStr} SEM`,
             ];
-            sheetInstRows.forEach((text, idx) => {
+            instRows.forEach((text, idx) => {
                 ws.addRow([null, text]);
-                ws.mergeCells(idx + 1, 2, idx + 1, LAST);
-                const cell = ws.getCell(idx + 1, 2);
+                ws.mergeCells(idx + 1, FIRST, idx + 1, LAST);
+                const cell = ws.getCell(idx + 1, FIRST);
                 cell.alignment = center; cell.border = thin;
-                if (idx === 0) { cell.font = { bold: true, size: 13, color: { argb: 'FF0070C0' } }; ws.getRow(1).height = 38; }
-                else if (idx === 3) { cell.font = { bold: true, size: 11, underline: true }; cell.fill = fill('FFDCE6F1'); ws.getRow(4).height = 38; }
+                if (idx === 0) { cell.font = { bold: true, size: 13, color: { argb: 'FF0070C0' } }; ws.getRow(1).height = 34; }
+                else if (idx === 3) { cell.font = { bold: true, size: 12, underline: true }; cell.fill = fill('FFDCE6F1'); ws.getRow(4).height = 26; }
                 else { cell.font = { size: 10, italic: true }; }
             });
 
-            ws.addRow([]);
-            const facLabel = `Panel No. ${pi + 1}   |   ` + panel.faculty.map((f: any) => f._id.toString() === chairId ? `${f.name} (Chair)` : f.name).join('  -  ');
-            ws.addRow([null, `Panel No. ${pi + 1}`, null, null, facLabel]);
-            ws.mergeCells('B6:D6'); ws.mergeCells('E6:G6'); ws.getRow(6).height = 38;
-            for (let col = 2; col <= LAST; col++) {
-                const cell = ws.getCell(6, col);
-                cell.font = { bold: true, size: 10, color: { argb: 'FF1F3864' } }; cell.fill = fill('FF9BC2E6'); cell.border = thin;
+            // ---- Panel No. / Panel Members line (row 6) ----
+            ws.addRow([]); // row 5 blank
+            const chairFirst = [...(panel.faculty as any[])].sort((a: any, b: any) =>
+                (b._id.toString() === chairId ? 1 : 0) - (a._id.toString() === chairId ? 1 : 0));
+            const membersLabel = 'Panel Members -: ' + chairFirst
+                .map((f: any) => f._id.toString() === chairId ? `${f.name} (Chair)` : f.name)
+                .join(', ');
+            const panelRow = ws.addRow([null, `Panel No.- ${pi + 1}`, null, null, membersLabel]);
+            const pr = panelRow.number;
+            ws.mergeCells(pr, 2, pr, 4);      // B..D  Panel No.
+            ws.mergeCells(pr, 5, pr, LAST);   // E..Q  Panel Members
+            panelRow.height = 26;
+            for (let col = FIRST; col <= LAST; col++) {
+                const cell = ws.getCell(pr, col);
+                cell.font = { bold: true, size: 10, color: { argb: 'FF1F3864' } };
+                cell.fill = fill('FF9BC2E6'); cell.border = thin;
                 cell.alignment = col <= 4 ? center : leftAlign;
             }
 
+            // ---- Two-row marks header (rows 7-8) ----
             const HDR = 'FF002060';
-            const hdr = ws.addRow([null, 'Group\nNo.', "Student's Name", 'Roll No.', 'Dept', 'Title of the Project', 'Supervisor']);
-            ws.getRow(7).height = 32;
-            hdr.eachCell({ includeEmpty: true }, (cell, col) => {
-                if (col < 2) return;
+            const top = new Array(LAST).fill(null);
+            top[1] = 'Group No.'; top[2] = "Student's name"; top[3] = 'Roll no.';
+            top[4] = 'Department'; top[5] = 'Title of the Project'; top[6] = 'Supervisor Name';
+            top[7] = 'MID-TERM (15+15)'; top[10] = 'Average Marks (30) Guide+(E1 +E2)/2';
+            top[11] = 'END-TERM (35+35)'; top[14] = 'Average Marks (70) Guide+(E1 +E2)/2';
+            top[15] = 'Total (100)'; top[16] = 'Grade';
+            const topRow = ws.addRow(top);
+            const bot = new Array(LAST).fill(null);
+            bot[7] = 'E1 (15)'; bot[8] = 'E2 (15)'; bot[9] = 'Guide (15)';
+            bot[11] = 'E1 (35)'; bot[12] = 'E2 (35)'; bot[13] = 'Guide (35)';
+            const botRow = ws.addRow(bot);
+            const rTop = topRow.number, rBot = botRow.number;
+            topRow.height = 30; botRow.height = 20;
+
+            for (let c = 2; c <= 7; c++) ws.mergeCells(rTop, c, rBot, c); // B..G span both header rows
+            ws.mergeCells(rTop, 8, rTop, 10);   // MID-TERM over E1/E2/Guide (15)
+            ws.mergeCells(rTop, 11, rBot, 11);  // Average Marks (30)
+            ws.mergeCells(rTop, 12, rTop, 14);  // END-TERM over E1/E2/Guide (35)
+            ws.mergeCells(rTop, 15, rBot, 15);  // Average Marks (70)
+            ws.mergeCells(rTop, 16, rBot, 16);  // Total (100)
+            ws.mergeCells(rTop, 17, rBot, 17);  // Grade
+            [topRow, botRow].forEach(r => r.eachCell({ includeEmpty: true }, (cell, col) => {
+                if (col < FIRST) return;
                 cell.border = thin; cell.alignment = center;
                 cell.font = { bold: true, size: 9, color: { argb: 'FFFFFFFF' } };
                 cell.fill = fill(HDR);
-            });
+            }));
 
-            let curRow = 8;
+            // ---- Group roster (marks columns H..Q left blank) ----
             pg.forEach((g: any, gi: number) => {
                 const members = (g.members || []) as any[];
                 const title = g.project?.title || 'TBD';
                 const supervisor = typeof g.project?.faculty === 'string' ? '' : (g.project?.faculty?.name || '');
                 const groupNo = g.name || '';
                 const rowFill = gi % 2 === 0 ? 'FFFFFFFF' : 'FFF5F5F5';
-                const firstRowNum = curRow;
-                const count = Math.max(members.length, 1);
+                const list = members.length ? members : [null];
+                let firstRowNum = 0, lastRowNum = 0;
 
-                if (members.length === 0) {
-                    const row = ws.addRow([null, groupNo, '', '', '', title, supervisor]);
-                    row.height = 30;
-                    row.eachCell({ includeEmpty: true }, (cell, col) => { if (col >= 2) { cell.border = thin; cell.fill = fill(rowFill); cell.font = { size: 9.5 }; cell.alignment = col <= 2 ? center : leftAlign; } });
-                    curRow++;
-                } else {
-                    members.forEach((m: any, mi: number) => {
-                        const dept = m.branch || m.department || getBranch(m.rollNumber || '');
-                        const row = ws.addRow([null, mi === 0 ? groupNo : '', m.name || '', m.rollNumber || '', dept, mi === 0 ? title : '', mi === 0 ? supervisor : '']);
-                        row.height = 30;
-                        row.eachCell({ includeEmpty: true }, (cell, col) => {
-                            if (col < 2) return;
-                            cell.border = thin; cell.fill = fill(rowFill); cell.font = { size: 9.5 };
-                            cell.alignment = (col === 2 || col === 4 || col === 5) ? center : leftAlign;
-                        });
-                        curRow++;
+                list.forEach((m: any, mi: number) => {
+                    const dept = m ? (m.branch || m.department || getBranch(m.rollNumber || '')) : '';
+                    const row = ws.addRow([
+                        null,
+                        mi === 0 ? groupNo : '',
+                        m?.name || '', m?.rollNumber || '', dept,
+                        mi === 0 ? title : '', mi === 0 ? supervisor : '',
+                        '', '', '', '', '', '', '', '', '', '',
+                    ]);
+                    if (mi === 0) firstRowNum = row.number;
+                    lastRowNum = row.number;
+                    row.height = 26;
+                    row.eachCell({ includeEmpty: true }, (cell, col) => {
+                        if (col < FIRST) return;
+                        cell.border = thin; cell.fill = fill(rowFill); cell.font = { size: 9.5 };
+                        cell.alignment = (col === 3 || col === 6 || col === 7) ? leftAlign : center;
                     });
-                    if (count > 1) {
-                        const lastRowNum = firstRowNum + count - 1;
-                        ['B', 'F', 'G'].forEach(col => {
-                            ws.mergeCells(`${col}${firstRowNum}:${col}${lastRowNum}`);
-                            const mc = ws.getCell(`${col}${firstRowNum}`);
-                            mc.alignment = { horizontal: col === 'B' ? 'center' : 'left', vertical: 'middle', wrapText: true };
-                            mc.border = thin; mc.fill = fill(rowFill);
-                        });
-                    }
+                });
+
+                if (lastRowNum > firstRowNum) {
+                    [2, 6, 7].forEach(col => {   // Group No., Title, Supervisor Name merged per group
+                        ws.mergeCells(firstRowNum, col, lastRowNum, col);
+                        const mc = ws.getCell(firstRowNum, col);
+                        mc.alignment = { horizontal: col === 2 ? 'center' : 'left', vertical: 'middle', wrapText: true };
+                        mc.border = thin; mc.fill = fill(rowFill);
+                    });
                 }
             });
 
+            // ---- Signature block ----
             ws.addRow([]); ws.addRow([]);
-            const sigHeaderRow = ws.addRow([null, 'Evaluation Board Member', null, 'Designation / Role', null, 'Signature']);
-            ws.mergeCells(`B${sigHeaderRow.number}:C${sigHeaderRow.number}`);
-            ws.mergeCells(`D${sigHeaderRow.number}:E${sigHeaderRow.number}`);
-            ws.mergeCells(`F${sigHeaderRow.number}:G${sigHeaderRow.number}`);
-            sigHeaderRow.height = 20;
-            ['B', 'C', 'D', 'E', 'F', 'G'].forEach(col => {
-                const cell = ws.getCell(`${col}${sigHeaderRow.number}`);
-                cell.font = { bold: true, size: 10, color: { argb: 'FF1F3864' } }; cell.fill = fill('FFDCE6F1'); cell.border = thin; cell.alignment = center;
+            const sigHdr = ws.addRow([null, 'Evaluation Board Member', null, 'Signature']);
+            ws.mergeCells(sigHdr.number, 2, sigHdr.number, 3);
+            ws.mergeCells(sigHdr.number, 4, sigHdr.number, 5);
+            sigHdr.height = 22;
+            [2, 4].forEach(startCol => {
+                const cell = ws.getCell(sigHdr.number, startCol);
+                cell.font = { bold: true, size: 10, color: { argb: 'FF1F3864' } };
+                cell.fill = fill('FFDCE6F1'); cell.border = thin; cell.alignment = center;
             });
 
-            panel.faculty.forEach((fac: any) => {
+            chairFirst.forEach((fac: any) => {
                 const isChair = fac._id.toString() === chairId;
-                const sigRow = ws.addRow([null, isChair ? `${fac.name} (Chair)` : fac.name, null, isChair ? 'Panel Chair' : 'Panel Member', null, '']);
-                ws.mergeCells(`B${sigRow.number}:C${sigRow.number}`);
-                ws.mergeCells(`D${sigRow.number}:E${sigRow.number}`);
-                ws.mergeCells(`F${sigRow.number}:G${sigRow.number}`);
-                sigRow.height = 32;
-                ['B', 'C', 'D', 'E', 'F', 'G'].forEach(col => {
-                    const cell = ws.getCell(`${col}${sigRow.number}`);
-                    cell.border = thin; cell.alignment = (col === 'B' || col === 'C') ? leftAlign : center; cell.font = { size: 10 };
-                });
+                const sigRow = ws.addRow([null, isChair ? `${fac.name} (Chair)` : fac.name]);
+                ws.mergeCells(sigRow.number, 2, sigRow.number, 3);
+                ws.mergeCells(sigRow.number, 4, sigRow.number, 5);
+                sigRow.height = 30;
+                const nameCell = ws.getCell(sigRow.number, 2);
+                nameCell.border = thin; nameCell.alignment = leftAlign; nameCell.font = { size: 10 };
+                ws.getCell(sigRow.number, 4).border = thin;
             });
         });
 
@@ -1006,7 +1054,7 @@ export const downloadEvaluationTemplate = async (req: any, res: Response) => {
 
         const headerLabels = [
             '__GROUP_ID__', '__STUDENT_ID__',
-            'Group No.', 'Project Title', 'Mentor', 'Student Name', 'Roll No.',
+            'Group No.', 'Project Title', 'Supervisor Name', 'Student Name', 'Roll No.',
             'Attendance (Present/Absent)', 'Stars (1-5)',
             ...rubricCols.map(c => c.headerLabel),
             'Remarks'
@@ -1307,7 +1355,7 @@ export const exportPanelFinalSheet = async (req: any, res: Response) => {
         const cols: any[] = [
             { header: 'Group No.', width: 10 },
             { header: 'Project Title', width: 35 },
-            { header: 'Mentor', width: 22 },
+            { header: 'Supervisor Name', width: 22 },
             { header: 'Student Name', width: 25 },
             { header: 'Roll No.', width: 15 },
             { header: 'Attendance', width: 12 }
@@ -1526,7 +1574,7 @@ export const downloadBatchEvaluationTemplate = async (req: any, res: Response) =
 
         const headerLabels = [
             '__GROUP_ID__', '__STUDENT_ID__',
-            'Group No.', 'Project Title', 'Mentor', 'Student Name', 'Roll No.',
+            'Group No.', 'Project Title', 'Supervisor Name', 'Student Name', 'Roll No.',
             'Attendance (Present/Absent)', 'Stars (1-5)',
             ...rubricCols.map(c => c.headerLabel),
             'Remarks'
@@ -1856,7 +1904,7 @@ export const exportBatchFinalSheet = async (req: any, res: Response) => {
             ? [
                 { header: 'Group No.', width: 10 },
                 { header: 'Project Title', width: 35 },
-                { header: 'Mentor', width: 22 },
+                { header: 'Supervisor Name', width: 22 },
                 { header: 'Student Name', width: 25 },
                 { header: 'Roll No.', width: 15 },
                 { header: 'Attendance', width: 12 }

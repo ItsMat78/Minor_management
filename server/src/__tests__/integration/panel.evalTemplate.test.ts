@@ -95,7 +95,7 @@ describe('Evaluation template — mentor column', () => {
         const ws = (await loadSheet(res.body)).getWorksheet('Evaluation Template')!;
         expect(ws).toBeDefined();
 
-        // Find the header row, then assert Mentor sits between Project Title and Student Name.
+        // Find the header row, then assert Supervisor Name sits between Project Title and Student Name.
         let headerRow = 0;
         ws.eachRow((row, n) => {
             if (String(row.getCell(1).value || '') === '__GROUP_ID__') headerRow = n;
@@ -104,7 +104,7 @@ describe('Evaluation template — mentor column', () => {
 
         const header = (c: number) => String(ws.getRow(headerRow).getCell(c).value || '');
         expect(header(4)).toBe('Project Title');
-        expect(header(5)).toBe('Mentor');
+        expect(header(5)).toBe('Supervisor Name');
         expect(header(6)).toBe('Student Name');
 
         // First data row carries the mentor name in the Mentor column.
