@@ -10,6 +10,7 @@ import bcrypt from 'bcryptjs';
 import { publicUrlFor, deleteFileByUrl } from '../middleware/uploadMiddleware';
 import Event, { EventType } from '../models/Event';
 import { getGlobalSettings } from '../models/Settings';
+import { branchFromRoll } from '../utils/branch';
 
 /** Returns the participatingBatches of the current active GF event, or [] if none. */
 async function getActiveParticipatingBatches(): Promise<string[]> {
@@ -234,6 +235,27 @@ export const updateUser = async (req: Request, res: Response) => {
         const safeUpdates = Object.fromEntries(
             Object.entries(req.body).filter(([key]) => ALLOWED_UPDATE_FIELDS.includes(key))
         );
+
+        const existing = await User.findById(id).select('role rollNumber');
+        if (!existing) return res.status(404).json({ message: 'User not found' });
+
+        // A student's branch lives in their roll number, so a roll change re-derives it —
+        // otherwise the client's stale branch would be written straight back. Only on an
+        // actual change, so edits to other fields still work for students whose stored roll
+        // predates the format.
+        if (
+            existing.role === UserRole.STUDENT &&
+            typeof safeUpdates.rollNumber === 'string' &&
+            safeUpdates.rollNumber !== existing.rollNumber
+        ) {
+            const derived = branchFromRoll(safeUpdates.rollNumber);
+            if (!derived) {
+                return res.status(400).json({
+                    message: `Cannot derive a branch from roll number '${safeUpdates.rollNumber}' — the 5th character must be 0 (CSE), 1 (ECE), or 2 (DSAI).`
+                });
+            }
+            safeUpdates.branch = derived;
+        }
 
         const user = await User.findByIdAndUpdate(id, safeUpdates, { new: true }).select('-password');
         if (!user) return res.status(404).json({ message: 'User not found' });
@@ -562,14 +584,12 @@ export const previewImport = async (req: Request, res: Response) => {
                     invalidRows.push({ rowNumber: index + 2, data: row, reason: 'Roll Number too short to derive branch (must be ≥ 5 characters)' });
                     return;
                 }
-                const d = rollNumber[4];
-                if (d === '0') resolvedBranch = 'CSE';
-                else if (d === '1') resolvedBranch = 'ECE';
-                else if (d === '2') resolvedBranch = 'DSAI';
-                else {
-                    invalidRows.push({ rowNumber: index + 2, data: row, reason: `Invalid roll number — 5th digit '${d}' is not a recognised branch code (0=CSE, 1=ECE, 2=DSAI)` });
+                const derived = branchFromRoll(rollNumber);
+                if (!derived) {
+                    invalidRows.push({ rowNumber: index + 2, data: row, reason: `Invalid roll number — 5th digit '${rollNumber[4]}' is not a recognised branch code (0=CSE, 1=ECE, 2=DSAI)` });
                     return;
                 }
+                resolvedBranch = derived;
             }
 
             // Faculty must declare which branch(es) they mentor (used to scope the proposal list).

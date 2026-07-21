@@ -4549,7 +4549,12 @@ const AdminDashboard: React.FC = () => {
                                 {editingUser.role === 'Student' && (<>
                                     <div className="flex flex-col gap-1">
                                         <label className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Roll Number</label>
-                                        <input className="border border-neutral-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-300" value={editUserForm.rollNumber} onChange={e => setEditUserForm((f: any) => ({ ...f, rollNumber: e.target.value }))} />
+                                        <input className="border border-neutral-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-300" value={editUserForm.rollNumber} onChange={e => {
+                                            const rn = e.target.value;
+                                            const { branch } = deriveStudentFields(rn);
+                                            setEditUserForm((f: any) => ({ ...f, rollNumber: rn, ...(branch ? { branch } : {}) }));
+                                        }} />
+                                        <p className="text-[11px] text-neutral-400">Branch <span className="font-semibold text-neutral-500">{editUserForm.branch || '—'}</span> is auto-filled from the 5th digit (0=CSE, 1=ECE, 2=DSAI).</p>
                                     </div>
 
                                     <div className="flex items-center justify-between p-3 bg-neutral-50 rounded-xl border border-neutral-100">

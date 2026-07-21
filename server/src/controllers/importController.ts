@@ -9,6 +9,7 @@ import Group from '../models/Group';
 import Project from '../models/Project';
 import Event, { EventType } from '../models/Event';
 import { resolveSession } from '../utils/session';
+import { branchFromRoll } from '../utils/branch';
 
 // ─── Participation helpers ───────────────────────────────────────────────────
 
@@ -47,15 +48,6 @@ function studentParticipates(targetBatch: string | undefined, rollNumber: string
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 const norm = (s: string) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-
-/** Derive branch from 5th character (index 4) of roll number: '0'=CSE, '1'=ECE, '2'=DSAI */
-const branchFromRoll = (roll: string): string => {
-    if (!roll || roll.length < 5) return 'CSE';
-    const digit = roll[4];
-    if (digit === '1') return 'ECE';
-    if (digit === '2') return 'DSAI';
-    return 'CSE'; // '0' or unrecognised → CSE
-};
 
 const toFacultyEmail = (name: string) =>
     (name || 'unknown')
@@ -128,7 +120,9 @@ function parseIIITNRExcel(filePath: string): ParsedGroup[] {
             }
             // colD is treated as email when it contains '@'; otherwise left empty
             const emailVal = colD.includes('@') ? colD.toLowerCase() : '';
-            current.students.push({ name: colB, roll: colC, branch: branchFromRoll(colC), email: emailVal });
+            // Spreadsheet imports stay lenient: an unreadable roll falls back to CSE rather
+            // than failing the whole sheet.
+            current.students.push({ name: colB, roll: colC, branch: branchFromRoll(colC) ?? 'CSE', email: emailVal });
 
             // Derive batchYear from first roll number we see
             if (!current.batchYear && colC && /^\d{2}/.test(colC)) {

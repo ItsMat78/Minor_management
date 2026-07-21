@@ -154,6 +154,55 @@ describe('PUT /api/users/:id', () => {
         const updated = await User.findById(target._id);
         expect(updated!.name).toBe('New Name');
     });
+
+    it('re-derives a student\'s branch when their roll number changes', async () => {
+        const admin = await createTestUser({ role: UserRole.ADMIN });
+        const target = await createTestUser({ email: 'roll_change@t.ac.in', rollNumber: '231000012' });
+        await User.findByIdAndUpdate(target._id, { branch: 'CSE' });
+
+        // 5th digit 0 -> 1 means CSE -> ECE. The client still posts the stale branch.
+        const res = await request(app)
+            .put(`/api/users/${target._id}`)
+            .set('x-auth-token', generateToken(admin))
+            .send({ rollNumber: '231010012', branch: 'CSE' });
+        expect(res.status).toBe(200);
+
+        const updated = await User.findById(target._id);
+        expect(updated!.rollNumber).toBe('231010012');
+        expect(updated!.branch).toBe('ECE');
+    });
+
+    it('rejects a roll number whose branch digit is unrecognised', async () => {
+        const admin = await createTestUser({ role: UserRole.ADMIN });
+        const target = await createTestUser({ email: 'bad_roll@t.ac.in', rollNumber: '231000012' });
+        await User.findByIdAndUpdate(target._id, { branch: 'CSE' });
+
+        const res = await request(app)
+            .put(`/api/users/${target._id}`)
+            .set('x-auth-token', generateToken(admin))
+            .send({ rollNumber: '231090012' });
+        expect(res.status).toBe(400);
+
+        const updated = await User.findById(target._id);
+        expect(updated!.rollNumber).toBe('231000012');
+        expect(updated!.branch).toBe('CSE');
+    });
+
+    it('leaves a hand-set branch alone when the roll number is unchanged', async () => {
+        const admin = await createTestUser({ role: UserRole.ADMIN });
+        const target = await createTestUser({ email: 'same_roll@t.ac.in', rollNumber: 'LEGACY' });
+        await User.findByIdAndUpdate(target._id, { branch: 'DSAI' });
+
+        const res = await request(app)
+            .put(`/api/users/${target._id}`)
+            .set('x-auth-token', generateToken(admin))
+            .send({ name: 'Renamed', rollNumber: 'LEGACY', branch: 'DSAI' });
+        expect(res.status).toBe(200);
+
+        const updated = await User.findById(target._id);
+        expect(updated!.name).toBe('Renamed');
+        expect(updated!.branch).toBe('DSAI');
+    });
 });
 
 // ── DELETE /api/users/:id (admin) ─────────────────────────────────────────────
