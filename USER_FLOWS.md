@@ -530,9 +530,10 @@ Click card → opens full MenteeGroupPage:
 - **Global Capacity Settings** (collapsible):
   - Set global `maxStudents` and `maxGroups` defaults for all faculty.
   - Save button.
-- **Per-Batch Capacity Overrides** (collapsible per batch):
-  - Override limits per faculty per batch year.
-  - Changes stored in `faculty.batchConfigs`.
+- **Per-Faculty Capacity** (Edit → Configure Mentorship Limits):
+  - Override `maxStudents` and `maxGroups` for an individual faculty member.
+  - Limits are semester-wide totals across every batch that faculty mentors; there are no
+    per-batch overrides.
 
 ---
 
@@ -631,10 +632,11 @@ Same cascade as Delete Student.
 - If faculty has Approved groups with projects, deleting the faculty detaches the project's faculty reference. Admin should reassign groups first or be warned.
 
 #### 4.3.5 Configure Faculty Capacity Limits
-- **Global default**: set on Overview tab.
-- **Per-faculty override**: Edit button on faculty row → "Batch Limits" section in modal.
-- **Per-batch per-faculty**: set `maxStudents` and `maxGroups` for a specific batch year for that faculty.
-- Lookup priority: `batchConfigs[batchYear]` → global default.
+- **Global default**: set on Overview tab, applied to every faculty.
+- **Per-faculty override**: Edit button on faculty row → "Configure Mentorship Limits" modal.
+- A faculty member's `maxStudents` / `maxGroups` is their capacity for the WHOLE semester,
+  counted across every batch they mentor. Approving a proposal that would push their total
+  past either limit is rejected.
 
 ---
 

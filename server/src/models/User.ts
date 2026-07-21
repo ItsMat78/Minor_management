@@ -22,10 +22,16 @@ export interface IUser extends Document {
     otpExpires?: Date;
     department?: string; // For faculty
     expertise?: string[]; // For faculty
-    maxStudents?: number; // For faculty, default 21
-    maxGroups?: number; // For faculty, default 7
+    // For faculty: capacity for the WHOLE semester, summed across every batch they mentor.
+    maxStudents?: number; // default 21
+    maxGroups?: number; // default 7
     currentStudents: number;
     currentGroups: number;
+    /**
+     * @deprecated Per-batch capacity overrides. Supervisor limits are now semester-wide
+     * totals across all batches, so nothing reads or writes this. Retained only so existing
+     * documents keep their data; safe to drop in a later migration.
+     */
     batchConfigs?: {
         batchYear: number;
         maxStudents: number;

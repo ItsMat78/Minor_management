@@ -306,10 +306,10 @@ const AdminDashboard: React.FC = () => {
     const [deleteConfirm, setDeleteConfirm] = useState<any>(null); // User pending deletion
     const [expandedPanelGroups, setExpandedPanelGroups] = useState<Record<string, boolean>>({});
 
-    // Limits State
+    // Limits State. These are semester-wide totals for a supervisor, counted across every
+    // batch they mentor — there are no per-batch overrides.
     const [globalMaxStudents, setGlobalMaxStudents] = useState<number>(21);
     const [globalMaxGroups, setGlobalMaxGroups] = useState<number>(7);
-    const [batchLimits, setBatchLimits] = useState<Record<number, { maxStudents: number, maxGroups: number }>>({});
 
     // Events State
     const [events, setEvents] = useState<any[]>([]);
@@ -1291,19 +1291,6 @@ const AdminDashboard: React.FC = () => {
         // Initialize limits from faculty data
         setGlobalMaxStudents(faculty.maxStudents || 21);
         setGlobalMaxGroups(faculty.maxGroups || 7);
-
-        const initialBatchLimits: any = {};
-        // Generate default slots for currently participating batches
-        participatingBatchYears.forEach(yearStr => {
-            const year = parseInt(yearStr);
-            const config = (faculty.batchConfigs || []).find((c: any) => c.batchYear === year);
-            if (config) {
-                initialBatchLimits[year] = { maxStudents: config.maxStudents, maxGroups: config.maxGroups };
-            } else {
-                initialBatchLimits[year] = { maxStudents: faculty.maxStudents || 21, maxGroups: faculty.maxGroups || 7 };
-            }
-        });
-        setBatchLimits(initialBatchLimits);
     };
 
     const openDefaultLimitsModal = async () => {
@@ -1343,16 +1330,9 @@ const AdminDashboard: React.FC = () => {
     const handleSaveLimits = async () => {
         if (!editingFaculty) return;
         try {
-            const batchConfigs = Object.entries(batchLimits).map(([year, limits]: any) => ({
-                batchYear: parseInt(year),
-                maxStudents: limits.maxStudents,
-                maxGroups: limits.maxGroups
-            }));
-
             await api.put(`/users/${editingFaculty._id}`, {
                 maxStudents: globalMaxStudents,
-                maxGroups: globalMaxGroups,
-                batchConfigs
+                maxGroups: globalMaxGroups
             });
 
             // Refresh faculty list
@@ -1366,15 +1346,6 @@ const AdminDashboard: React.FC = () => {
         }
     };
 
-    const updateBatchLimit = (year: number, field: 'maxStudents' | 'maxGroups', value: number) => {
-        setBatchLimits(prev => ({
-            ...prev,
-            [year]: {
-                ...prev[year],
-                [field]: value
-            }
-        }));
-    };
 
     const getFilteredStudents = () => {
         return students.filter(s => {
@@ -4268,7 +4239,7 @@ const AdminDashboard: React.FC = () => {
                             <div className="px-8 py-6 border-b border-gray-100 flex items-center justify-between bg-neutral-50">
                                 <div>
                                     <h3 className="text-xl font-bold text-gray-900">Configure Mentorship Limits</h3>
-                                    <p className="text-sm text-neutral-500">Set global and batch-specific limits for {editingFaculty.name}</p>
+                                    <p className="text-sm text-neutral-500">Set semester-wide limits for {editingFaculty.name}</p>
                                 </div>
                                 <button onClick={() => setShowLimitSettings(false)} className="text-gray-400 hover:text-gray-600">
                                     <X className="w-5 h-5" />
@@ -4276,10 +4247,10 @@ const AdminDashboard: React.FC = () => {
                             </div>
 
                             <div className="p-8 overflow-y-auto space-y-8">
-                                {/* Global Settings */}
+                                {/* Semester-wide capacity for this supervisor */}
                                 <div className="bg-indigo-50/50 rounded-2xl p-6 border border-indigo-100">
                                     <h4 className="text-sm font-bold text-indigo-900 uppercase tracking-wider mb-4 flex items-center gap-2">
-                                        <Settings className="w-4 h-4" /> Global Defaults
+                                        <Settings className="w-4 h-4" /> Semester Capacity (All Batches)
                                     </h4>
                                     <div className="grid grid-cols-2 gap-6">
                                         <div className="bg-white p-4 rounded-xl border border-indigo-100 shadow-sm">
@@ -4288,11 +4259,7 @@ const AdminDashboard: React.FC = () => {
                                                 <input
                                                     type="number"
                                                     value={globalMaxStudents}
-                                                    onChange={(e) => {
-                                                        const val = parseInt(e.target.value);
-                                                        setGlobalMaxStudents(val);
-                                                        // Update batch limits that match old global? No, keep explicit.
-                                                    }}
+                                                    onChange={(e) => setGlobalMaxStudents(parseInt(e.target.value))}
                                                     className="w-full text-lg font-bold text-gray-900 border-none focus:ring-0 p-0"
                                                 />
                                                 <span className="text-sm text-neutral-400">students</span>
@@ -4313,43 +4280,22 @@ const AdminDashboard: React.FC = () => {
                                     </div>
                                 </div>
 
-                                {/* Batch Specific Settings */}
-                                <div>
-                                    <h4 className="text-sm font-bold text-neutral-900 uppercase tracking-wider mb-4 flex items-center gap-2">
-                                        <LayoutGrid className="w-4 h-4 text-neutral-500" /> Batch-Specific Overrides
-                                    </h4>
-                                    <div className="space-y-4">
-                                        {Object.entries(batchLimits).sort((a, b) => parseInt(b[0]) - parseInt(a[0])).map(([year, limits]: any) => (
-                                            <div key={year} className="flex items-center justify-between bg-white border border-neutral-200 p-4 rounded-xl hover:border-neutral-300 transition-colors">
-                                                <div className="flex items-center gap-4 w-1/3">
-                                                    <div className="h-10 w-10 bg-neutral-100 text-neutral-600 rounded-lg flex items-center justify-center font-bold text-sm">
-                                                        '{year.slice(2)}
-                                                    </div>
-                                                    <span className="font-bold text-gray-900">Batch {year}-{parseInt(year) + 4}</span>
-                                                </div>
-
-                                                <div className="flex gap-4 flex-1">
-                                                    <div className="flex-1">
-                                                        <label className="block text-[10px] font-bold text-neutral-400 uppercase mb-1">Max Students</label>
-                                                        <input
-                                                            type="number"
-                                                            className="w-full bg-neutral-50 border border-neutral-200 rounded-lg px-3 py-1.5 text-sm font-medium focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all"
-                                                            value={limits.maxStudents}
-                                                            onChange={(e) => updateBatchLimit(parseInt(year), 'maxStudents', parseInt(e.target.value))}
-                                                        />
-                                                    </div>
-                                                    <div className="flex-1">
-                                                        <label className="block text-[10px] font-bold text-neutral-400 uppercase mb-1">Max Groups</label>
-                                                        <input
-                                                            type="number"
-                                                            className="w-full bg-neutral-50 border border-neutral-200 rounded-lg px-3 py-1.5 text-sm font-medium focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all"
-                                                            value={limits.maxGroups}
-                                                            onChange={(e) => updateBatchLimit(parseInt(year), 'maxGroups', parseInt(e.target.value))}
-                                                        />
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        ))}
+                                {/* Current load across every batch this supervisor mentors */}
+                                <div className="flex items-start gap-3 bg-neutral-50 border border-neutral-200 rounded-2xl p-4">
+                                    <LayoutGrid className="w-4 h-4 text-neutral-400 shrink-0 mt-0.5" />
+                                    <div className="text-sm text-neutral-600">
+                                        <p className="font-semibold text-neutral-800 mb-1">These limits cover the whole semester</p>
+                                        <p>
+                                            They are totals across every batch {editingFaculty.name} mentors, not a
+                                            per-batch allowance. Currently using{' '}
+                                            <span className="font-bold text-neutral-900">
+                                                {editingFaculty.currentGroups ?? 0} of {globalMaxGroups || 0} groups
+                                            </span>{' '}
+                                            and{' '}
+                                            <span className="font-bold text-neutral-900">
+                                                {editingFaculty.currentStudents ?? 0} of {globalMaxStudents || 0} students
+                                            </span>.
+                                        </p>
                                     </div>
                                 </div>
                             </div>

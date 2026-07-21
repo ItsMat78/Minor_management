@@ -119,6 +119,27 @@ describe('GET /api/users/students', () => {
         const allFrom2023 = rollNumbers.every((r: string) => r.startsWith('23'));
         expect(allFrom2023).toBe(true);
     });
+
+    it('still returns a student whose targetBatch was cleared to an empty string', async () => {
+        // Regression: an admin edit that blanks the batch override stores '' rather than
+        // unsetting it. '' is neither null nor a year, so a cohort query matching only
+        // null/missing dropped the student from every directory — including their own.
+        const caller = await createTestUser({
+            role: UserRole.STUDENT,
+            rollNumber: '231020202',
+            email: 'blank_target@t.ac.in',
+        });
+        await User.updateOne({ _id: caller._id }, { $set: { targetBatch: '' } });
+
+        const res = await request(app)
+            .get('/api/users/students')
+            .set('x-auth-token', generateToken(caller));
+
+        expect(res.status).toBe(200);
+        const students = Array.isArray(res.body) ? res.body : res.body.data;
+        const ids = students.map((s: any) => String(s._id));
+        expect(ids).toContain(String(caller._id));
+    });
 });
 
 // ── PUT /api/users/:id (admin) ────────────────────────────────────────────────
@@ -170,6 +191,21 @@ describe('PUT /api/users/:id', () => {
         const updated = await User.findById(target._id);
         expect(updated!.rollNumber).toBe('231010012');
         expect(updated!.branch).toBe('ECE');
+    });
+
+    it('unsets targetBatch rather than storing a blank when the override is cleared', async () => {
+        const admin = await createTestUser({ role: UserRole.ADMIN });
+        const target = await createTestUser({ email: 'clear_target@t.ac.in', rollNumber: '231020202' });
+        await User.updateOne({ _id: target._id }, { $set: { targetBatch: '2022' } });
+
+        const res = await request(app)
+            .put(`/api/users/${target._id}`)
+            .set('x-auth-token', generateToken(admin))
+            .send({ targetBatch: '' });
+
+        expect(res.status).toBe(200);
+        const saved = await User.findById(target._id).lean();
+        expect(saved?.targetBatch).toBeUndefined();
     });
 
     it('rejects a roll number whose branch digit is unrecognised', async () => {

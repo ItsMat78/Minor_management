@@ -901,6 +901,17 @@ const FacultyDashboard: React.FC = () => {
         ? filteredMentees.reduce((acc, m) => acc + (m.members?.length || 0), 0)
         : approvedInView.reduce((acc, p) => acc + (p.group?.members?.length || 0), 0);
 
+    // Capacity is a semester-wide total across every batch, so the load shown against the limit
+    // must ignore the batch filter — a per-batch count would read as far below the cap.
+    const approvedAllBatches = projects.filter(p => p.status === 'Approved');
+    const totalTeamsCount = approvedAllBatches.length;
+    const totalStudentsCount = approvedAllBatches.reduce(
+        (acc, p) => acc + (p.group?.members?.length || 0), 0);
+    const maxGroupsLimit = user?.maxGroups ?? 7;
+    const maxStudentsLimit = user?.maxStudents ?? 21;
+    const atGroupCap = totalTeamsCount >= maxGroupsLimit;
+    const atStudentCap = totalStudentsCount >= maxStudentsLimit;
+
     return (
         <div className="flex h-full bg-neutral-50 font-jakarta text-neutral-900 overflow-hidden">
             {/* Mobile backdrop — closes the overlay sidebar when tapped */}
@@ -1359,30 +1370,38 @@ const FacultyDashboard: React.FC = () => {
                                         {/* Stats & View Toggle - Right Side */}
                                         <div className="flex items-center gap-4">
                                             {/* Stats Badges */}
-                                            {activeTab === 'mentees' && filterBatch !== 'All' && (
+                                            {activeTab === 'mentees' && (
                                                 <div className="flex items-center gap-3">
-                                                    <div className="px-5 py-2.5 bg-white text-indigo-600 rounded-xl border border-indigo-100 flex items-center gap-3 shadow-sm">
-                                                        <div className="p-1.5 bg-indigo-50 rounded-lg">
+                                                    <div className={`px-5 py-2.5 bg-white rounded-xl border flex items-center gap-3 shadow-sm ${atGroupCap ? 'text-rose-600 border-rose-100' : 'text-indigo-600 border-indigo-100'}`}>
+                                                        <div className={`p-1.5 rounded-lg ${atGroupCap ? 'bg-rose-50' : 'bg-indigo-50'}`}>
                                                             <Users className="w-4 h-4" />
                                                         </div>
                                                         <div className="flex flex-col">
-                                                            <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-400">Batch {filterBatch} Teams</span>
+                                                            <span className={`text-[10px] font-bold uppercase tracking-wider ${atGroupCap ? 'text-rose-400' : 'text-indigo-400'}`}>Teams · all batches</span>
                                                             <span className="text-base font-bold leading-none">
-                                                                {currentTeamsCount} <span className="text-indigo-200 text-sm">/ {user?.maxGroups || 7}</span>
+                                                                {totalTeamsCount} <span className={`text-sm ${atGroupCap ? 'text-rose-200' : 'text-indigo-200'}`}>/ {maxGroupsLimit}</span>
                                                             </span>
                                                         </div>
                                                     </div>
-                                                    <div className="px-5 py-2.5 bg-white text-emerald-600 rounded-xl border border-emerald-100 flex items-center gap-3 shadow-sm">
-                                                        <div className="p-1.5 bg-emerald-50 rounded-lg">
+                                                    <div className={`px-5 py-2.5 bg-white rounded-xl border flex items-center gap-3 shadow-sm ${atStudentCap ? 'text-rose-600 border-rose-100' : 'text-emerald-600 border-emerald-100'}`}>
+                                                        <div className={`p-1.5 rounded-lg ${atStudentCap ? 'bg-rose-50' : 'bg-emerald-50'}`}>
                                                             <Users className="w-4 h-4" />
                                                         </div>
                                                         <div className="flex flex-col">
-                                                            <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">Batch {filterBatch} Students</span>
+                                                            <span className={`text-[10px] font-bold uppercase tracking-wider ${atStudentCap ? 'text-rose-400' : 'text-emerald-400'}`}>Students · all batches</span>
                                                             <span className="text-base font-bold leading-none">
-                                                                {currentStudentsCount} <span className="text-emerald-200 text-sm">/ {user?.maxStudents || 21}</span>
+                                                                {totalStudentsCount} <span className={`text-sm ${atStudentCap ? 'text-rose-200' : 'text-emerald-200'}`}>/ {maxStudentsLimit}</span>
                                                             </span>
                                                         </div>
                                                     </div>
+                                                    {filterBatch !== 'All' && (
+                                                        <div className="px-4 py-2.5 bg-neutral-50 text-neutral-500 rounded-xl border border-neutral-200 flex flex-col shadow-sm">
+                                                            <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-400">Batch {filterBatch} in view</span>
+                                                            <span className="text-base font-bold leading-none text-neutral-700">
+                                                                {currentTeamsCount} <span className="text-neutral-400 text-sm">teams · {currentStudentsCount} students</span>
+                                                            </span>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             )}
 

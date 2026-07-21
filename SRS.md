@@ -226,7 +226,7 @@ The portal is a standalone MERN-stack web application (MongoDB, Express.js, Reac
 
 | Model | Key Fields |
 |---|---|
-| **User** | name, email, password (hashed), role (Student/Faculty/Admin), rollNumber, branch, semester, department, isVerified, isActive, maxGroups, batchConfigs |
+| **User** | name, email, password (hashed), role (Student/Faculty/Admin), rollNumber, branch, semester, department, isVerified, isActive, maxGroups, maxStudents (semester-wide totals across all batches) |
 | **Group** | name, members[] (max 3), status (Forming/ProposalPending/Approved/Dissolved), targetBatch, project, isArchived |
 | **Project** | title, description, status (Draft/Pending/Approved/Rejected), group, faculty, updates[], midTermEvaluation, endTermEvaluation, finalReportEvaluation, submissions{}, studentFeedback[], isArchived, archivedMentorName, archivedGroupName, archivedBatch, archivedMembers[{ name, email, rollNumber, branch }] (denormalised for orphan snapshot-imported archives; email is the stable key for per-student lookup across branch transfers) |
 | **Event** | type (group_formation_project_proposal/mid_term_evaluation/end_term_evaluation), startDate, endDate, extensionDate, isActive, batchYear, rubricParams, createdBy |

@@ -36,21 +36,14 @@ function studentBatchParticipates(rollNumber: string | undefined, batches: strin
 
 export const getFaculty = async (req: Request, res: Response) => {
     try {
-        const userId = (req as any).user.id;
-        const currentUser = await User.findById(userId);
-        
-        // Determine batch year from requester
-        const batchYearPrefix = currentUser?.rollNumber ? currentUser.rollNumber.substring(0, 2) : null;
-        const batchYear = batchYearPrefix ? parseInt('20' + batchYearPrefix) : null;
-
         const facultyList = await User.find({ role: UserRole.FACULTY })
-            .select('name email department branch expertise currentStudents currentGroups maxStudents maxGroups batchConfigs isVerified photoUrl')
+            .select('name email department branch expertise currentStudents currentGroups maxStudents maxGroups isVerified photoUrl')
             .lean();
 
-        // Dynamically calculate counts for EACH faculty for THIS specific batch
+        // A supervisor's capacity is a SEMESTER-WIDE total, not per batch: their limit covers
+        // every group they mentor this semester regardless of which batch each group belongs to.
         const populatedFaculty = await Promise.all(facultyList.map(async (faculty: any) => {
-            // Fetch all approved projects for this faculty (current semester only —
-            // archived projects from past semesters must not count toward the load).
+            // Current semester only — archived projects from past semesters must not count.
             const approvedProjects = await Project.find({
                 faculty: faculty._id,
                 status: 'Approved',
@@ -65,37 +58,17 @@ export const getFaculty = async (req: Request, res: Response) => {
 
             approvedProjects.forEach((p: any) => {
                 if (p.group && p.group.members && p.group.members.length > 0) {
-                    const firstMember: any = p.group.members[0];
-                    // If requester is student and we have a batch to match
-                    if (batchYearPrefix && firstMember.rollNumber && firstMember.rollNumber.startsWith(batchYearPrefix)) {
-                        currentGroups++;
-                        currentStudents += p.group.members.length;
-                    } else if (!batchYearPrefix) {
-                        // Fallback if no batch prefix (e.g. admin or weird roll)
-                        currentGroups++;
-                        currentStudents += p.group.members.length;
-                    }
+                    currentGroups++;
+                    currentStudents += p.group.members.length;
                 }
             });
-
-            // Adjust limits based on batch config
-            let maxStudents = faculty.maxStudents || 21;
-            let maxGroups = faculty.maxGroups || 7;
-
-            if (batchYear) {
-                const config = (faculty.batchConfigs || []).find((c: any) => c.batchYear === batchYear);
-                if (config) {
-                    maxStudents = config.maxStudents;
-                    maxGroups = config.maxGroups;
-                }
-            }
 
             return {
                 ...faculty,
                 currentStudents,
                 currentGroups,
-                maxStudents,
-                maxGroups
+                maxStudents: faculty.maxStudents ?? 21,
+                maxGroups: faculty.maxGroups ?? 7
             };
         }));
 
@@ -124,12 +97,16 @@ export const getAllStudents = async (req: Request, res: Response) => {
                 const suffix = userCohort.slice(-2); // e.g., "2024" -> "24"
                 
                 query.$or = [
-                    { 
+                    {
                         // Students whose original cohort matches, but ONLY if they haven't been moved elsewhere
                         rollNumber: { $regex: `^${suffix}` },
                         $or: [
-                            { targetBatch: null },
-                            { targetBatch: { $exists: false } },
+                            // "No override" is stored three ways: missing, null, or '' (an admin
+                            // edit that clears the field posts an empty string). $in with null
+                            // covers missing too. Matching only null/missing would drop an
+                            // ''-valued student out of BOTH this clause and the targetBatch
+                            // clause below, hiding them from every directory including their own.
+                            { targetBatch: { $in: [null, ''] } },
                             { targetBatch: userCohort } // Included for safety if set to same year
                         ]
                     },
@@ -153,7 +130,7 @@ export const getAllStudents = async (req: Request, res: Response) => {
             const batchSuffix = (batch as string).slice(-2);
             const batchClause = {
                 $or: [
-                    { rollNumber: { $regex: `^${batchSuffix}` }, targetBatch: { $in: [null, undefined, batch] } },
+                    { rollNumber: { $regex: `^${batchSuffix}` }, targetBatch: { $in: [null, '', batch] } },
                     { targetBatch: batch }
                 ]
             };
@@ -223,9 +200,11 @@ export const getAllStudents = async (req: Request, res: Response) => {
     }
 };
 
+// 'batchConfigs' is deliberately absent: supervisor capacity is now a semester-wide total,
+// so per-batch overrides are no longer writable. See the deprecation note on the User model.
 const ALLOWED_UPDATE_FIELDS = [
     'name', 'email', 'rollNumber', 'branch', 'semester', 'department', 'expertise',
-    'maxStudents', 'maxGroups', 'batchConfigs', 'targetBatch',
+    'maxStudents', 'maxGroups', 'targetBatch',
     'isParticipating', 'isVerified', 'photoUrl'
 ];
 
@@ -257,7 +236,17 @@ export const updateUser = async (req: Request, res: Response) => {
             safeUpdates.branch = derived;
         }
 
-        const user = await User.findByIdAndUpdate(id, safeUpdates, { new: true }).select('-password');
+        // Clearing the batch override in the admin form posts '' rather than dropping the field.
+        // Storing '' is worse than storing nothing: it is not null, so the student stops matching
+        // their roll-derived cohort, and it is not a year, so they match no target cohort either,
+        // which erases them from every student directory. Normalise a blank back to "unset".
+        const update: any = { ...safeUpdates };
+        if ('targetBatch' in update && !String(update.targetBatch ?? '').trim()) {
+            delete update.targetBatch;
+            update.$unset = { ...(update.$unset ?? {}), targetBatch: '' };
+        }
+
+        const user = await User.findByIdAndUpdate(id, update, { new: true }).select('-password');
         if (!user) return res.status(404).json({ message: 'User not found' });
 
         res.json(user);

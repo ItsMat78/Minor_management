@@ -13,8 +13,11 @@ interface Faculty {
     name: string;
     department: string;
     branch?: string; // comma-separated branches this faculty mentors; empty = all branches
+    // Load and capacity are semester-wide totals across every batch, not per batch.
     currentStudents: number;
     maxStudents: number;
+    currentGroups: number;
+    maxGroups: number;
     email: string;
     expertise?: string[];
     photoUrl?: string;
@@ -482,12 +485,24 @@ const ProjectProposal: React.FC = () => {
                                                                 </div>
                                                             </div>
                                                         </div>
-                                                        <span className={`text-xs px-2 py-1 rounded-full shrink-0 font-medium ${faculty.currentStudents >= faculty.maxStudents
-                                                            ? 'bg-red-100 text-red-600'
-                                                            : 'bg-green-100 text-green-600'
-                                                            }`}>
-                                                            {faculty.currentStudents}/{faculty.maxStudents}
-                                                        </span>
+                                                        {/* Capacity is a semester-wide total across every batch this
+                                                            supervisor mentors, so a full badge means full for everyone. */}
+                                                        {(() => {
+                                                            const studentsFull = faculty.currentStudents >= faculty.maxStudents;
+                                                            const groupsFull = faculty.currentGroups >= faculty.maxGroups;
+                                                            const full = studentsFull || groupsFull;
+                                                            return (
+                                                                <span
+                                                                    title={`${faculty.currentStudents}/${faculty.maxStudents} students and ${faculty.currentGroups}/${faculty.maxGroups} groups this semester, across all batches`}
+                                                                    className={`text-xs px-2 py-1 rounded-full shrink-0 font-medium text-center leading-tight ${full ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}`}
+                                                                >
+                                                                    {faculty.currentStudents}/{faculty.maxStudents} students
+                                                                    <span className="block opacity-75">
+                                                                        {faculty.currentGroups}/{faculty.maxGroups} groups
+                                                                    </span>
+                                                                </span>
+                                                            );
+                                                        })()}
                                                     </label>
                                                 )
                                             })}

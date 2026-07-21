@@ -7,7 +7,7 @@ import app from '../../app';
 import Project from '../../models/Project';
 import Group from '../../models/Group';
 import { createTestUser, generateToken, createTestGroup, createTestProject } from '../helpers/factories';
-import { UserRole } from '../../models/User';
+import User, { UserRole } from '../../models/User';
 
 jest.mock('../../utils/emailService', () => ({
     sendEmail: jest.fn().mockResolvedValue(undefined),
@@ -163,6 +163,70 @@ describe('PUT /api/projects/:id/status', () => {
 
         const updatedGroup = await Group.findById(group._id);
         expect(updatedGroup!.status).toBe('Approved');
+    });
+
+    it('counts a supervisor group limit across ALL batches, not per batch', async () => {
+        // Capacity is a semester-wide total. A supervisor at their group cap because of
+        // 2023 groups must be blocked from taking on a 2024 group too.
+        const faculty = await createTestUser({ role: UserRole.FACULTY, email: 'cap_groups@t.ac.in' });
+        await User.updateOne({ _id: faculty._id }, { $set: { maxGroups: 2, maxStudents: 99 } });
+
+        // Two approved groups from the 2023 batch fill the cap.
+        for (let i = 0; i < 2; i++) {
+            const member = await createTestUser({
+                email: `cap23-${i}@t.ac.in`, rollNumber: `2310000${i}`,
+            });
+            const g = await Group.create({
+                name: `Cap23-${i}`, members: [member._id], createdBy: member._id,
+                status: 'Approved', inviteCode: `C23${i}`,
+            });
+            await createTestProject(g._id, { status: 'Approved', faculty: faculty._id });
+        }
+
+        // A group from a DIFFERENT batch now asks for approval.
+        const member24 = await createTestUser({ email: 'cap24@t.ac.in', rollNumber: '241000001' });
+        const group24 = await Group.create({
+            name: 'Cap24', members: [member24._id], createdBy: member24._id,
+            status: 'Forming', inviteCode: 'C24',
+        });
+        const project24 = await createTestProject(group24._id, {
+            status: 'Pending', faculty: faculty._id,
+        });
+
+        const res = await request(app)
+            .put(`/api/projects/${project24._id}/status`)
+            .set('x-auth-token', generateToken(faculty))
+            .send({ status: 'Approved' });
+
+        expect(res.status).toBe(400);
+        expect(res.body.message).toMatch(/across all batches/i);
+    });
+
+    it('counts a supervisor student limit across ALL batches, not per batch', async () => {
+        const faculty = await createTestUser({ role: UserRole.FACULTY, email: 'cap_students@t.ac.in' });
+        await User.updateOne({ _id: faculty._id }, { $set: { maxGroups: 99, maxStudents: 3 } });
+
+        const existing = await createTestGroup(3);
+        existing.group.status = 'Approved';
+        await existing.group.save();
+        await createTestProject(existing.group._id, { status: 'Approved', faculty: faculty._id });
+
+        const member24 = await createTestUser({ email: 'scap24@t.ac.in', rollNumber: '241000009' });
+        const group24 = await Group.create({
+            name: 'SCap24', members: [member24._id], createdBy: member24._id,
+            status: 'Forming', inviteCode: 'SC24',
+        });
+        const project24 = await createTestProject(group24._id, {
+            status: 'Pending', faculty: faculty._id,
+        });
+
+        const res = await request(app)
+            .put(`/api/projects/${project24._id}/status`)
+            .set('x-auth-token', generateToken(faculty))
+            .send({ status: 'Approved' });
+
+        expect(res.status).toBe(400);
+        expect(res.body.message).toMatch(/max 3 students/i);
     });
 
     it('allows assigned faculty to reject a pending project', async () => {

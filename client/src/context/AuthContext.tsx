@@ -12,11 +12,11 @@ interface User {
     targetBatch?: string;
     department?: string;
     expertise?: string[];
+    // Faculty capacity and load: semester-wide totals across every batch they mentor.
     maxStudents?: number;
     maxGroups?: number;
     currentStudents?: number;
     currentGroups?: number;
-    batchConfigs?: { batchYear: number; maxStudents: number; maxGroups: number }[];
     isVerified?: boolean;
     isParticipating?: boolean;
     mustChangePassword?: boolean;

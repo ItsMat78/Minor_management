@@ -165,60 +165,44 @@ export const updateProjectStatus = async (req: Request, res: Response) => {
                 const projectGroup = await Group.findById(project.group).populate('members');
 
                 if (facultyUser && projectGroup && projectGroup.members.length > 0) {
-                    // Determine Batch Year from first member
-                    const firstMember: any = projectGroup.members[0];
-                    const batchYearPrefix = firstMember.rollNumber ? firstMember.rollNumber.substring(0, 2) : null;
+                    // A supervisor's capacity is a SEMESTER-WIDE total across every batch they
+                    // mentor, so the load is counted over all their approved projects rather than
+                    // only those belonging to this group's batch. This also means the check no
+                    // longer depends on parsing a batch year off a roll number — it previously
+                    // skipped enforcement entirely for a member with a missing roll number.
+                    const maxStudents = facultyUser.maxStudents ?? 21;
+                    const maxGroups = facultyUser.maxGroups ?? 7;
 
-                    if (batchYearPrefix) {
-                        const batchYear = parseInt('20' + batchYearPrefix);
+                    const approvedProjects = await Project.find({
+                        faculty: facultyId,
+                        status: 'Approved',
+                        isArchived: { $ne: true }, // current semester only — ignore past-semester archives
+                        _id: { $ne: project._id }  // exclude the one being approved right now
+                    }).populate({
+                        path: 'group',
+                        populate: { path: 'members' }
+                    });
 
-                        // Get Limits
-                        let maxStudents = facultyUser.maxStudents || 21;
-                        let maxGroups = facultyUser.maxGroups || 7;
+                    let currentGroupsCount = 0;
+                    let currentStudentsCount = 0;
 
-                        const batchConfig = (facultyUser.batchConfigs || []).find((c: any) => c.batchYear === batchYear);
-                        if (batchConfig) {
-                            maxStudents = batchConfig.maxStudents;
-                            maxGroups = batchConfig.maxGroups;
+                    approvedProjects.forEach((p: any) => {
+                        if (p.group && p.group.members && p.group.members.length > 0) {
+                            currentGroupsCount++;
+                            currentStudentsCount += p.group.members.length;
                         }
+                    });
 
-                        // Calculate Current Load for this Batch
-                        // Fetch all approved projects for this faculty
-                        const approvedProjects = await Project.find({
-                            faculty: facultyId,
-                            status: 'Approved',
-                            isArchived: { $ne: true }, // current semester only — ignore past-semester archives
-                            _id: { $ne: project._id } // Exclude current one
-                        }).populate({
-                            path: 'group',
-                            populate: { path: 'members' }
+                    if (currentGroupsCount + 1 > maxGroups) {
+                        return res.status(400).json({
+                            message: `Supervisor limit reached: max ${maxGroups} groups this semester across all batches. Current: ${currentGroupsCount}.`
                         });
+                    }
 
-                        let currentGroupsCount = 0;
-                        let currentStudentsCount = 0;
-
-                        approvedProjects.forEach((p: any) => {
-                            if (p.group && p.group.members && p.group.members.length > 0) {
-                                const m: any = p.group.members[0];
-                                if (m.rollNumber && m.rollNumber.startsWith(batchYearPrefix)) {
-                                    currentGroupsCount++;
-                                    currentStudentsCount += p.group.members.length;
-                                }
-                            }
+                    if (currentStudentsCount + projectGroup.members.length > maxStudents) {
+                        return res.status(400).json({
+                            message: `Supervisor limit reached: max ${maxStudents} students this semester across all batches. Current: ${currentStudentsCount}.`
                         });
-
-                        // Check Limits
-                        if (currentGroupsCount + 1 > maxGroups) {
-                            return res.status(400).json({
-                                message: `Faculty limit reached: Batch ${batchYear} allows max ${maxGroups} groups. Current: ${currentGroupsCount}.`
-                            });
-                        }
-
-                        if (currentStudentsCount + projectGroup.members.length > maxStudents) {
-                            return res.status(400).json({
-                                message: `Faculty limit reached: Batch ${batchYear} allows max ${maxStudents} students. Current: ${currentStudentsCount}.`
-                            });
-                        }
                     }
                 }
             }

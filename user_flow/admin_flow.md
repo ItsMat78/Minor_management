@@ -30,7 +30,7 @@ flowchart TD
     subgraph OVR["Overview Tab"]
         Stats[Stats cards:\nTotal Students · Faculty · Groups · Projects\nGroups by status · Unactivated accounts]
         Stats --> GlobalLimits[Set global maxStudents + maxGroups for all faculty\nSave button]
-        GlobalLimits --> BatchOverride[Per-batch overrides per faculty\nStored in faculty.batchConfigs\nLookup: batchConfigs batch → global default]
+        GlobalLimits --> PerFaculty[Per-faculty override of maxStudents + maxGroups\nSemester-wide totals across all batches]
     end
 
     %% ── STUDENTS TAB ──────────────────────────────────────
@@ -93,7 +93,7 @@ flowchart TD
         FacDel -- Yes --> FacDelDone[Faculty deleted\nCascade: removed from Group/Project references]
 
         %% Capacity config
-        FacAction -- "Configure Batch Limits" --> FacLimits[Set maxStudents + maxGroups per faculty per batch\nStored in faculty.batchConfigs]
+        FacAction -- "Configure Mentorship Limits" --> FacLimits[Set maxStudents + maxGroups per faculty\nSemester-wide totals across all batches]
         FacLimits --> FacList
     end
 
