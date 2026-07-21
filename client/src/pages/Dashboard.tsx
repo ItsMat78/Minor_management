@@ -36,7 +36,7 @@ interface Student {
 }
 
 const Dashboard: React.FC = () => {
-    const { user, logout, activeEvents } = useAuth();
+    const { user, logout, activeEvents, refreshUser } = useAuth();
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
     const initialStudentTab = searchParams.get('tab') as 'directory' | 'project' | 'group' | 'archive' | 'results' | null;
@@ -233,13 +233,23 @@ const Dashboard: React.FC = () => {
         }
     };
 
+    // AuthContext reads /auth/me once at app mount, so an admin edit made mid-session (a
+    // roll-number change re-derives the student's branch) leaves the cached user stale against
+    // everything fetched later. Re-read it when this dashboard opens. Keyed on role, which
+    // refreshUser cannot change, so this runs once rather than looping on its own result.
+    useEffect(() => {
+        if (user?.role === 'Student') refreshUser();
+    }, [user?.role]);
+
+    // Keyed on identity, not object reference: refreshUser hands back a new user object with the
+    // same id, and that must not re-trigger a full dashboard fetch.
     useEffect(() => {
         if (user?.role === 'Student') {
             fetchDashboardData();
         } else {
             setLoading(false);
         }
-    }, [user]);
+    }, [user?._id, user?.role]);
 
     useEffect(() => {
         if (user?.role === 'Student') {
@@ -411,6 +421,11 @@ const Dashboard: React.FC = () => {
     })();
     const allowedBranchesLabel = allowedBranchSet ? Array.from(allowedBranchSet).join(' / ') : (user?.branch || '');
 
+    // My own directory row. Matched on id, falling back to email for rows fetched before
+    // ids were selected.
+    const isSelf = (s: { _id?: string; email?: string }) =>
+        (!!user?._id && s._id === user._id) || (!!user?.email && s.email === user.email);
+
     const filteredStudents = students.filter(student => {
         const matchesSearch = student.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                              student.rollNumber?.toLowerCase().includes(searchTerm.toLowerCase());
@@ -421,9 +436,11 @@ const Dashboard: React.FC = () => {
         const matchesBranch = filterBranch === 'all' || student.branch === filterBranch;
         // When the viewing student's batch is branch-restricted, hide students whose branch isn't
         // in my allowed cluster. Resilient: don't hide anyone when either branch is unknown (so
-        // incomplete data can't empty the directory).
+        // incomplete data can't empty the directory), and never hide ME. allowedBranchSet is built
+        // from the cached auth user, which can lag my own freshly-fetched row (an admin roll-number
+        // edit re-derives my branch mid-session), and a directory without me in it reads as a bug.
         const theirBranchNorm = (student.branch ?? '').trim().toUpperCase();
-        const matchesBranchRestriction = !allowedBranchSet || !theirBranchNorm
+        const matchesBranchRestriction = isSelf(student) || !allowedBranchSet || !theirBranchNorm
             || allowedBranchSet.has(theirBranchNorm);
 
         return matchesSearch && matchesStatus && matchesBranch && matchesBranchRestriction;
