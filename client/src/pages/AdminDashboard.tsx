@@ -2407,7 +2407,7 @@ const AdminDashboard: React.FC = () => {
                                                             {filterBatch === 'All' && (
                                                                 <div className="sticky top-0 z-20 bg-neutral-50/95 backdrop-blur py-3 -mx-6 px-6 md:-mx-8 md:px-8 border-b border-neutral-200/50 flex items-center gap-6 mb-4">
                                                                     <div className="flex items-baseline gap-3">
-                                                                        <h3 className="text-xl font-bold text-neutral-900">Batch {batchYear}-{batchYear + 4}</h3>
+                                                                        <h3 className="text-xl font-bold text-neutral-900">Batch {batchYear}-{parseInt(batchYear) + 4}</h3>
                                                                         <span className="text-sm font-medium text-neutral-400">{batchGroups.length} Groups</span>
                                                                     </div>
                                                                     <div className="h-px bg-neutral-100 flex-1 opacity-0"></div>
