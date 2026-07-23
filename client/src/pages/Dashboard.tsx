@@ -3,7 +3,7 @@ import Avatar from '../components/Avatar';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../utils/api';
-import { Layout, Users, CheckSquare, MessageSquare, Menu, Clock, Calendar, X, ChevronRight, Plus, Archive, FileText, Search, Square, AlertCircle, Trash2, AlertTriangle, Trophy, Star } from 'lucide-react';
+import { Layout, Users, CheckSquare, MessageSquare, Menu, Clock, Calendar, X, ChevronRight, Plus, Archive, FileText, Search, Square, AlertCircle, Trash2, AlertTriangle, Trophy, Star, Pencil } from 'lucide-react';
 import FilePreview from '../components/FilePreview';
 import AdminDashboard from './AdminDashboard';
 import FacultyDashboard from './FacultyDashboard';
@@ -1089,6 +1089,16 @@ const Dashboard: React.FC = () => {
                                                                     <h3 className="text-2xl font-bold text-neutral-900 mt-3 capitalize">{approvedProject.title}</h3>
                                                                     <p className="text-neutral-500 mt-2 leading-relaxed max-w-2xl text-sm">{approvedProject.description}</p>
                                                                 </div>
+                                                                {/* Members can refine an active project's details; it stays approved (mentor stays locked). */}
+                                                                {!approvedProject.isArchived && (
+                                                                    <button
+                                                                        onClick={() => navigate(`/project/propose?edit=${approvedProject._id}`)}
+                                                                        className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-600 bg-indigo-50 border border-indigo-100 rounded-lg hover:bg-indigo-100 transition-colors"
+                                                                        title="Edit project details"
+                                                                    >
+                                                                        <Pencil className="w-3.5 h-3.5" /> Edit
+                                                                    </button>
+                                                                )}
                                                             </div>
 
                                                             {approvedProject.tags && approvedProject.tags.length > 0 && (

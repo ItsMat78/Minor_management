@@ -46,6 +46,9 @@ const ProjectProposal: React.FC = () => {
     const [error, setError] = useState('');
     const [existingAttachments, setExistingAttachments] = useState<string[]>([]);
     const [lockedFacultyId, setLockedFacultyId] = useState<string | null>(null);
+    // Editing an already-approved project: edits are saved in place and it stays Approved (no
+    // re-review), and the mentor is locked. Drives the submit status and the button labels below.
+    const [isApprovedEdit, setIsApprovedEdit] = useState(false);
     // Faculty are scoped to the student's branch ONLY when the student's batch is branch-restricted
     // this semester. Non-restricted batches see every faculty.
     const [isBatchBranchRestricted, setIsBatchBranchRestricted] = useState(false);
@@ -130,6 +133,14 @@ const ProjectProposal: React.FC = () => {
                             semester: p.semester || 0
                         });
                         setExistingAttachments(p.attachments || []);
+
+                        // Editing the group's approved project: keep it Approved on save and lock the
+                        // mentor. The lock detection above skips the project being edited, so set it here.
+                        if (p.status === 'Approved') {
+                            setIsApprovedEdit(true);
+                            const fid = p.faculty?._id || p.faculty;
+                            if (fid) setLockedFacultyId(fid);
+                        }
                     }
                 }
             })
@@ -197,6 +208,9 @@ const ProjectProposal: React.FC = () => {
         setError('');
 
         const formattedTitle = formData.title.replace(/\b\w/g, char => char.toUpperCase());
+        // An approved project stays approved on save. The server enforces this regardless, but
+        // send the right status so we don't post a misleading 'Pending'.
+        const statusToSend = isApprovedEdit ? 'Approved' : (isDraft ? 'Draft' : 'Pending');
 
         try {
             const data = new FormData();
@@ -205,7 +219,7 @@ const ProjectProposal: React.FC = () => {
             data.append('tags', formData.tags);
             data.append('facultyId', formData.facultyId);
             data.append('semester', formData.semester.toString());
-            data.append('status', isDraft ? 'Draft' : 'Pending');
+            data.append('status', statusToSend);
             data.append('links', formData.links);
 
             if (files) {
@@ -247,7 +261,7 @@ const ProjectProposal: React.FC = () => {
                     title: formattedTitle,
                     tags: formData.tags.split(',').map(t => t.trim()),
                     attachments: formData.links.split(',').map(a => a.trim()).filter(Boolean), // Map links to attachments for now
-                    status: isDraft ? 'Draft' : 'Pending'
+                    status: statusToSend
                 });
             }
             navigate('/');
@@ -271,7 +285,7 @@ const ProjectProposal: React.FC = () => {
 
                     <div className="flex items-center gap-6">
                         <div>
-                            <h2 className="text-2xl font-bold">{projectId ? 'Edit Project Proposal' : 'New Project Proposal'}</h2>
+                            <h2 className="text-2xl font-bold">{isApprovedEdit ? 'Edit Project' : (projectId ? 'Edit Project Proposal' : 'New Project Proposal')}</h2>
                             <p className="text-indigo-200 text-sm">Step {step} of 2</p>
                         </div>
                     </div>
@@ -527,14 +541,17 @@ const ProjectProposal: React.FC = () => {
 
                             {step < 2 ? (
                                 <div className="flex gap-3">
-                                    <button
-                                        type="button"
-                                        onClick={(e) => handleSubmit(e, true)}
-                                        disabled={loading}
-                                        className="px-6 py-3 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 transition-colors"
-                                    >
-                                        Save as Draft
-                                    </button>
+                                    {/* Approved edits stay approved — no draft option. */}
+                                    {!isApprovedEdit && (
+                                        <button
+                                            type="button"
+                                            onClick={(e) => handleSubmit(e, true)}
+                                            disabled={loading}
+                                            className="px-6 py-3 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 transition-colors"
+                                        >
+                                            Save as Draft
+                                        </button>
+                                    )}
                                     <button
                                         type="button"
                                         onClick={nextStep}
@@ -545,21 +562,23 @@ const ProjectProposal: React.FC = () => {
                                 </div>
                             ) : (
                                 <div className="flex gap-3">
-                                    <button
-                                        type="button"
-                                        onClick={(e) => handleSubmit(e, true)}
-                                        disabled={loading}
-                                        className="px-6 py-3 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200"
-                                    >
-                                        Save as Draft
-                                    </button>
+                                    {!isApprovedEdit && (
+                                        <button
+                                            type="button"
+                                            onClick={(e) => handleSubmit(e, true)}
+                                            disabled={loading}
+                                            className="px-6 py-3 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200"
+                                        >
+                                            Save as Draft
+                                        </button>
+                                    )}
                                     <button
                                         type="button"
                                         onClick={(e) => handleSubmit(e, false)}
                                         disabled={loading}
                                         className="px-8 py-3 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 shadow-lg shadow-green-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
-                                        {loading ? 'Submitting...' : (projectId ? 'Update Proposal' : 'Submit Proposal')} <Send className="w-4 h-4" />
+                                        {loading ? 'Submitting...' : (isApprovedEdit ? 'Save Changes' : (projectId ? 'Update Proposal' : 'Submit Proposal'))} <Send className="w-4 h-4" />
                                     </button>
                                 </div>
                             )}

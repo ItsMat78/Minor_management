@@ -15,10 +15,93 @@ export const transporter = nodemailer.createTransport({
     },
 });
 
+export type EmailFailureReason = 'quota' | 'throttled' | 'auth' | 'connection' | 'unknown';
+
+export type EmailFailure = { ok: false; reason: EmailFailureReason; retryAfterSeconds?: number };
+export type EmailResult = { ok: true } | EmailFailure;
+
+const QUOTA_WINDOW_SECONDS = 24 * 60 * 60;
+
+// How long an observed failure is assumed to still be in effect. After this much time we
+// forget it and let the next real send discover whether the provider has recovered.
+const OUTAGE_ASSUMED_SECONDS: Record<EmailFailureReason, number> = {
+    quota: QUOTA_WINDOW_SECONDS,
+    throttled: 5 * 60,
+    connection: 60,
+    auth: 10 * 60,
+    unknown: 10 * 60,
+};
+
+// Remembered so callers can (a) tell users roughly how long to wait and (b) respond
+// identically for registered and unregistered addresses while the service is down.
+let outage: { reason: EmailFailureReason; since: Date } | null = null;
+
 /**
- * Generic email sender
+ * Nodemailer reports SMTP rejections as a numeric `responseCode` plus the raw `response`
+ * text, and socket-level problems as `code`. Gmail signals an exhausted daily allowance
+ * with `550 5.4.5 Daily user sending limit exceeded`.
  */
-export const sendEmail = async (to: string | string[], subject: string, text: string, html?: string) => {
+const classifyFailure = (error: any): EmailFailureReason => {
+    const response = `${error?.response || error?.message || ''}`;
+    const responseCode: number | undefined = error?.responseCode;
+    const code = `${error?.code || ''}`;
+
+    if (/5\.4\.5|sending (limit|quota) exceeded|daily (user )?sending/i.test(response)) return 'quota';
+    if (responseCode === 421 || responseCode === 454 || /4\.7\.0|try again later/i.test(response)) return 'throttled';
+    if (code === 'EAUTH' || responseCode === 535) return 'auth';
+    if (['ECONNECTION', 'ETIMEDOUT', 'ESOCKET', 'EDNS', 'ECONNRESET'].includes(code)) return 'connection';
+    return 'unknown';
+};
+
+const retryAfterFor = (reason: EmailFailureReason): number | undefined => {
+    // Broken credentials will not fix themselves; there is no useful wait to quote.
+    if (reason === 'auth') return undefined;
+    const elapsed = outage ? (Date.now() - outage.since.getTime()) / 1000 : 0;
+    const remaining = OUTAGE_ASSUMED_SECONDS[reason] - elapsed;
+    return remaining > 0 ? Math.ceil(remaining) : undefined;
+};
+
+/**
+ * The failure currently believed to be in effect, or null if the service is healthy or the
+ * last failure is old enough that it is worth retrying. Clears stale state as a side effect.
+ */
+export const getEmailOutage = (): EmailFailure | null => {
+    if (!outage) return null;
+    const elapsed = (Date.now() - outage.since.getTime()) / 1000;
+    if (elapsed >= OUTAGE_ASSUMED_SECONDS[outage.reason]) {
+        outage = null;
+        return null;
+    }
+    return { ok: false, reason: outage.reason, retryAfterSeconds: retryAfterFor(outage.reason) };
+};
+
+const formatWait = (seconds?: number): string => {
+    if (!seconds) return 'later';
+    if (seconds < 90) return 'in about a minute';
+    if (seconds < 60 * 60) return `in about ${Math.round(seconds / 60)} minutes`;
+    const hours = Math.round(seconds / 3600);
+    return `in about ${hours} ${hours === 1 ? 'hour' : 'hours'}`;
+};
+
+/**
+ * User-facing explanation for a failed send. Quota waits are deliberately hedged: the SMTP
+ * rejection carries no retry-after and Gmail's cap is a rolling 24h window, not a fixed
+ * daily reset, so the figure is an upper-bound estimate rather than a promise.
+ */
+export const emailOutageMessage = (failure: EmailFailure): string => {
+    if (failure.reason === 'auth') {
+        return 'Email service is misconfigured and cannot send right now. Please contact the portal administrator.';
+    }
+    if (failure.reason === 'quota') {
+        return `The portal has reached its daily email limit, so no code could be sent. Please try again ${formatWait(failure.retryAfterSeconds)}, or contact the portal administrator if you need access sooner.`;
+    }
+    return `Email service is temporarily unavailable, so no code could be sent. Please try again ${formatWait(failure.retryAfterSeconds)}.`;
+};
+
+/**
+ * Generic email sender. Never throws: callers that care about delivery must inspect `ok`.
+ */
+export const sendEmail = async (to: string | string[], subject: string, text: string, html?: string): Promise<EmailResult> => {
     try {
         const fromAddress = process.env.EMAIL_FROM || process.env.EMAIL_USER || 'no-reply@minor-management.edu';
         const replyTo = process.env.EMAIL_REPLY_TO;
@@ -33,10 +116,17 @@ export const sendEmail = async (to: string | string[], subject: string, text: st
 
         const info = await transporter.sendMail(mailOptions);
         console.log(`[EmailService] Sent to ${to}: ${info.messageId}`);
-        return true;
+        outage = null;
+        return { ok: true };
     } catch (error) {
-        console.error(`[EmailService] Error sending email to ${to}:`, error);
-        return false;
+        const reason = classifyFailure(error);
+        // Keep the original timestamp while the same failure persists so the quoted wait
+        // counts down instead of resetting on every attempt.
+        if (!outage || outage.reason !== reason) {
+            outage = { reason, since: new Date() };
+        }
+        console.error(`[EmailService] Error sending email to ${to} (${reason}):`, error);
+        return { ok: false, reason, retryAfterSeconds: retryAfterFor(reason) };
     }
 };
 
@@ -44,33 +134,16 @@ export const sendEmail = async (to: string | string[], subject: string, text: st
 // Specialized Email Templates 
 // ---------------------------------------------------------
 
-export const sendEventNotificationEmail = async (emails: string[], eventTitle: string, eventType: string, deadline: Date) => {
-    if (process.env.EMAIL_EVENT_NOTIFICATIONS !== 'true') {
-        console.log(`[EmailService] Event notifications disabled — skipping blast for "${eventTitle}" (${emails.length} recipients)`);
-        return;
-    }
-    const subject = `New Event Scheduled: ${eventTitle}`;
-    const text = `A new event "${eventTitle}" of type "${eventType}" has been scheduled. The deadline is ${new Date(deadline).toLocaleString()}. Please log in to the portal for more details.`;
+// Sent once, when the final pending invite is accepted and the group is fully formed. Replaces
+// the old per-accept notification that mailed every existing member on every acceptance.
+export const sendGroupCompleteEmail = async (emails: string[], groupName: string) => {
+    const subject = `Your group "${groupName}" is now complete`;
+    const text = `All invited members have accepted. Your group "${groupName}" is now fully formed and its dashboard is unlocked. Log in to the portal to submit your project proposal.`;
     const html = `
         <div style="font-family: sans-serif; padding: 20px;">
-            <h2 style="color: #4f46e5;">New Event Scheduled</h2>
-            <p><strong>Title:</strong> ${eventTitle}</p>
-            <p><strong>Type:</strong> ${eventType.replace(/_/g, ' ').toUpperCase()}</p>
-            <p><strong>Deadline:</strong> <span style="color: #dc2626; font-weight: bold;">${new Date(deadline).toLocaleString()}</span></p>
-            <p>Please log in to the Minor Management Portal for more details.</p>
-        </div>
-    `;
-    await sendEmail(emails, subject, text, html);
-};
-
-export const sendGroupCreationEmail = async (emails: string[], groupName: string) => {
-    const subject = `Group Formation Started: ${groupName}`;
-    const text = `You have started the group "${groupName}". Invitations have been sent to your proposed members. The group will be finalised once all members accept.`;
-    const html = `
-        <div style="font-family: sans-serif; padding: 20px;">
-            <h2 style="color: #10b981;">Group Formation Started</h2>
-            <p>Your group has been created under the name: <strong>${groupName}</strong>.</p>
-            <p>We've sent invitations to your proposed members. Your group dashboard will unlock once every member has accepted.</p>
+            <h2 style="color: #10b981;">Group Complete</h2>
+            <p>All invited members have accepted. Your group <strong>${groupName}</strong> is now fully formed and its dashboard is unlocked.</p>
+            <p>Log in to the Minor Management Portal to submit your project proposal.</p>
         </div>
     `;
     await sendEmail(emails, subject, text, html);

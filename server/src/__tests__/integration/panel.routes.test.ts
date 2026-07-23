@@ -9,10 +9,13 @@ import { createTestUser, generateToken } from '../helpers/factories';
 import { UserRole } from '../../models/User';
 
 jest.mock('../../utils/emailService', () => ({
-    sendEmail: jest.fn().mockResolvedValue(undefined),
+    sendEmail: jest.fn().mockResolvedValue({ ok: true }),
+    getEmailOutage: jest.fn().mockReturnValue(null),
+    emailOutageMessage: jest.fn().mockReturnValue('Email service unavailable'),
     sendGroupCreationEmail: jest.fn().mockResolvedValue(undefined),
     sendGroupInviteEmail: jest.fn().mockResolvedValue(undefined),
     sendGroupInviteResponseEmail: jest.fn().mockResolvedValue(undefined),
+    sendGroupCompleteEmail: jest.fn().mockResolvedValue(undefined),
     sendEventNotificationEmail: jest.fn().mockResolvedValue(undefined),
     sendProposalSubmissionEmail: jest.fn().mockResolvedValue(undefined),
     sendProposalStatusEmail: jest.fn().mockResolvedValue(undefined),

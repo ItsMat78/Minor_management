@@ -10,10 +10,13 @@ import { createTestUser, generateToken, createTestGroup, createTestProject } fro
 import User, { UserRole } from '../../models/User';
 
 jest.mock('../../utils/emailService', () => ({
-    sendEmail: jest.fn().mockResolvedValue(undefined),
+    sendEmail: jest.fn().mockResolvedValue({ ok: true }),
+    getEmailOutage: jest.fn().mockReturnValue(null),
+    emailOutageMessage: jest.fn().mockReturnValue('Email service unavailable'),
     sendGroupCreationEmail: jest.fn().mockResolvedValue(undefined),
     sendGroupInviteEmail: jest.fn().mockResolvedValue(undefined),
     sendGroupInviteResponseEmail: jest.fn().mockResolvedValue(undefined),
+    sendGroupCompleteEmail: jest.fn().mockResolvedValue(undefined),
     sendEventNotificationEmail: jest.fn().mockResolvedValue(undefined),
     sendProposalSubmissionEmail: jest.fn().mockResolvedValue(undefined),
     sendProposalStatusEmail: jest.fn().mockResolvedValue(undefined),
@@ -299,6 +302,63 @@ describe('PUT /api/projects/:id/status', () => {
 
         const survivingDraft = await Project.findById(draft._id);
         expect(survivingDraft).toBeNull(); // deleted when sibling was approved
+    });
+});
+
+// ── PUT /api/projects/:id (edit) ─────────────────────────────────────────────
+
+describe('PUT /api/projects/:id — editing an approved project', () => {
+    it('lets a member edit an approved project and keeps it Approved even when the client posts a different status', async () => {
+        const { group, members: [student] } = await createTestGroup(1);
+        const mentor = await createTestUser({ role: UserRole.FACULTY, email: 'mentor.keep@t.ac.in' });
+        const project = await createTestProject(group._id, { status: 'Approved', faculty: mentor._id as any });
+        group.status = 'Approved';
+        await group.save();
+
+        const res = await request(app)
+            .put(`/api/projects/${project._id}`)
+            .set('x-auth-token', generateToken(student))
+            // The editor UI posts status: 'Pending' by default — the server must not un-approve.
+            .field('title', 'Revised Approved Title')
+            .field('description', 'Updated scope after approval')
+            .field('status', 'Pending');
+
+        expect(res.status).toBe(200);
+        expect(res.body.status).toBe('Approved');
+        expect(res.body.title).toBe('Revised Approved Title');
+
+        const updatedGroup = await Group.findById(group._id);
+        expect(updatedGroup!.status).toBe('Approved');
+    });
+
+    it('ignores a faculty change on an approved project (mentor stays locked)', async () => {
+        const { group, members: [student] } = await createTestGroup(1);
+        const mentor = await createTestUser({ role: UserRole.FACULTY, email: 'mentor.lock@t.ac.in' });
+        const otherFaculty = await createTestUser({ role: UserRole.FACULTY, email: 'other.faculty@t.ac.in' });
+        const project = await createTestProject(group._id, { status: 'Approved', faculty: mentor._id as any });
+
+        const res = await request(app)
+            .put(`/api/projects/${project._id}`)
+            .set('x-auth-token', generateToken(student))
+            .field('facultyId', String(otherFaculty._id))
+            .field('status', 'Approved');
+
+        expect(res.status).toBe(200);
+        const saved = await Project.findById(project._id);
+        expect(String(saved!.faculty)).toBe(String(mentor._id));
+    });
+
+    it('rejects an edit from a non-member', async () => {
+        const { group } = await createTestGroup(1);
+        const outsider = await createTestUser({ role: UserRole.STUDENT, email: 'outsider@t.ac.in' });
+        const project = await createTestProject(group._id, { status: 'Approved' });
+
+        const res = await request(app)
+            .put(`/api/projects/${project._id}`)
+            .set('x-auth-token', generateToken(outsider))
+            .field('title', 'Hijacked');
+
+        expect(res.status).toBe(403);
     });
 });
 

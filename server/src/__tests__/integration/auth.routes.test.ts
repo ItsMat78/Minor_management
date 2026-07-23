@@ -11,10 +11,13 @@ import { UserRole } from '../../models/User';
 // All email functions must return a Promise so .catch() in controllers doesn't throw.
 // Auto-mocking returns undefined which breaks controller code like sendEmail(...).catch(...)
 jest.mock('../../utils/emailService', () => ({
-    sendEmail: jest.fn().mockResolvedValue(undefined),
+    sendEmail: jest.fn().mockResolvedValue({ ok: true }),
+    getEmailOutage: jest.fn().mockReturnValue(null),
+    emailOutageMessage: jest.fn().mockReturnValue('Email service unavailable'),
     sendGroupCreationEmail: jest.fn().mockResolvedValue(undefined),
     sendGroupInviteEmail: jest.fn().mockResolvedValue(undefined),
     sendGroupInviteResponseEmail: jest.fn().mockResolvedValue(undefined),
+    sendGroupCompleteEmail: jest.fn().mockResolvedValue(undefined),
     sendEventNotificationEmail: jest.fn().mockResolvedValue(undefined),
     sendProposalSubmissionEmail: jest.fn().mockResolvedValue(undefined),
     sendProposalStatusEmail: jest.fn().mockResolvedValue(undefined),

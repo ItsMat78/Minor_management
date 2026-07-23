@@ -3,7 +3,7 @@ import Project from '../models/Project';
 import Group from '../models/Group';
 import User, { UserRole } from '../models/User';
 import mongoose from 'mongoose';
-import { sendProposalStatusEmail, sendProposalSubmissionEmail, sendEmail } from '../utils/emailService';
+import { sendProposalStatusEmail, sendProposalSubmissionEmail } from '../utils/emailService';
 import { publicUrlFor, deleteFileByUrl } from '../middleware/uploadMiddleware';
 import Panel from '../models/Panel';
 import Event, { EventType } from '../models/Event';
@@ -410,32 +410,10 @@ export const addUpdate = async (req: Request, res: Response) => {
         }
         await project.save();
 
-        const groupName = group?.name || 'Unknown Group';
-        const authorUser = await User.findById(userId).select('name');
-        const authorName = authorUser?.name || 'Unknown';
-
-        // Notify faculty when a student posts an update
-        if (isMember && !isFaculty && project.faculty) {
-            const facultyUser = await User.findById(project.faculty).select('email name');
-            if (facultyUser?.email) {
-                const subject = `[Group ${groupName}] New Progress Update`;
-                const text = `${authorName} (Group "${groupName}") has posted a new progress update.\n\n${content}`;
-                const html = `<div style="font-family:sans-serif;padding:20px"><h2 style="color:#4f46e5">New Progress Update</h2><p><strong>Group:</strong> ${groupName}</p><p><strong>By:</strong> ${authorName}</p><p style="color:#6b7280">${content}</p><p>Please log in to the Minor Management Portal to view the full update.</p></div>`;
-                sendEmail(facultyUser.email, subject, text, html).catch(err => console.error('Progress update email to faculty failed:', err));
-            }
-        }
-
-        // Notify group members when faculty posts an update
-        if (isFaculty && group && group.members.length > 0) {
-            const memberUsers = await User.find({ _id: { $in: group.members } }).select('email');
-            const memberEmails = memberUsers.map((u: any) => u.email).filter(Boolean);
-            if (memberEmails.length > 0) {
-                const subject = `[Group ${groupName}] Your mentor posted a new update`;
-                const text = `${authorName} (Faculty Mentor) has posted a new update for Group ${groupName}.\n\n${content}`;
-                const html = `<div style="font-family:sans-serif;padding:20px"><h2 style="color:#4f46e5">New Mentor Update</h2><p><strong>Group:</strong> ${groupName}</p><p><strong>From:</strong> ${authorName} (Faculty Mentor)</p><p style="color:#6b7280">${content}</p><p>Please log in to the Minor Management Portal to view the full update.</p></div>`;
-                sendEmail(memberEmails, subject, text, html).catch(err => console.error('Progress update email to students failed:', err));
-            }
-        }
+        // Progress updates no longer send email in either direction (student→mentor,
+        // mentor→students). These fired on every post and scaled with how chatty each group was,
+        // dwarfing the OTP/proposal traffic. Updates surface in-app via the project timeline and
+        // the hasNewUpdate flag set above.
 
         res.json(project);
     } catch (error) {
@@ -483,10 +461,13 @@ export const updateProject = async (req: Request, res: Response) => {
             return res.status(403).json({ message: 'Not authorized to update this project' });
         }
 
-        // Only allow edits if Draft, Pending, or Rejected
-        if (!['Draft', 'Pending', 'Rejected'].includes(project.status)) {
+        // Members may edit Draft/Pending/Rejected proposals, and also an Approved project to keep
+        // its details current. An Approved edit stays Approved (no re-review) — see the status and
+        // faculty guards below, which are what actually enforce that.
+        if (!['Draft', 'Pending', 'Rejected', 'Approved'].includes(project.status)) {
             return res.status(400).json({ message: `Cannot edit project in ${project.status} status` });
         }
+        const wasApproved = project.status === 'Approved';
 
         // Process files
         let fileUrls: string[] = [];
@@ -512,7 +493,8 @@ export const updateProject = async (req: Request, res: Response) => {
         if (tags) {
             project.tags = Array.isArray(tags) ? tags : tags.split(',').map((t: string) => t.trim());
         }
-        if (facultyId) project.faculty = facultyId;
+        // Faculty is locked once approved — a group must not silently swap their approved mentor.
+        if (facultyId && !wasApproved) project.faculty = facultyId;
         if (semester) project.semester = semester;
 
         // Handle links (from text input, comma separated)
@@ -532,8 +514,10 @@ export const updateProject = async (req: Request, res: Response) => {
 
         project.attachments = fileUrls;
 
+        // An approved project stays approved through edits — skip every status transition so a
+        // client-sent status (the editor posts 'Pending' by default) can't un-approve it.
         // If status changes (e.g. back to Pending from Draft)
-        if (status && status !== project.status) {
+        if (!wasApproved && status && status !== project.status) {
             if (status === 'Pending') {
                 // Only one active proposal at a time — block promoting a Draft to Pending
                 // while the group already has another Pending/Approved project.
@@ -555,7 +539,7 @@ export const updateProject = async (req: Request, res: Response) => {
         }
 
         // If it was Rejected, and now being updated, set to Pending — but only if no other Pending exists
-        if (project.status === 'Rejected') {
+        if (!wasApproved && project.status === 'Rejected') {
             const otherPending = await Project.findOne({
                 group: group._id,
                 _id: { $ne: project._id },

@@ -4,7 +4,7 @@ import Group from '../models/Group';
 import User from '../models/User';
 import Project from '../models/Project';
 import Event, { EventType } from '../models/Event';
-import { sendGroupCreationEmail, sendGroupInviteEmail, sendGroupInviteResponseEmail } from '../utils/emailService';
+import { sendGroupCompleteEmail, sendGroupInviteEmail, sendGroupInviteResponseEmail } from '../utils/emailService';
 import { nextActiveGroupNumber } from '../utils/groupNumbering';
 
 // Batch years that require single-branch groups for the given GF event. Prefers the explicit
@@ -170,14 +170,12 @@ export const createGroup = async (req: Request, res: Response) => {
 
         await newGroup.save();
 
-        // Notify creator (confirmation) + invitees (request to approve)
+        // Invitees get an invite to approve. The creator gets no confirmation email — they just
+        // clicked "create" and received the 201 response, so it would carry no new information.
         const [creatorUser, inviteUsers] = await Promise.all([
-            User.findById(userId).select('email name'),
+            User.findById(userId).select('name'),
             User.find({ _id: { $in: pendingMembers } }).select('email name')
         ]);
-        if (creatorUser?.email) {
-            sendGroupCreationEmail([creatorUser.email], newGroup.name || 'Unnamed Group').catch(err => console.error("Creator email failed:", err));
-        }
         for (const invitee of inviteUsers) {
             if (invitee.email) {
                 sendGroupInviteEmail(invitee.email, creatorUser?.name || 'A classmate', newGroup.name || 'Unnamed Group').catch(err => console.error("Invite email failed:", err));
@@ -273,15 +271,16 @@ export const acceptInvite = async (req: Request, res: Response) => {
         group.members.push(userId as any);
         await group.save();
 
-        // Email creator and existing members about the acceptance
-        const [me, creatorUser, otherMembers] = await Promise.all([
-            User.findById(userId).select('name'),
-            group.createdBy ? User.findById(group.createdBy).select('email') : null,
-            User.find({ _id: { $in: group.members.filter(m => m.toString() !== userId) } }).select('email')
-        ]);
-        const emails = [creatorUser?.email, ...otherMembers.map(m => m.email)].filter((e): e is string => !!e);
-        if (emails.length > 0) {
-            sendGroupInviteResponseEmail(emails, me?.name || 'A member', group.name || 'Unnamed Group', 'accepted').catch(err => console.error('Accept email failed:', err));
+        // Only email when the LAST pending invite is accepted — one "group complete" message to
+        // all members, instead of notifying every existing member on every acceptance. That old
+        // per-accept blast cost O(size^2) sends per group and double-counted the creator (who is
+        // already in group.members). Intermediate accepts are visible in-app on the dashboard.
+        if (group.pendingMembers.length === 0) {
+            const memberUsers = await User.find({ _id: { $in: group.members } }).select('email');
+            const emails = memberUsers.map(m => m.email).filter((e): e is string => !!e);
+            if (emails.length > 0) {
+                sendGroupCompleteEmail(emails, group.name || 'Unnamed Group').catch(err => console.error('Group-complete email failed:', err));
+            }
         }
 
         res.json({ message: 'Invite accepted', group });

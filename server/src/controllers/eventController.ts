@@ -6,7 +6,6 @@ import Group from '../models/Group';
 import Project from '../models/Project';
 import Panel from '../models/Panel';
 import { getGlobalSettings } from '../models/Settings';
-import { sendEventNotificationEmail } from '../utils/emailService';
 
 const verifyAdminPassword = async (userId: string, passwordToVerify: string) => {
     if (!passwordToVerify) return false;
@@ -226,12 +225,9 @@ export const createEvent = async (req: Request, res: Response) => {
 
         await newEvent.save();
 
-        // Send Email only to students participating this semester
-        const allStudents = await User.find({ role: 'Student', isParticipating: true }).select('email');
-        const emails = allStudents.map(u => u.email).filter(e => e);
-        if (emails.length > 0) {
-            sendEventNotificationEmail(emails, type.replace(/_/g, ' ').toUpperCase(), type, new Date(endDate)).catch(err => console.error("Email failed:", err));
-        }
+        // No email blast on event creation: it addressed every participating student in a single
+        // send, which exhausts the daily quota in one call and leaks the full recipient list.
+        // Students see new events via the in-app event banner on login instead.
         res.status(201).json(newEvent);
     } catch (error) {
         res.status(500).json({ message: 'Server error', error });

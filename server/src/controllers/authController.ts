@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import User, { IUser, UserRole } from '../models/User';
-import { sendEmail } from '../utils/emailService';
+import { sendEmail, emailOutageMessage, getEmailOutage, EmailFailure } from '../utils/emailService';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'secret';
 
@@ -14,6 +14,27 @@ const logOtpForDev = (email: string, otp: string, purpose: string) => {
     if (process.env.LOG_OTP === 'true') {
         console.log(`\n  🔑 [DEV OTP] ${purpose} — ${email}: ${otp}\n`);
     }
+};
+
+/**
+ * Abandon an OTP whose email never went out. The code is persisted before the send, and the
+ * 60-second resend cooldown is derived from otpExpires, so leaving it in place would lock the
+ * user out of retrying for a code they were never given. Clearing it also invalidates a code
+ * that may yet be delivered by a provider retry.
+ *
+ * Note the wait is reported as `emailRetryAfterSeconds`, deliberately not `retryAfter`: the
+ * client feeds `retryAfter` straight into the resend cooldown timer, and a quota outage would
+ * hand it a 24-hour value.
+ */
+const failOtpDelivery = async (res: Response, user: IUser, failure: EmailFailure) => {
+    user.otp = undefined;
+    user.otpExpires = undefined;
+    await user.save();
+    return res.status(503).json({
+        message: emailOutageMessage(failure),
+        emailUnavailable: true,
+        emailRetryAfterSeconds: failure.retryAfterSeconds,
+    });
 };
 
 export const login = async (req: Request, res: Response) => {
@@ -47,9 +68,8 @@ export const login = async (req: Request, res: Response) => {
                     <p style="color: #6b7280;">This code expires in <strong>10 minutes</strong>.</p>
                 </div>
             `;
-            sendEmail(user.email, subject, text, html).catch(err =>
-                console.error(`[AuthController] Failed to send OTP email to ${user.email}:`, err)
-            );
+            const delivery = await sendEmail(user.email, subject, text, html);
+            if (!delivery.ok) return failOtpDelivery(res, user, delivery);
 
             return res.status(200).json({
                 requiresActivation: true,
@@ -146,9 +166,8 @@ export const resendOtp = async (req: Request, res: Response) => {
                 <p style="color: #6b7280;">This code expires in <strong>10 minutes</strong>.</p>
             </div>
         `;
-        sendEmail(user.email, subject, text, html).catch(err =>
-            console.error(`[AuthController] Failed to resend OTP to ${user.email}:`, err)
-        );
+        const delivery = await sendEmail(user.email, subject, text, html);
+        if (!delivery.ok) return failOtpDelivery(res, user, delivery);
 
         res.json({ message: 'OTP resent to your email.' });
     } catch (error) {
@@ -159,6 +178,19 @@ export const resendOtp = async (req: Request, res: Response) => {
 export const forgotPassword = async (req: Request, res: Response) => {
     try {
         const { email } = req.body;
+
+        // Checked before the account lookup on purpose. Once the service is known to be down
+        // every address must fail identically, otherwise "generic 200" for unknown addresses
+        // versus 503 for real ones would turn the outage into an account-enumeration oracle.
+        const knownOutage = getEmailOutage();
+        if (knownOutage) {
+            return res.status(503).json({
+                message: emailOutageMessage(knownOutage),
+                emailUnavailable: true,
+                emailRetryAfterSeconds: knownOutage.retryAfterSeconds,
+            });
+        }
+
         const user = await User.findOne({ email });
 
         // Don't reveal whether an account exists — always return the same generic response.
@@ -194,9 +226,8 @@ export const forgotPassword = async (req: Request, res: Response) => {
                 <p style="color: #9ca3af; font-size: 12px;">If you did not request this, ignore this email.</p>
             </div>
         `;
-        sendEmail(user.email, subject, text, html).catch(err =>
-            console.error(`[AuthController] Failed to send forgot-password OTP to ${user.email}:`, err)
-        );
+        const delivery = await sendEmail(user.email, subject, text, html);
+        if (!delivery.ok) return failOtpDelivery(res, user, delivery);
 
         return res.json({ message: 'If that email is registered, an OTP has been sent.' });
     } catch (error) {

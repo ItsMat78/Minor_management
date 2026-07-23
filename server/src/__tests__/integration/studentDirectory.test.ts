@@ -11,7 +11,7 @@ import Group from '../../models/Group';
 import { createTestUser, generateToken } from '../helpers/factories';
 import { UserRole } from '../../models/User';
 
-jest.mock('../../utils/emailService', () => ({ sendEmail: jest.fn().mockResolvedValue(undefined) }));
+jest.mock('../../utils/emailService', () => ({ sendEmail: jest.fn().mockResolvedValue({ ok: true }), getEmailOutage: jest.fn().mockReturnValue(null), emailOutageMessage: jest.fn().mockReturnValue('Email service unavailable') }));
 
 async function makeGroup(memberId: any, isArchived: boolean) {
     return Group.create({
