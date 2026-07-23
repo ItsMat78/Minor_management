@@ -1304,11 +1304,11 @@ const Dashboard: React.FC = () => {
 
                                                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                                                             {allGroupProjects.filter(p => !['Archived', 'Rejected'].includes(p.status)).map((project: any) => (
-                                                                <div key={project._id} className="group bg-white rounded-3xl border border-neutral-200 shadow-sm hover:shadow-xl hover:shadow-indigo-500/10 transition-all flex flex-col overflow-hidden relative sm:aspect-square">
+                                                                <div key={project._id} className="group bg-white rounded-3xl border border-neutral-200 shadow-sm hover:shadow-xl hover:shadow-indigo-500/10 transition-all flex flex-col overflow-hidden relative">
                                                                     {/* Accent Top Bar */}
                                                                     <div className={`h-1.5 w-full bg-indigo-600`} />
 
-                                                                    <div className="p-6 sm:p-8 flex-1 flex flex-col justify-between overflow-hidden">
+                                                                    <div className="p-6 sm:p-8 flex-1 flex flex-col justify-between">
                                                                         <div>
                                                                             {/* Top Status & Semester */}
                                                                             <div className="flex justify-between items-center mb-6">
