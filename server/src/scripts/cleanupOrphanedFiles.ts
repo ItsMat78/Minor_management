@@ -8,9 +8,12 @@ dotenv.config();
 import Project from '../models/Project';
 import User from '../models/User';
 
+// Must match uploadMiddleware's fallback (server/uploads) — from dist/scripts or src/scripts
+// that is two levels up, not three. Three pointed at the repo root, where the walk found no
+// files and the script silently cleaned nothing.
 const uploadDir = process.env.UPLOAD_DIR
     ? path.resolve(process.env.UPLOAD_DIR)
-    : path.join(__dirname, '../../../uploads');
+    : path.join(__dirname, '../../uploads');
 
 // Extract the relative path within uploadDir from a stored URL.
 // "http://host/uploads/submissions/abc.pdf" → "submissions/abc.pdf"

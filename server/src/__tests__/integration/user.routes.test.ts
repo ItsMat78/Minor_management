@@ -241,6 +241,68 @@ describe('PUT /api/users/:id', () => {
     });
 });
 
+// ── PUT /api/users/me (self-service) ──────────────────────────────────────────
+
+describe('PUT /api/users/me', () => {
+    it('lets a faculty edit their own descriptive fields', async () => {
+        const faculty = await createTestUser({ role: UserRole.FACULTY });
+
+        const res = await request(app)
+            .put('/api/users/me')
+            .set('x-auth-token', generateToken(faculty))
+            .send({ name: 'Dr. Renamed', department: 'CSE', expertise: ['IoT'] });
+
+        expect(res.status).toBe(200);
+        const updated = await User.findById(faculty._id);
+        expect(updated!.name).toBe('Dr. Renamed');
+        expect(updated!.department).toBe('CSE');
+        expect(updated!.expertise).toEqual(['IoT']);
+    });
+
+    // Mentored branches decide which students can pick a supervisor, so they are
+    // admin-controlled — a faculty must not be able to widen their own reach.
+    it('ignores a faculty attempt to change their own mentored branches', async () => {
+        const faculty = await createTestUser({ role: UserRole.FACULTY });
+        await User.findByIdAndUpdate(faculty._id, { branch: 'CSE' });
+
+        const res = await request(app)
+            .put('/api/users/me')
+            .set('x-auth-token', generateToken(faculty))
+            .send({ name: 'Dr. Who', branch: 'CSE,DSAI,ECE' });
+
+        expect(res.status).toBe(200);
+        const updated = await User.findById(faculty._id);
+        expect(updated!.name).toBe('Dr. Who');
+        expect(updated!.branch).toBe('CSE');
+    });
+
+    it('still lets an admin set a faculty\'s branches', async () => {
+        const admin = await createTestUser({ role: UserRole.ADMIN });
+        const faculty = await createTestUser({ role: UserRole.FACULTY });
+
+        const res = await request(app)
+            .put(`/api/users/${faculty._id}`)
+            .set('x-auth-token', generateToken(admin))
+            .send({ branch: 'CSE,DSAI' });
+
+        expect(res.status).toBe(200);
+        expect((await User.findById(faculty._id))!.branch).toBe('CSE,DSAI');
+    });
+
+    it('ignores a student attempt to change their own branch', async () => {
+        const student = await createTestUser({ role: UserRole.STUDENT, rollNumber: '23100001' });
+        await User.findByIdAndUpdate(student._id, { branch: 'CSE' });
+
+        const res = await request(app)
+            .put('/api/users/me')
+            .set('x-auth-token', generateToken(student))
+            .send({ branch: 'DSAI' });
+
+        expect(res.status).toBe(200);
+        expect((await User.findById(student._id))!.branch).toBe('CSE');
+    });
+});
+
 // ── DELETE /api/users/:id (admin) ─────────────────────────────────────────────
 
 describe('DELETE /api/users/:id', () => {

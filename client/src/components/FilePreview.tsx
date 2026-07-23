@@ -1,12 +1,16 @@
 import React, { useState } from 'react';
 import { FileText, Film, Download, ExternalLink } from 'lucide-react';
+import { resolveUploadUrl } from '../utils/uploadUrl';
 
 interface FilePreviewProps {
     url: string;
     description?: string;
 }
 
-const FilePreview: React.FC<FilePreviewProps> = ({ url, description }) => {
+const FilePreview: React.FC<FilePreviewProps> = ({ url: rawUrl, description }) => {
+    // Stored attachment URLs carry whatever host they were uploaded through — re-point
+    // them at this client's API origin. See utils/uploadUrl.ts.
+    const url = resolveUploadUrl(rawUrl) || rawUrl;
     const fileName = url.split('/').pop() || 'File';
     const extension = fileName.split('.').pop()?.toLowerCase() || '';
 

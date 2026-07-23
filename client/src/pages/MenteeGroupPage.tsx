@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import Avatar from '../components/Avatar';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
@@ -229,13 +230,12 @@ const MenteeGroupPage: React.FC = () => {
                 </nav>
                 <div className="p-4 border-t border-neutral-100">
                     <div className="flex items-center gap-3 mb-4">
-                        {user?.photoUrl ? (
-                            <img src={user.photoUrl} alt={user?.name} className="h-9 w-9 rounded-full object-cover shrink-0 border-2 border-white shadow-sm" />
-                        ) : (
-                            <div className="h-9 w-9 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold border-2 border-white shadow-sm shrink-0">
-                                {user?.name.charAt(0)}
-                            </div>
-                        )}
+                        <Avatar
+                            name={user?.name}
+                            photoUrl={user?.photoUrl}
+                            className="h-9 w-9 rounded-full shrink-0 border-2 border-white shadow-sm"
+                            fallbackClassName="bg-indigo-100 text-indigo-700"
+                        />
                         <div className="overflow-hidden">
                             <p className="text-sm font-bold text-gray-900 truncate">{user?.name}</p>
                             <p className="text-xs text-gray-500 truncate">{user?.email}</p>
@@ -528,13 +528,12 @@ const MenteeGroupPage: React.FC = () => {
                                     <Users className="w-5 h-5 text-orange-600" /> Faculty Mentor
                                 </h3>
                                 <div className="p-4 bg-orange-50 rounded-2xl border border-orange-100 flex items-center gap-4">
-                                    {user?.photoUrl ? (
-                                        <img src={user.photoUrl} alt={user.name} className="h-12 w-12 rounded-full object-cover border-2 border-orange-200 shadow-sm shrink-0" />
-                                    ) : (
-                                        <div className="h-12 w-12 rounded-full bg-orange-100 flex items-center justify-center font-bold text-orange-600 border-2 border-orange-200 shadow-sm shrink-0 text-lg">
-                                            {user?.name.charAt(0)}
-                                        </div>
-                                    )}
+                                    <Avatar
+                                        name={user?.name}
+                                        photoUrl={user?.photoUrl}
+                                        className="h-12 w-12 rounded-full border-2 border-orange-200 shadow-sm shrink-0 text-lg"
+                                        fallbackClassName="bg-orange-100 text-orange-600"
+                                    />
                                     <div className="overflow-hidden flex-1">
                                         <p className="font-bold text-gray-900 text-sm truncate">{user?.name}</p>
                                         <p className="text-xs text-gray-500 truncate">{user?.department || 'Faculty'}</p>

@@ -35,9 +35,19 @@ const storage = multer.diskStorage({
     }
 });
 
-// Build a public URL for an uploaded file — honours UPLOAD_BASE_URL when set
+// Build a public URL for an uploaded file — honours UPLOAD_BASE_URL when set.
+//
+// Set UPLOAD_BASE_URL in every deployment. The request-derived fallback bakes whatever host the
+// upload happened to arrive on into the database row forever, so a photo uploaded via
+// localhost:5000 or a LAN IP is unreachable for every other viewer. The scheme is read from
+// X-Forwarded-Proto first because behind a TLS-terminating proxy req.protocol is 'http' unless
+// TRUST_PROXY is set, and an http:// image on an https:// page is blocked as mixed content.
+// The client also re-points stored /uploads/... URLs at its own API origin (client/src/utils/
+// uploadUrl.ts), which heals rows already written with a bad host.
 export const publicUrlFor = (req: Request, file: Express.Multer.File): string => {
-    const base = process.env.UPLOAD_BASE_URL || `${req.protocol}://${req.get('host')}`;
+    const forwardedProto = String(req.get('x-forwarded-proto') || '').split(',')[0].trim();
+    const base = process.env.UPLOAD_BASE_URL
+        || `${forwardedProto || req.protocol}://${req.get('host')}`;
     const bucket = bucketFor(req);
     return `${base.replace(/\/$/, '')}/uploads/${bucket}/${file.filename}`;
 };

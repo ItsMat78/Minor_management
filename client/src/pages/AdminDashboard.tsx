@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import Avatar from '../components/Avatar';
 import { useSearchParams } from 'react-router-dom';
 import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
@@ -1767,13 +1768,12 @@ const AdminDashboard: React.FC = () => {
                 </nav>
                 <div className="p-4 border-t border-neutral-100">
                     <div className="flex items-center gap-3 mb-4">
-                        {user?.photoUrl ? (
-                            <img src={user.photoUrl} alt={user?.name} className="h-9 w-9 rounded-full object-cover shrink-0 border-2 border-white shadow-sm" />
-                        ) : (
-                            <div className="h-9 w-9 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold border-2 border-white shadow-sm shrink-0">
-                                {user?.name.charAt(0)}
-                            </div>
-                        )}
+                        <Avatar
+                            name={user?.name}
+                            photoUrl={user?.photoUrl}
+                            className="h-9 w-9 rounded-full object-cover shrink-0 border-2 border-white shadow-sm"
+                            fallbackClassName="h-9 w-9 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold border-2 border-white shadow-sm shrink-0"
+                        />
                         <div className="overflow-hidden">
                             <p className="text-sm font-bold text-neutral-900 truncate">{user?.name}</p>
                             <p className="text-xs text-neutral-500 truncate">{user?.email}</p>
@@ -2288,13 +2288,12 @@ const AdminDashboard: React.FC = () => {
                                                             <tr key={f._id} className="hover:bg-neutral-50">
                                                                 <td className="px-6 py-4">
                                                                     <div className="flex items-center gap-3">
-                                                                        {f.photoUrl ? (
-                                                                            <img src={f.photoUrl} alt={f.name} className="w-9 h-9 rounded-full object-cover shrink-0 border border-neutral-200" />
-                                                                        ) : (
-                                                                            <div className="w-9 h-9 rounded-full bg-orange-100 text-orange-700 flex items-center justify-center font-bold text-sm shrink-0">
-                                                                                {f.name?.charAt(0) || 'F'}
-                                                                            </div>
-                                                                        )}
+                                                                        <Avatar
+                                                                            name={f.name || 'F'}
+                                                                            photoUrl={f.photoUrl}
+                                                                            className="w-9 h-9 rounded-full object-cover shrink-0 border border-neutral-200"
+                                                                            fallbackClassName="w-9 h-9 rounded-full bg-orange-100 text-orange-700 flex items-center justify-center font-bold text-sm shrink-0"
+                                                                        />
                                                                         <div className="flex flex-col gap-0.5">
                                                                             <span className="font-semibold text-neutral-900">{f.name}</span>
                                                                             <span className="text-xs text-neutral-400">{f.email}</span>
@@ -2418,13 +2417,12 @@ const AdminDashboard: React.FC = () => {
                                                                                             </td>
                                                                                             <td className="px-6 py-4">
                                                                                                 <div className="flex items-center gap-2">
-                                                                                                    {item.project?.faculty?.photoUrl ? (
-                                                                                                        <img src={item.project.faculty.photoUrl} alt={item.project.faculty.name} className="h-6 w-6 rounded-full object-cover border border-orange-200 shrink-0" />
-                                                                                                    ) : (
-                                                                                                        <div className="h-6 w-6 rounded-full bg-orange-100 flex items-center justify-center text-xs font-bold text-orange-600 shrink-0">
-                                                                                                            {item.project?.faculty?.name?.charAt(0) || '?'}
-                                                                                                        </div>
-                                                                                                    )}
+                                                                                                    <Avatar
+                                                                                                        name={item.project?.faculty?.name}
+                                                                                                        photoUrl={item.project?.faculty?.photoUrl}
+                                                                                                        className="h-6 w-6 rounded-full object-cover border border-orange-200 shrink-0"
+                                                                                                        fallbackClassName="h-6 w-6 rounded-full bg-orange-100 flex items-center justify-center text-xs font-bold text-orange-600 shrink-0"
+                                                                                                    />
                                                                                                     <span className="text-sm font-medium text-neutral-700">
                                                                                                         {item.project?.faculty?.name || 'Unassigned'}
                                                                                                     </span>
@@ -2555,13 +2553,12 @@ const AdminDashboard: React.FC = () => {
                                                             onClick={() => setCollapsedProposalFaculty(prev => collapsed ? prev.filter(id => id !== bucket.id) : [...prev, bucket.id])}
                                                             className="w-full flex items-center gap-4 p-5 hover:bg-neutral-50 transition-colors text-left"
                                                         >
-                                                            {bucket.photoUrl ? (
-                                                                <img src={bucket.photoUrl} alt={bucket.name} className="h-11 w-11 rounded-xl object-cover border border-neutral-200 shrink-0" />
-                                                            ) : (
-                                                                <div className="h-11 w-11 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold shrink-0">
-                                                                    {bucket.name.charAt(0)}
-                                                                </div>
-                                                            )}
+                                                            <Avatar
+                                                                name={bucket.name}
+                                                                photoUrl={bucket.photoUrl}
+                                                                className="h-11 w-11 rounded-xl object-cover border border-neutral-200 shrink-0"
+                                                                fallbackClassName="h-11 w-11 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold shrink-0"
+                                                            />
                                                             <div className="flex-1 min-w-0">
                                                                 <p className="font-bold text-neutral-900 truncate">{bucket.name}</p>
                                                                 <p className="text-xs text-neutral-500 truncate">{bucket.department || 'No department on record'}</p>
@@ -2832,13 +2829,12 @@ const AdminDashboard: React.FC = () => {
                                                                             <h5 className="text-xs font-bold text-neutral-400 uppercase mb-2">Faculty Members</h5>
                                                                             {panelFacultyWithLoad.map((f: any) => (
                                                                                 <div key={f._id} className={`flex items-center gap-3 bg-white p-3 rounded-xl border ${f.isChair ? 'border-amber-300 ring-1 ring-amber-100' : 'border-neutral-200'} shadow-sm`}>
-                                                                                    {f.photoUrl ? (
-                                                                                        <img src={f.photoUrl} alt={f.name} className="w-8 h-8 rounded-full object-cover shrink-0 border border-neutral-200" />
-                                                                                    ) : (
-                                                                                        <div className="w-8 h-8 rounded-full bg-neutral-100 text-neutral-600 flex items-center justify-center text-xs font-bold shrink-0">
-                                                                                            {f.name?.charAt(0) || 'F'}
-                                                                                        </div>
-                                                                                    )}
+                                                                                    <Avatar
+                                                                                        name={f.name || 'F'}
+                                                                                        photoUrl={f.photoUrl}
+                                                                                        className="w-8 h-8 rounded-full object-cover shrink-0 border border-neutral-200"
+                                                                                        fallbackClassName="w-8 h-8 rounded-full bg-neutral-100 text-neutral-600 flex items-center justify-center text-xs font-bold shrink-0"
+                                                                                    />
                                                                                     <div className="flex-1 min-w-0">
                                                                                         <h5 className="text-sm font-bold text-neutral-900 truncate flex items-center gap-1.5">
                                                                                             {f.name}
@@ -3533,13 +3529,12 @@ const AdminDashboard: React.FC = () => {
                                                                 <div className="flex flex-wrap items-center gap-3">
                                                                     {pData.panel.faculty?.map((fac: any, fIdx: number) => (
                                                                         <div key={fIdx} className="flex items-center gap-1.5">
-                                                                            {fac.photoUrl ? (
-                                                                                <img src={fac.photoUrl} alt={fac.name} className="w-6 h-6 rounded-full object-cover border border-indigo-300 shrink-0" />
-                                                                            ) : (
-                                                                                <div className="w-6 h-6 rounded-full bg-indigo-500 text-white flex items-center justify-center font-bold text-[10px] shrink-0">
-                                                                                    {fac.name?.charAt(0) || '?'}
-                                                                                </div>
-                                                                            )}
+                                                                            <Avatar
+                                                                                name={fac.name || '?'}
+                                                                                photoUrl={fac.photoUrl}
+                                                                                className="w-6 h-6 rounded-full object-cover border border-indigo-300 shrink-0"
+                                                                                fallbackClassName="w-6 h-6 rounded-full bg-indigo-500 text-white flex items-center justify-center font-bold text-[10px] shrink-0"
+                                                                            />
                                                                             <span className="text-indigo-100 text-xs font-medium leading-tight">{fac.name}</span>
                                                                         </div>
                                                                     ))}
@@ -3558,13 +3553,12 @@ const AdminDashboard: React.FC = () => {
                                                                                 onClick={() => setAdminEvalCollapsedFaculties(prev => ({ ...prev, [sectionKey]: !prev[sectionKey] }))}
                                                                             >
                                                                                 <h5 className="font-bold text-neutral-700 flex items-center gap-2 text-sm group-hover:text-indigo-700 transition-colors">
-                                                                                    {facInfo.photoUrl ? (
-                                                                                        <img src={facInfo.photoUrl} alt={facInfo.name} className="w-7 h-7 rounded-full object-cover border border-indigo-200 shrink-0" />
-                                                                                    ) : (
-                                                                                        <div className="w-7 h-7 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs shrink-0">
-                                                                                            {facInfo.name?.charAt(0)}
-                                                                                        </div>
-                                                                                    )}
+                                                                                    <Avatar
+                                                                                        name={facInfo.name}
+                                                                                        photoUrl={facInfo.photoUrl}
+                                                                                        className="w-7 h-7 rounded-full object-cover border border-indigo-200 shrink-0"
+                                                                                        fallbackClassName="w-7 h-7 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs shrink-0"
+                                                                                    />
                                                                                     {facInfo.name}'s Group
                                                                                     {isCollapsed ? <ChevronDown className="w-3.5 h-3.5 text-neutral-400" /> : <ChevronUp className="w-3.5 h-3.5 text-neutral-400" />}
                                                                                 </h5>
@@ -3869,13 +3863,12 @@ const AdminDashboard: React.FC = () => {
                                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                             {(selectedProposal?.group?.members || []).map((m: any, idx: number) => (
                                                 <div key={m._id} className="flex items-center gap-4 p-4 bg-neutral-50 border border-neutral-100 rounded-[24px] shadow-sm">
-                                                    {m.photoUrl ? (
-                                                        <img src={m.photoUrl} alt={m.name} className="w-12 h-12 rounded-2xl object-cover shrink-0 border border-neutral-200" />
-                                                    ) : (
-                                                        <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center font-bold text-lg shrink-0">
-                                                            {m.name?.charAt(0)}
-                                                        </div>
-                                                    )}
+                                                    <Avatar
+                                                        name={m.name}
+                                                        photoUrl={m.photoUrl}
+                                                        className="w-12 h-12 rounded-2xl object-cover shrink-0 border border-neutral-200"
+                                                        fallbackClassName="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center font-bold text-lg shrink-0"
+                                                    />
                                                     <div className="overflow-hidden">
                                                         <p className="font-bold text-neutral-900 text-sm truncate mb-0.5">{m.name}</p>
                                                         <div className="flex items-center gap-2">
@@ -4120,11 +4113,12 @@ const AdminDashboard: React.FC = () => {
                                 <div className="flex items-start justify-between gap-6 mb-8">
                                     <div className="flex items-center gap-6">
                                         <div className="h-20 w-20 rounded-2xl bg-indigo-100 flex items-center justify-center text-3xl font-bold text-indigo-600 shadow-md shrink-0 overflow-hidden border-2 border-white">
-                                            {editingFaculty.photoUrl ? (
-                                                <img src={editingFaculty.photoUrl} alt={editingFaculty.name} className="w-full h-full object-cover" />
-                                            ) : (
-                                                editingFaculty.name?.charAt(0) || 'F'
-                                            )}
+                                            <Avatar
+                                                name={editingFaculty.name || 'F'}
+                                                photoUrl={editingFaculty.photoUrl}
+                                                className="w-full h-full object-cover"
+                                                fallbackClassName="w-full h-full flex items-center justify-center"
+                                            />
                                         </div>
                                         <div>
                                             <h2 className="text-2xl font-bold text-gray-900">{editingFaculty.name}</h2>

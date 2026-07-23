@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import Avatar from '../components/Avatar';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../utils/api';
@@ -561,13 +562,12 @@ const Dashboard: React.FC = () => {
                 </nav>
                 <div className="p-4 border-t border-neutral-100">
                     <div className="flex items-center gap-3 mb-4">
-                        {user?.photoUrl ? (
-                            <img src={user.photoUrl} alt={user?.name} className="h-8 w-8 rounded-full object-cover shrink-0 border border-neutral-200" />
-                        ) : (
-                            <div className="h-8 w-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold shrink-0">
-                                {user?.name.charAt(0)}
-                            </div>
-                        )}
+                        <Avatar
+                            name={user?.name}
+                            photoUrl={user?.photoUrl}
+                            className="h-8 w-8 rounded-full object-cover shrink-0 border border-neutral-200"
+                            fallbackClassName="h-8 w-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold shrink-0"
+                        />
                         <div className="overflow-hidden">
                             <p className="text-sm font-medium truncate flex items-center gap-1.5">
                                 {user?.name}
@@ -922,15 +922,19 @@ const Dashboard: React.FC = () => {
                                 )}
                             </div>
 
-                            <div className="bg-white rounded-xl border border-neutral-200 overflow-hidden shadow-sm">
-                                <table className="w-full text-left text-sm">
+                            {/* overflow-x-auto, not overflow-hidden: at phone widths the five columns are
+                                wider than the viewport, and clipping them put Branch and Status —
+                                the two fields you pick a teammate on — permanently out of reach.
+                                min-w keeps the columns readable instead of crushing them. */}
+                            <div className="bg-white rounded-xl border border-neutral-200 overflow-x-auto shadow-sm">
+                                <table className="w-full text-left text-sm min-w-[560px]">
                                     <thead className="bg-neutral-50 border-b border-neutral-200">
                                         <tr>
-                                            <th className="px-6 py-3 font-semibold text-neutral-500 w-12"></th>
-                                            <th className="px-6 py-3 font-semibold text-neutral-500">Roll Number</th>
-                                            <th className="px-6 py-3 font-semibold text-neutral-500">Name</th>
-                                            <th className="px-6 py-3 font-semibold text-neutral-500">Branch</th>
-                                            <th className="px-6 py-3 font-semibold text-neutral-500 text-center">Status</th>
+                                            <th className="px-4 sm:px-6 py-3 font-semibold text-neutral-500 w-12"></th>
+                                            <th className="px-4 sm:px-6 py-3 font-semibold text-neutral-500">Roll Number</th>
+                                            <th className="px-4 sm:px-6 py-3 font-semibold text-neutral-500">Name</th>
+                                            <th className="px-4 sm:px-6 py-3 font-semibold text-neutral-500">Branch</th>
+                                            <th className="px-4 sm:px-6 py-3 font-semibold text-neutral-500 text-center">Status</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-neutral-100">
@@ -958,7 +962,7 @@ const Dashboard: React.FC = () => {
                                                         key={student._id}
                                                         className={`hover:bg-neutral-50 transition-colors ${isSelected ? 'bg-indigo-50/30' : ''}`}
                                                     >
-                                                        <td className="px-6 py-4">
+                                                        <td className="px-4 sm:px-6 py-4">
                                                             {isMe ? (
                                                                 <span className="text-sm font-medium text-neutral-400">Me</span>
                                                             ) : (
@@ -975,17 +979,17 @@ const Dashboard: React.FC = () => {
                                                                 </button>
                                                             )}
                                                         </td>
-                                                        <td className={`px-6 py-4 font-mono ${student.targetBatch && student.targetBatch !== getBatch(student.rollNumber) ? 'text-red-600 font-bold' : 'text-neutral-600'}`}>
+                                                        <td className={`px-4 sm:px-6 py-4 font-mono ${student.targetBatch && student.targetBatch !== getBatch(student.rollNumber) ? 'text-red-600 font-bold' : 'text-neutral-600'}`}>
                                                             {student.rollNumber}
                                                             {student.targetBatch && student.targetBatch !== getBatch(student.rollNumber) && (
                                                                 <span className="ml-2 text-[10px] bg-red-50 px-1.5 py-0.5 rounded border border-red-100 uppercase tracking-tighter shadow-sm w-fit font-bold">Dropper</span>
                                                             )}
                                                         </td>
-                                                        <td className={`px-6 py-4 font-medium ${student.targetBatch && student.targetBatch !== getBatch(student.rollNumber) ? 'text-red-700' : 'text-neutral-900'}`}>
+                                                        <td className={`px-4 sm:px-6 py-4 font-medium ${student.targetBatch && student.targetBatch !== getBatch(student.rollNumber) ? 'text-red-700' : 'text-neutral-900'}`}>
                                                             {student.name} {isMe && <span className="ml-2 text-xs text-neutral-400">(You)</span>}
                                                         </td>
-                                                        <td className="px-6 py-4 text-neutral-500">{student.branch || '-'}</td>
-                                                        <td className="px-6 py-4 text-center">
+                                                        <td className="px-4 sm:px-6 py-4 text-neutral-500">{student.branch || '-'}</td>
+                                                        <td className="px-4 sm:px-6 py-4 text-center">
                                                             {student.isGrouped ? (
                                                                 <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
                                                                     Grouped
@@ -1415,13 +1419,12 @@ const Dashboard: React.FC = () => {
                                                     <div className="space-y-3">
                                                         {group.members.map((m: any) => (
                                                             <div key={m._id} className="flex items-center gap-3 p-2 hover:bg-neutral-50 rounded-lg transition-colors cursor-default">
-                                                                {m.photoUrl ? (
-                                                                    <img src={m.photoUrl} alt={m.name} className="w-8 h-8 rounded-full object-cover shadow-sm shrink-0 border border-neutral-200" />
-                                                                ) : (
-                                                                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center text-xs font-bold shadow-sm shrink-0">
-                                                                        {m.name.charAt(0)}
-                                                                    </div>
-                                                                )}
+                                                                <Avatar
+                                                                    name={m.name}
+                                                                    photoUrl={m.photoUrl}
+                                                                    className="w-8 h-8 rounded-full object-cover shadow-sm shrink-0 border border-neutral-200"
+                                                                    fallbackClassName="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center text-xs font-bold shadow-sm shrink-0"
+                                                                />
                                                                 <div className="overflow-hidden flex-1">
                                                                     <p className="text-sm font-medium text-neutral-900 truncate">{m.name}</p>
                                                                     <p className="text-xs text-neutral-500 truncate">{m.email}</p>
@@ -1438,13 +1441,12 @@ const Dashboard: React.FC = () => {
                                                     </h4>
                                                     {approvedProject.faculty ? (
                                                         <div className="flex items-center gap-3 p-2 bg-orange-50/50 rounded-lg border border-orange-100 mb-4">
-                                                            {approvedProject.faculty.photoUrl ? (
-                                                                <img src={approvedProject.faculty.photoUrl} alt={approvedProject.faculty.name} className="w-8 h-8 rounded-full object-cover shrink-0 border border-orange-200" />
-                                                            ) : (
-                                                                <div className="w-8 h-8 rounded-full bg-orange-100 text-orange-700 flex items-center justify-center font-bold text-xs shrink-0">
-                                                                    {approvedProject.faculty.name?.charAt(0) || 'F'}
-                                                                </div>
-                                                            )}
+                                                            <Avatar
+                                                                name={approvedProject.faculty.name || 'F'}
+                                                                photoUrl={approvedProject.faculty.photoUrl}
+                                                                className="w-8 h-8 rounded-full object-cover shrink-0 border border-orange-200"
+                                                                fallbackClassName="w-8 h-8 rounded-full bg-orange-100 text-orange-700 flex items-center justify-center font-bold text-xs shrink-0"
+                                                            />
                                                             <div>
                                                                 <p className="text-sm font-medium text-neutral-900">{approvedProject.faculty.name || 'Assigned Faculty'}</p>
                                                                 <p className="text-xs text-neutral-500">{approvedProject.faculty.department || 'Department'}</p>
@@ -1483,20 +1485,24 @@ const Dashboard: React.FC = () => {
                                     {/* Left Column: Team & Details */}
                                     <div className="lg:col-span-2 space-y-8">
                                         {/* Hero Group Card */}
-                                        <div className="relative overflow-hidden bg-white p-8 rounded-3xl border border-neutral-200 shadow-sm">
+                                        <div className="relative overflow-hidden bg-white p-5 sm:p-8 rounded-3xl border border-neutral-200 shadow-sm">
                                             <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-50 rounded-bl-[100px] -z-0 opacity-50" />
                                             <div className="relative z-10">
-                                                <div className="flex items-start justify-between">
+                                                {/* Stacks on phones: side by side, the status badge had nowhere to go and
+                                                    its text was clipped off the right edge of the card. */}
+                                                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
                                                     <div>
-                                                        <h1 className="text-4xl font-black text-neutral-900 tracking-tight mb-2">
+                                                        <h1 className="text-3xl sm:text-4xl font-black text-neutral-900 tracking-tight mb-2">
                                                             G-{group.name}
                                                         </h1>
-                                                        <div className="flex items-center gap-2 text-neutral-500 font-medium font-mono text-sm bg-neutral-50 px-3 py-1.5 rounded-full w-fit border border-neutral-100">
-                                                            <span className="opacity-50 text-[10px] font-bold uppercase tracking-widest">Team ID</span>
-                                                            {group._id}
+                                                        {/* The ObjectId has no break opportunities, so it needs an explicit
+                                                            one or it forces the pill wider than the card. */}
+                                                        <div className="flex flex-wrap sm:flex-nowrap items-center gap-x-2 gap-y-1 text-neutral-500 font-medium font-mono text-xs sm:text-sm bg-neutral-50 px-3 py-1.5 rounded-2xl sm:rounded-full w-fit max-w-full border border-neutral-100">
+                                                            <span className="opacity-50 text-[10px] font-bold uppercase tracking-widest shrink-0">Team ID</span>
+                                                            <span className="break-all sm:break-normal">{group._id}</span>
                                                         </div>
                                                     </div>
-                                                    <div className="flex flex-col items-end gap-2 text-right">
+                                                    <div className="flex flex-col items-start sm:items-end gap-2 text-left sm:text-right shrink-0">
                                                         <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-[0.2em] shadow-sm ring-1 ring-inset ${
                                                             group.status === 'Approved' 
                                                                 ? 'bg-emerald-50 text-emerald-700 ring-emerald-600/20' 
@@ -1516,22 +1522,26 @@ const Dashboard: React.FC = () => {
                                                     </div>
                                                 </div>
 
-                                                <div className="flex items-center gap-12 mt-8 pt-8 border-t border-neutral-100">
-                                                    <div>
-                                                        <h4 className="text-[10px] font-black text-neutral-400 uppercase tracking-[0.2em] mb-2 px-0.5">Target Evaluation Batch</h4>
+                                                {/* Two columns on phones rather than one cramped flex row: the
+                                                    wide tracking made each label wrap to three lines and the
+                                                    values wrap to two. Tighter tracking below sm keeps them on
+                                                    one line each; the divider is desktop-only. */}
+                                                <div className="grid grid-cols-2 gap-4 sm:flex sm:items-center sm:gap-12 mt-6 pt-6 sm:mt-8 sm:pt-8 border-t border-neutral-100">
+                                                    <div className="min-w-0">
+                                                        <h4 className="text-[10px] font-black text-neutral-400 uppercase tracking-wider sm:tracking-[0.2em] mb-2 px-0.5">Target Batch</h4>
                                                         <div className="flex items-center gap-2">
-                                                            <div className="w-2 h-2 rounded-full bg-indigo-500"></div>
-                                                            <span className="text-xl font-black text-neutral-900 leading-none">
+                                                            <div className="w-2 h-2 rounded-full bg-indigo-500 shrink-0"></div>
+                                                            <span className="text-lg sm:text-xl font-black text-neutral-900 leading-none whitespace-nowrap">
                                                                 Batch {group.targetBatch || getBatch(group.members[0]?.rollNumber)}
                                                             </span>
                                                         </div>
                                                     </div>
-                                                    <div className="h-10 w-px bg-neutral-100"></div>
-                                                    <div>
-                                                        <h4 className="text-[10px] font-black text-neutral-400 uppercase tracking-[0.2em] mb-2 px-0.5">Team Composition</h4>
+                                                    <div className="hidden sm:block h-10 w-px bg-neutral-100"></div>
+                                                    <div className="min-w-0">
+                                                        <h4 className="text-[10px] font-black text-neutral-400 uppercase tracking-wider sm:tracking-[0.2em] mb-2 px-0.5">Team Size</h4>
                                                         <div className="flex items-center gap-2">
-                                                            <Users className="w-5 h-5 text-indigo-500" />
-                                                            <span className="text-xl font-black text-neutral-900 leading-none">
+                                                            <Users className="w-5 h-5 text-indigo-500 shrink-0" />
+                                                            <span className="text-lg sm:text-xl font-black text-neutral-900 leading-none whitespace-nowrap">
                                                                 {group.members.length} <span className="text-neutral-400">/ 3</span> Members
                                                             </span>
                                                         </div>
@@ -1573,15 +1583,16 @@ const Dashboard: React.FC = () => {
                                                 {group.members.map((m: any) => (
                                                     <div key={m._id} className="group relative bg-white p-5 rounded-3xl border border-neutral-200 hover:border-indigo-500 hover:shadow-xl hover:shadow-indigo-500/10 transition-all duration-300">
                                                         <div className="flex items-center gap-4">
-                                                            {m.photoUrl ? (
-                                                                <img src={m.photoUrl} alt={m.name} className="w-14 h-14 rounded-2xl object-cover shadow-lg shadow-indigo-200 transition-transform group-hover:scale-110 border border-neutral-200" />
-                                                            ) : (
-                                                                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center text-xl font-black shadow-lg shadow-indigo-200 transition-transform group-hover:scale-110">
-                                                                    {m.name.charAt(0)}
-                                                                </div>
-                                                            )}
+                                                            <Avatar
+                                                                name={m.name}
+                                                                photoUrl={m.photoUrl}
+                                                                className="w-14 h-14 rounded-2xl object-cover shadow-lg shadow-indigo-200 transition-transform group-hover:scale-110 border border-neutral-200"
+                                                                fallbackClassName="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center text-xl font-black shadow-lg shadow-indigo-200 transition-transform group-hover:scale-110"
+                                                            />
                                                             <div className="flex-1 min-w-0">
-                                                                <div className="flex items-center gap-2 mb-1">
+                                                                {/* flex-wrap so the branch/dropper chips drop to their own line
+                                                                    instead of squeezing the name to a few characters. */}
+                                                                <div className="flex items-center gap-2 mb-1 flex-wrap">
                                                                     <p className="font-black text-neutral-900 truncate">{m.name}</p>
                                                                     <span className="shrink-0 text-[9px] font-black bg-neutral-900 text-white px-2 py-0.5 rounded-full uppercase tracking-widest">
                                                                         {m.branch || 'GEN'}
@@ -1618,13 +1629,12 @@ const Dashboard: React.FC = () => {
                                                                     </button>
                                                                 )}
                                                                 <div className="flex items-center gap-3">
-                                                                    {m.photoUrl ? (
-                                                                        <img src={m.photoUrl} alt={m.name} className="w-11 h-11 rounded-xl object-cover border border-amber-200" />
-                                                                    ) : (
-                                                                        <div className="w-11 h-11 rounded-xl bg-amber-200 text-amber-700 flex items-center justify-center text-lg font-black">
-                                                                            {m.name?.charAt(0) || '?'}
-                                                                        </div>
-                                                                    )}
+                                                                    <Avatar
+                                                                        name={m.name || '?'}
+                                                                        photoUrl={m.photoUrl}
+                                                                        className="w-11 h-11 rounded-xl object-cover border border-amber-200"
+                                                                        fallbackClassName="w-11 h-11 rounded-xl bg-amber-200 text-amber-700 flex items-center justify-center text-lg font-black"
+                                                                    />
                                                                     <div className="flex-1 min-w-0">
                                                                         <div className="flex items-center gap-2 mb-0.5 flex-wrap">
                                                                             <p className="font-bold text-neutral-800 truncate text-sm">{m.name}</p>
@@ -2438,13 +2448,12 @@ const Dashboard: React.FC = () => {
                                             <Users className="w-3.5 h-3.5" /> Proposed Faculty Mentor
                                         </h4>
                                         <div className="flex items-center gap-3">
-                                            {selectedProject.faculty.photoUrl ? (
-                                                <img src={selectedProject.faculty.photoUrl} alt={selectedProject.faculty.name} className="w-10 h-10 rounded-full object-cover border border-indigo-200 shadow-sm" />
-                                            ) : (
-                                                <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-sm">
-                                                    {selectedProject.faculty.name?.charAt(0) || 'F'}
-                                                </div>
-                                            )}
+                                            <Avatar
+                                                name={selectedProject.faculty.name || 'F'}
+                                                photoUrl={selectedProject.faculty.photoUrl}
+                                                className="w-10 h-10 rounded-full object-cover border border-indigo-200 shadow-sm"
+                                                fallbackClassName="w-10 h-10 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-sm"
+                                            />
                                             <div>
                                                 <p className="text-sm font-bold text-neutral-900">{selectedProject.faculty.name}</p>
                                                 <p className="text-[11px] text-neutral-500 font-medium">{selectedProject.faculty.department}</p>

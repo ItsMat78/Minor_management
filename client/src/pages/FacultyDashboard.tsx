@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import Avatar from '../components/Avatar';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
@@ -399,9 +400,6 @@ const renderEvalCard = (item: any, activeTab: string, handleOpenEvaluation: any,
     );
 };
 
-// Branches a faculty can declare they mentor. Empty selection = visible to every branch.
-const BRANCH_CODES = ['CSE', 'DSAI', 'ECE'];
-
 const FacultyDashboard: React.FC = () => {
     const { user, logout, activeEvents, refreshUser } = useAuth();
     const navigate = useNavigate();
@@ -427,7 +425,7 @@ const FacultyDashboard: React.FC = () => {
 
     // Self-service profile editing (My Profile tab).
     const [editingProfile, setEditingProfile] = useState(false);
-    const [profileForm, setProfileForm] = useState({ name: '', department: '', expertise: '', branch: '' });
+    const [profileForm, setProfileForm] = useState({ name: '', department: '', expertise: '' });
     const [savingProfile, setSavingProfile] = useState(false);
     const [profileError, setProfileError] = useState('');
 
@@ -437,7 +435,6 @@ const FacultyDashboard: React.FC = () => {
             name: user?.name || '',
             department: user?.department || '',
             expertise: (user?.expertise || []).join(', '),
-            branch: user?.branch || '',
         });
         setEditingProfile(true);
     };
@@ -450,7 +447,6 @@ const FacultyDashboard: React.FC = () => {
                 name: profileForm.name.trim(),
                 department: profileForm.department.trim(),
                 expertise: profileForm.expertise.split(',').map(s => s.trim()).filter(Boolean),
-                branch: profileForm.branch,
             });
             await refreshUser();
             setEditingProfile(false);
@@ -996,13 +992,12 @@ const FacultyDashboard: React.FC = () => {
                 </nav>
                 <div className="p-4 border-t border-neutral-100">
                     <div className="flex items-center gap-3 mb-4">
-                        {user?.photoUrl ? (
-                            <img src={user.photoUrl} alt={user?.name} className="h-9 w-9 rounded-full object-cover border-2 border-white shadow-sm shrink-0" />
-                        ) : (
-                            <div className="h-9 w-9 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold border-2 border-white shadow-sm shrink-0">
-                                {user?.name.charAt(0)}
-                            </div>
-                        )}
+                        <Avatar
+                            name={user?.name}
+                            photoUrl={user?.photoUrl}
+                            className="h-9 w-9 rounded-full object-cover border-2 border-white shadow-sm shrink-0"
+                            fallbackClassName="h-9 w-9 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold border-2 border-white shadow-sm shrink-0"
+                        />
                         <div className="overflow-hidden">
                             <p className="text-sm font-bold text-neutral-900 truncate">{user?.name}</p>
                             <p className="text-xs text-neutral-500 truncate">{user?.email}</p>
@@ -1077,8 +1072,10 @@ const FacultyDashboard: React.FC = () => {
                                     No archived projects found for your account.
                                 </div>
                             ) : (
-                                <div className="bg-white rounded-2xl border border-neutral-200 overflow-hidden shadow-sm">
-                                    <table className="w-full text-sm">
+                                // Six columns never fit a phone; without a scroll wrapper the mark
+                                // columns were clipped away entirely. Matches the directory table.
+                                <div className="bg-white rounded-2xl border border-neutral-200 overflow-x-auto shadow-sm">
+                                    <table className="w-full text-sm min-w-[640px]">
                                         <thead className="bg-neutral-50 text-neutral-500 uppercase text-xs">
                                             <tr>
                                                 <th className="text-left px-4 py-3">Title</th>
@@ -1126,13 +1123,12 @@ const FacultyDashboard: React.FC = () => {
                         <div className="max-w-2xl mx-auto">
                             <div className="bg-white p-6 sm:p-10 rounded-3xl border border-neutral-200 shadow-sm text-center">
                                 <div className="relative inline-block mb-6">
-                                    {user?.photoUrl ? (
-                                        <img src={user.photoUrl} alt={user.name} className="h-24 w-24 rounded-full object-cover border-4 border-indigo-100 shadow-md mx-auto" />
-                                    ) : (
-                                        <div className="h-24 w-24 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-600 font-bold text-3xl mx-auto">
-                                            {user?.name.charAt(0)}
-                                        </div>
-                                    )}
+                                    <Avatar
+                                        name={user?.name}
+                                        photoUrl={user?.photoUrl}
+                                        className="h-24 w-24 rounded-full object-cover border-4 border-indigo-100 shadow-md mx-auto"
+                                        fallbackClassName="h-24 w-24 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-600 font-bold text-3xl mx-auto"
+                                    />
                                     <label className="absolute bottom-0 right-0 bg-indigo-600 text-white rounded-full p-1.5 cursor-pointer hover:bg-indigo-700 shadow-md" title="Upload photo">
                                         <Settings className="w-3.5 h-3.5" />
                                         <input
@@ -1215,27 +1211,10 @@ const FacultyDashboard: React.FC = () => {
                                         </div>
                                         <div className="flex flex-col gap-1">
                                             <label className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Branches mentored</label>
-                                            <p className="text-[11px] text-neutral-400">Students only see faculty whose branches include theirs. Select none to stay visible to every branch.</p>
-                                            <div className="flex gap-2 mt-1">
-                                                {BRANCH_CODES.map(br => {
-                                                    const set = new Set(String(profileForm.branch || '').split(',').map(s => s.trim().toUpperCase()).filter(Boolean));
-                                                    const active = set.has(br);
-                                                    return (
-                                                        <button
-                                                            key={br}
-                                                            type="button"
-                                                            onClick={() => {
-                                                                const next = new Set(set);
-                                                                if (active) next.delete(br); else next.add(br);
-                                                                setProfileForm(f => ({ ...f, branch: BRANCH_CODES.filter(b => next.has(b)).join(',') }));
-                                                            }}
-                                                            className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors ${active ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-neutral-600 border-neutral-300 hover:border-indigo-300'}`}
-                                                        >
-                                                            {br}
-                                                        </button>
-                                                    );
-                                                })}
-                                            </div>
+                                            <p className="text-sm font-semibold text-neutral-700 mt-1">
+                                                {user?.branch ? user.branch.split(',').join(', ') : 'All branches'}
+                                            </p>
+                                            <p className="text-[11px] text-neutral-400">Set by the admin. Contact them to change which branches you supervise.</p>
                                         </div>
                                         {profileError && <p className="text-sm text-red-600">{profileError}</p>}
                                         <div className="flex justify-end gap-3 mt-2">
@@ -1371,25 +1350,31 @@ const FacultyDashboard: React.FC = () => {
                                         <div className="flex items-center gap-4">
                                             {/* Stats Badges */}
                                             {activeTab === 'mentees' && (
-                                                <div className="flex items-center gap-3">
-                                                    <div className={`px-5 py-2.5 bg-white rounded-xl border flex items-center gap-3 shadow-sm ${atGroupCap ? 'text-rose-600 border-rose-100' : 'text-indigo-600 border-indigo-100'}`}>
-                                                        <div className={`p-1.5 rounded-lg ${atGroupCap ? 'bg-rose-50' : 'bg-indigo-50'}`}>
+                                                <div className="flex items-center gap-2 sm:gap-3">
+                                                    {/* Tighter padding and non-wrapping labels below sm — at full size the
+                                                        "· all batches" suffix wrapped these captions onto three lines. */}
+                                                    <div className={`px-3 sm:px-5 py-2 sm:py-2.5 bg-white rounded-xl border flex items-center gap-2 sm:gap-3 shadow-sm ${atGroupCap ? 'text-rose-600 border-rose-100' : 'text-indigo-600 border-indigo-100'}`}>
+                                                        <div className={`p-1.5 rounded-lg shrink-0 ${atGroupCap ? 'bg-rose-50' : 'bg-indigo-50'}`}>
                                                             <Users className="w-4 h-4" />
                                                         </div>
                                                         <div className="flex flex-col">
-                                                            <span className={`text-[10px] font-bold uppercase tracking-wider ${atGroupCap ? 'text-rose-400' : 'text-indigo-400'}`}>Teams · all batches</span>
-                                                            <span className="text-base font-bold leading-none">
+                                                            <span className={`text-[10px] font-bold uppercase tracking-wider whitespace-nowrap ${atGroupCap ? 'text-rose-400' : 'text-indigo-400'}`}>
+                                                                Teams<span className="hidden sm:inline"> · all batches</span>
+                                                            </span>
+                                                            <span className="text-base font-bold leading-none whitespace-nowrap">
                                                                 {totalTeamsCount} <span className={`text-sm ${atGroupCap ? 'text-rose-200' : 'text-indigo-200'}`}>/ {maxGroupsLimit}</span>
                                                             </span>
                                                         </div>
                                                     </div>
-                                                    <div className={`px-5 py-2.5 bg-white rounded-xl border flex items-center gap-3 shadow-sm ${atStudentCap ? 'text-rose-600 border-rose-100' : 'text-emerald-600 border-emerald-100'}`}>
-                                                        <div className={`p-1.5 rounded-lg ${atStudentCap ? 'bg-rose-50' : 'bg-emerald-50'}`}>
+                                                    <div className={`px-3 sm:px-5 py-2 sm:py-2.5 bg-white rounded-xl border flex items-center gap-2 sm:gap-3 shadow-sm ${atStudentCap ? 'text-rose-600 border-rose-100' : 'text-emerald-600 border-emerald-100'}`}>
+                                                        <div className={`p-1.5 rounded-lg shrink-0 ${atStudentCap ? 'bg-rose-50' : 'bg-emerald-50'}`}>
                                                             <Users className="w-4 h-4" />
                                                         </div>
                                                         <div className="flex flex-col">
-                                                            <span className={`text-[10px] font-bold uppercase tracking-wider ${atStudentCap ? 'text-rose-400' : 'text-emerald-400'}`}>Students · all batches</span>
-                                                            <span className="text-base font-bold leading-none">
+                                                            <span className={`text-[10px] font-bold uppercase tracking-wider whitespace-nowrap ${atStudentCap ? 'text-rose-400' : 'text-emerald-400'}`}>
+                                                                Students<span className="hidden sm:inline"> · all batches</span>
+                                                            </span>
+                                                            <span className="text-base font-bold leading-none whitespace-nowrap">
                                                                 {totalStudentsCount} <span className={`text-sm ${atStudentCap ? 'text-rose-200' : 'text-emerald-200'}`}>/ {maxStudentsLimit}</span>
                                                             </span>
                                                         </div>
@@ -1837,13 +1822,12 @@ const FacultyDashboard: React.FC = () => {
                                                                                                     onClick={() => setCollapsedEvalFaculties(prev => ({ ...prev, [sectionKey]: !prev[sectionKey] }))}
                                                                                                 >
                                                                                                     <h5 className="font-black text-neutral-800 flex items-center gap-3 text-lg group-hover:text-indigo-700 transition-colors">
-                                                                                                        {facInfo.photoUrl ? (
-                                                                                                            <img src={facInfo.photoUrl} alt={facInfo.name} className="w-8 h-8 rounded-full object-cover border border-indigo-200 shrink-0" />
-                                                                                                        ) : (
-                                                                                                            <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-sm shrink-0">
-                                                                                                                {facInfo.name.charAt(0)}
-                                                                                                            </div>
-                                                                                                        )}
+                                                                                                        <Avatar
+                                                                                                            name={facInfo.name}
+                                                                                                            photoUrl={facInfo.photoUrl}
+                                                                                                            className="w-8 h-8 rounded-full object-cover border border-indigo-200 shrink-0"
+                                                                                                            fallbackClassName="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-sm shrink-0"
+                                                                                                        />
                                                                                                         {facInfo.name}'s Group
                                                                                                         {isCollapsed ? <ChevronDown className="w-4 h-4 text-neutral-400" /> : <ChevronUp className="w-4 h-4 text-neutral-400" />}
                                                                                                     </h5>
@@ -1890,13 +1874,12 @@ const FacultyDashboard: React.FC = () => {
                                                                                     <div className="space-y-4">
                                                                                         {pData.panel.faculty?.map((fac: any, fIdx: number) => (
                                                                                             <div key={fIdx} className="flex items-center gap-3">
-                                                                                                {fac.photoUrl ? (
-                                                                                                    <img src={fac.photoUrl} alt={fac.name} className="w-10 h-10 rounded-full object-cover border-2 border-white shadow-sm ring-1 ring-indigo-100 shrink-0" />
-                                                                                                ) : (
-                                                                                                    <div className="w-10 h-10 rounded-full bg-indigo-50 text-indigo-700 flex items-center justify-center font-bold text-sm border-2 border-white shadow-sm ring-1 ring-indigo-100 shrink-0">
-                                                                                                        {fac.name?.charAt(0) || '?'}
-                                                                                                    </div>
-                                                                                                )}
+                                                                                                <Avatar
+                                                                                                    name={fac.name || '?'}
+                                                                                                    photoUrl={fac.photoUrl}
+                                                                                                    className="w-10 h-10 rounded-full object-cover border-2 border-white shadow-sm ring-1 ring-indigo-100 shrink-0"
+                                                                                                    fallbackClassName="w-10 h-10 rounded-full bg-indigo-50 text-indigo-700 flex items-center justify-center font-bold text-sm border-2 border-white shadow-sm ring-1 ring-indigo-100 shrink-0"
+                                                                                                />
                                                                                                 <div className="flex-1 min-w-0">
                                                                                                     <p className="text-sm font-bold text-neutral-900 break-words line-clamp-2 leading-tight mb-0.5">{fac.name}</p>
                                                                                                     <p className="text-xs text-neutral-500 truncate" title={fac.email}>{fac.email}</p>
@@ -2111,13 +2094,12 @@ const FacultyDashboard: React.FC = () => {
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                         {selectedProject?.group?.members?.map((m: any, idx: number) => (
                                             <div key={m._id} className="flex items-center gap-4 p-4 bg-neutral-50 border border-neutral-100 rounded-[24px] hover:bg-white hover:border-indigo-200 transition-all cursor-default shadow-sm hover:shadow-md">
-                                                {m.photoUrl ? (
-                                                    <img src={m.photoUrl} alt={m.name} className="w-12 h-12 rounded-2xl object-cover shadow-lg shadow-indigo-100 shrink-0 border border-neutral-200" />
-                                                ) : (
-                                                    <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center font-bold text-lg shadow-lg shadow-indigo-100 shrink-0">
-                                                        {m.name.charAt(0)}
-                                                    </div>
-                                                )}
+                                                <Avatar
+                                                    name={m.name}
+                                                    photoUrl={m.photoUrl}
+                                                    className="w-12 h-12 rounded-2xl object-cover shadow-lg shadow-indigo-100 shrink-0 border border-neutral-200"
+                                                    fallbackClassName="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center font-bold text-lg shadow-lg shadow-indigo-100 shrink-0"
+                                                />
                                                 <div className="overflow-hidden">
                                                     <p className="font-bold text-neutral-900 text-sm truncate mb-0.5">{m.name}</p>
                                                     <div className="flex items-center gap-2">

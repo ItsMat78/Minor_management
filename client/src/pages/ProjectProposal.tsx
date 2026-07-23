@@ -4,6 +4,7 @@ import api from '../utils/api';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Send, X, Check, ArrowRight, Info } from 'lucide-react';
 import FilePreview from '../components/FilePreview';
+import Avatar from '../components/Avatar';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
 // import { GlobalEventBanner } from '../components/GlobalEventBanner';
@@ -461,13 +462,12 @@ const ProjectProposal: React.FC = () => {
                                                                 {formData.facultyId === faculty._id && <Check className="w-3 h-3" />}
                                                             </div>
                                                             <div className="flex-1 min-w-0 pr-2 flex items-center gap-3">
-                                                                {faculty.photoUrl ? (
-                                                                    <img src={faculty.photoUrl} alt={faculty.name} className="w-10 h-10 rounded-full object-cover shrink-0 border border-gray-200" />
-                                                                ) : (
-                                                                    <div className="w-10 h-10 rounded-full bg-indigo-50 text-indigo-700 flex items-center justify-center font-bold shrink-0">
-                                                                        {faculty.name?.charAt(0) || '?'}
-                                                                    </div>
-                                                                )}
+                                                                <Avatar
+                                                                    name={faculty.name}
+                                                                    photoUrl={faculty.photoUrl}
+                                                                    className="w-10 h-10 rounded-full shrink-0 border border-gray-200"
+                                                                    fallbackClassName="bg-indigo-50 text-indigo-700"
+                                                                />
                                                                 <div className="flex-1 min-w-0">
                                                                     <p className="font-semibold text-gray-900 truncate">{faculty.name}</p>
                                                                 <p className="text-xs text-indigo-600 mb-1 truncate">{faculty.email}</p>

@@ -620,6 +620,127 @@ export const getAllGroups = async (req: Request, res: Response) => {
     }
 };
 
+// ── Admin group-membership management (Group Directory) ─────────────────────
+//
+// Deliberately looser than the student-facing invite flow: an admin fixes rosters
+// after the fact, so there is no Group-Formation window check, no proposal-status
+// lock, and no invite round-trip — the student is added as an accepted member
+// straight away. Only invariants that would corrupt data are enforced: the target
+// must be an unarchived group, the user must be a student, nobody may sit in two
+// active groups at once, and the 3-member cap from the Group model still holds.
+
+const MAX_GROUP_SIZE = 3;
+
+// Re-fetch with the same shape getAllGroups returns, so the directory can swap the
+// row in place without a full refetch.
+const populatedGroup = (id: any) =>
+    Group.findById(id)
+        .populate('members', 'name email rollNumber photoUrl branch')
+        .populate('pendingMembers', 'name email rollNumber photoUrl branch')
+        .populate({
+            path: 'project',
+            populate: { path: 'faculty', select: 'name email department photoUrl' },
+            select: 'title description status tags semester attachments feedback hasNewUpdate updates faculty midTermEvaluation endTermEvaluation finalReportEvaluation studentFeedback studentEvaluations'
+        });
+
+export const adminAddGroupMembers = async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const { members } = req.body;
+
+        if (!Array.isArray(members) || members.length === 0) {
+            return res.status(400).json({ message: 'No students selected.' });
+        }
+
+        const group = await Group.findById(id);
+        if (!group) return res.status(404).json({ message: 'Group not found' });
+        if (group.isArchived) return res.status(403).json({ message: 'Archived groups are read-only.' });
+
+        const existing = new Set(group.members.map(m => m.toString()));
+        const toAdd = members.map(String).filter(m => !existing.has(m));
+        if (toAdd.length === 0) {
+            return res.status(400).json({ message: 'Those students are already in this group.' });
+        }
+
+        if (group.members.length + toAdd.length > MAX_GROUP_SIZE) {
+            return res.status(400).json({
+                message: `A group cannot exceed ${MAX_GROUP_SIZE} members. This group has ${group.members.length}.`
+            });
+        }
+
+        for (const memberId of toAdd) {
+            const user = await User.findById(memberId).select('name role');
+            if (!user) return res.status(404).json({ message: `User ${memberId} not found` });
+            if (user.role !== 'Student') {
+                return res.status(400).json({ message: `${user.name} is not a student.` });
+            }
+
+            const otherGroup = await Group.findOne({
+                _id: { $ne: group._id },
+                $or: [{ members: memberId }, { pendingMembers: memberId }],
+                isArchived: { $ne: true }
+            }).select('name');
+            if (otherGroup) {
+                return res.status(400).json({
+                    message: `${user.name} is already in group ${otherGroup.name || '(unnamed)'}. Remove them from it first.`
+                });
+            }
+        }
+
+        // An admin-added student is accepted outright, so drop any invite they were
+        // still sitting on for this same group — otherwise they'd appear in both lists.
+        group.members.push(...(toAdd as any));
+        group.pendingMembers = group.pendingMembers.filter(p => !toAdd.includes(p.toString())) as any;
+        await group.save();
+
+        res.json({ message: `Added ${toAdd.length} student(s).`, group: await populatedGroup(group._id) });
+    } catch (error: any) {
+        console.error('Error adding group members:', error);
+        res.status(500).json({ message: error?.message || 'Server error' });
+    }
+};
+
+export const adminRemoveGroupMember = async (req: Request, res: Response) => {
+    try {
+        const { id, memberId } = req.params;
+
+        const group = await Group.findById(id);
+        if (!group) return res.status(404).json({ message: 'Group not found' });
+        if (group.isArchived) return res.status(403).json({ message: 'Archived groups are read-only.' });
+
+        const isMember = group.members.some(m => m.toString() === memberId);
+        const isPending = group.pendingMembers.some(m => m.toString() === memberId);
+        if (!isMember && !isPending) {
+            return res.status(404).json({ message: 'That student is not in this group.' });
+        }
+
+        // Emptying a group would orphan its project. Deleting both is destructive and
+        // not obviously what an admin removing one student intends, so make them use
+        // the explicit dissolve path instead.
+        if (isMember && group.members.length === 1) {
+            return res.status(400).json({
+                message: 'Cannot remove the last member — dissolve the group instead.'
+            });
+        }
+
+        group.members = group.members.filter(m => m.toString() !== memberId) as any;
+        group.pendingMembers = group.pendingMembers.filter(m => m.toString() !== memberId) as any;
+
+        // createdBy points at a student who may no longer be in the group; re-point it at a
+        // remaining member so the batch/branch context derived from it stays meaningful.
+        if (group.createdBy && group.createdBy.toString() === memberId) {
+            group.createdBy = group.members[0] as any;
+        }
+
+        await group.save();
+
+        res.json({ message: 'Student removed from the group.', group: await populatedGroup(group._id) });
+    } catch (error: any) {
+        console.error('Error removing group member:', error);
+        res.status(500).json({ message: error?.message || 'Server error' });
+    }
+};
+
 export const updateGroup = async (req: Request, res: Response) => {
     try {
         const { id } = req.params;

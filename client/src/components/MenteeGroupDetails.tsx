@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Clock, Users, MessageSquare, Plus, Link as LinkIcon, ArrowLeft, X, FileText, Download } from 'lucide-react';
+import { Clock, Users, MessageSquare, Plus, Link as LinkIcon, ArrowLeft, X, FileText, Download, Search, UserMinus, Loader2 } from 'lucide-react';
 import FilePreview from './FilePreview';
+import Avatar from './Avatar';
+import { resolveUploadUrl } from '../utils/uploadUrl';
 import api from '../utils/api';
 
 interface MenteeGroupDetailsProps {
@@ -11,7 +13,93 @@ interface MenteeGroupDetailsProps {
     onUpdateSuccess: () => void;
 }
 
-const MenteeGroupDetails: React.FC<MenteeGroupDetailsProps> = ({ group, user, onBack, onUpdateSuccess }) => {
+const MenteeGroupDetails: React.FC<MenteeGroupDetailsProps> = ({ group: groupProp, user, onBack, onUpdateSuccess }) => {
+    // The roster is edited in place by admins, so keep a local copy that the
+    // add/remove responses can replace without waiting for the parent to refetch.
+    const [group, setGroup] = useState<any>(groupProp);
+    useEffect(() => { setGroup(groupProp); }, [groupProp]);
+
+    const isAdmin = user?.role === 'Admin';
+    const [isAddMemberOpen, setIsAddMemberOpen] = useState(false);
+    const [memberSearch, setMemberSearch] = useState('');
+    const [candidates, setCandidates] = useState<any[]>([]);
+    const [loadingCandidates, setLoadingCandidates] = useState(false);
+    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+    const [rosterBusy, setRosterBusy] = useState(false);
+    const [rosterError, setRosterError] = useState('');
+
+    // The batch this group belongs to — scopes the picker to the right cohort.
+    const groupBatch = useMemo(() => {
+        if (group?.targetBatch) return String(group.targetBatch);
+        const roll = group?.members?.[0]?.rollNumber;
+        return roll ? '20' + String(roll).substring(0, 2) : undefined;
+    }, [group]);
+
+    // Search for students to add — only those not already in an active group.
+    useEffect(() => {
+        if (!isAddMemberOpen) return;
+        let cancelled = false;
+        setLoadingCandidates(true);
+        const t = setTimeout(async () => {
+            try {
+                const res = await api.get('/users/students', {
+                    params: {
+                        status: 'available',
+                        search: memberSearch.trim() || undefined,
+                        batch: groupBatch,
+                        page: 1,
+                        limit: 25,
+                    },
+                });
+                if (cancelled) return;
+                setCandidates(Array.isArray(res.data) ? res.data : (res.data?.data || []));
+            } catch {
+                if (!cancelled) setCandidates([]);
+            } finally {
+                if (!cancelled) setLoadingCandidates(false);
+            }
+        }, 300);
+        return () => { cancelled = true; clearTimeout(t); };
+    }, [isAddMemberOpen, memberSearch, groupBatch]);
+
+    const closeAddMember = () => {
+        setIsAddMemberOpen(false);
+        setMemberSearch('');
+        setSelectedIds(new Set());
+        setRosterError('');
+    };
+
+    const handleAddMembers = async () => {
+        if (selectedIds.size === 0) return;
+        setRosterBusy(true);
+        setRosterError('');
+        try {
+            const res = await api.post(`/groups/${group._id}/members`, { members: Array.from(selectedIds) });
+            if (res.data?.group) setGroup(res.data.group);
+            onUpdateSuccess();
+            closeAddMember();
+        } catch (err: any) {
+            setRosterError(err?.response?.data?.message || 'Failed to add students.');
+        } finally {
+            setRosterBusy(false);
+        }
+    };
+
+    const handleRemoveMember = async (member: any) => {
+        if (!window.confirm(`Remove ${member.name} from group ${group.name || ''}?`)) return;
+        setRosterBusy(true);
+        setRosterError('');
+        try {
+            const res = await api.delete(`/groups/${group._id}/members/${member._id}`);
+            if (res.data?.group) setGroup(res.data.group);
+            onUpdateSuccess();
+        } catch (err: any) {
+            setRosterError(err?.response?.data?.message || 'Failed to remove the student.');
+        } finally {
+            setRosterBusy(false);
+        }
+    };
+
     const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
     const [updateTitle, setUpdateTitle] = useState('');
     const [updateContent, setUpdateContent] = useState('');
@@ -53,8 +141,9 @@ const MenteeGroupDetails: React.FC<MenteeGroupDetailsProps> = ({ group, user, on
     const hasMidTerm = !!(submissions.midTermReport || submissions.midTermPPT || submissions.midTermPlagiarism);
     const hasEndTerm = !!(submissions.endTermReport || submissions.endTermPPT || submissions.endTermPlagiarism);
 
-    const deliverableLink = (url: string | undefined, label: string) => {
-        if (!url) return null;
+    const deliverableLink = (rawUrl: string | undefined, label: string) => {
+        if (!rawUrl) return null;
+        const url = resolveUploadUrl(rawUrl);
         return (
             <a
                 href={url}
@@ -77,7 +166,7 @@ const MenteeGroupDetails: React.FC<MenteeGroupDetailsProps> = ({ group, user, on
                     className="flex items-center gap-2 text-neutral-500 hover:text-neutral-900 transition-colors font-medium text-sm"
                 >
                     <ArrowLeft className="w-4 h-4" />
-                    Back to Mentees
+                    {isAdmin ? 'Back to Group Directory' : 'Back to Mentees'}
                 </button>
             </div>
 
@@ -274,23 +363,87 @@ const MenteeGroupDetails: React.FC<MenteeGroupDetailsProps> = ({ group, user, on
                 <div className="xl:col-span-1 space-y-6">
                     <div className="sticky top-6 space-y-6">
                         {/* Group Members */}
-                        <div className="bg-white rounded-2xl border border-neutral-200 shadow-sm p-6 max-h-[400px] overflow-y-auto">
-                            <h3 className="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
-                                <Users className="w-5 h-5 text-indigo-600" /> Group {group.name}
-                            </h3>
+                        <div className="bg-white rounded-2xl border border-neutral-200 shadow-sm p-6 max-h-[460px] overflow-y-auto">
+                            <div className="flex items-center justify-between gap-2 mb-6">
+                                <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                                    <Users className="w-5 h-5 text-indigo-600" /> Group {group.name}
+                                </h3>
+                                {isAdmin && !group.isArchived && (
+                                    <button
+                                        onClick={() => { setRosterError(''); setIsAddMemberOpen(true); }}
+                                        disabled={rosterBusy || group.members.length >= 3}
+                                        title={group.members.length >= 3 ? 'This group is already at the 3-member limit' : 'Add a student to this group'}
+                                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+                                    >
+                                        <Plus className="w-3.5 h-3.5" /> Add
+                                    </button>
+                                )}
+                            </div>
+
+                            {rosterError && (
+                                <p className="mb-4 text-xs font-medium text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
+                                    {rosterError}
+                                </p>
+                            )}
+
                             <div className="space-y-4">
                                 {group.members.map((member: any) => (
-                                    <div key={member._id} className="flex items-center gap-3 p-2 hover:bg-neutral-50 rounded-lg transition-colors">
-                                        <div className="h-8 w-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center font-bold text-white shadow-sm shrink-0 text-xs">
-                                            {member.name.charAt(0)}
-                                        </div>
+                                    <div key={member._id} className="flex items-center gap-3 p-2 hover:bg-neutral-50 rounded-lg transition-colors group/member">
+                                        <Avatar
+                                            name={member.name}
+                                            photoUrl={member.photoUrl}
+                                            className="h-8 w-8 rounded-full shrink-0 text-xs"
+                                            fallbackClassName="bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow-sm"
+                                        />
                                         <div className="flex-1 min-w-0">
                                             <p className="font-bold text-gray-900 text-sm truncate">{member.name}</p>
-                                            <p className="text-xs text-gray-500 truncate">{member.email}</p>
+                                            <p className="text-xs text-gray-500 truncate">{member.rollNumber || member.email}</p>
                                         </div>
+                                        {isAdmin && !group.isArchived && group.members.length > 1 && (
+                                            <button
+                                                onClick={() => handleRemoveMember(member)}
+                                                disabled={rosterBusy}
+                                                title={`Remove ${member.name} from this group`}
+                                                className="p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-red-500 transition-colors disabled:opacity-40 shrink-0 opacity-0 group-hover/member:opacity-100 focus:opacity-100"
+                                            >
+                                                <UserMinus className="w-3.5 h-3.5" />
+                                            </button>
+                                        )}
                                     </div>
                                 ))}
                             </div>
+
+                            {group.pendingMembers?.length > 0 && (
+                                <div className="mt-5 pt-4 border-t border-neutral-100">
+                                    <p className="text-[10px] font-bold uppercase tracking-wider text-amber-600 mb-3">Pending invites</p>
+                                    <div className="space-y-3">
+                                        {group.pendingMembers.map((member: any) => (
+                                            <div key={member._id} className="flex items-center gap-3 p-2 rounded-lg group/pending">
+                                                <Avatar
+                                                    name={member.name}
+                                                    photoUrl={member.photoUrl}
+                                                    className="h-8 w-8 rounded-full shrink-0 text-xs"
+                                                    fallbackClassName="bg-amber-100 text-amber-700"
+                                                />
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="font-semibold text-gray-700 text-sm truncate">{member.name}</p>
+                                                    <p className="text-xs text-gray-400 truncate">{member.rollNumber || member.email}</p>
+                                                </div>
+                                                {isAdmin && !group.isArchived && (
+                                                    <button
+                                                        onClick={() => handleRemoveMember(member)}
+                                                        disabled={rosterBusy}
+                                                        title={`Withdraw the invite to ${member.name}`}
+                                                        className="p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-red-500 transition-colors disabled:opacity-40 shrink-0 opacity-0 group-hover/pending:opacity-100 focus:opacity-100"
+                                                    >
+                                                        <X className="w-3.5 h-3.5" />
+                                                    </button>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
                         </div>
 
                         {/* Faculty Mentor */}
@@ -299,13 +452,12 @@ const MenteeGroupDetails: React.FC<MenteeGroupDetailsProps> = ({ group, user, on
                                 <Users className="w-4 h-4 text-orange-600" /> Faculty Mentor
                             </h3>
                             <div className="flex items-center gap-3 p-2 bg-orange-50/50 rounded-lg border border-orange-100">
-                                {faculty?.photoUrl ? (
-                                    <img src={faculty.photoUrl} alt={faculty.name} className="h-9 w-9 rounded-full object-cover shrink-0 border border-orange-200" />
-                                ) : (
-                                    <div className="h-9 w-9 rounded-full bg-orange-100 flex items-center justify-center font-bold text-orange-700 shrink-0 text-sm border border-orange-200">
-                                        {(faculty?.name || user?.name || 'F').charAt(0)}
-                                    </div>
-                                )}
+                                <Avatar
+                                    name={faculty?.name || user?.name || 'F'}
+                                    photoUrl={faculty?.photoUrl}
+                                    className="h-9 w-9 rounded-full shrink-0 text-sm border border-orange-200"
+                                    fallbackClassName="bg-orange-100 text-orange-700"
+                                />
                                 <div className="overflow-hidden">
                                     <p className="font-bold text-gray-900 text-sm truncate">{faculty?.name || user?.name || 'Unassigned'}</p>
                                     <p className="text-xs text-gray-500 truncate">{faculty?.department || user?.department || 'Faculty'}</p>
@@ -315,6 +467,113 @@ const MenteeGroupDetails: React.FC<MenteeGroupDetailsProps> = ({ group, user, on
                     </div>
                 </div>
             </div>
+
+            {/* Admin: add students to this group */}
+            {isAddMemberOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm">
+                    <motion.div
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col max-h-[85vh]"
+                    >
+                        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between shrink-0">
+                            <div>
+                                <h3 className="text-lg font-bold text-gray-900">Add students to Group {group.name}</h3>
+                                <p className="text-xs text-neutral-500 mt-0.5">
+                                    {group.members.length} of 3 seats filled{groupBatch ? ` · batch ${groupBatch}` : ''}
+                                </p>
+                            </div>
+                            <button onClick={closeAddMember} className="text-gray-400 hover:text-gray-600">
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        <div className="p-6 pb-3 shrink-0">
+                            <div className="relative">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
+                                <input
+                                    autoFocus
+                                    value={memberSearch}
+                                    onChange={(e) => setMemberSearch(e.target.value)}
+                                    placeholder="Search by name, roll number or email..."
+                                    className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-neutral-200 text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none"
+                                />
+                            </div>
+                            <p className="text-[11px] text-neutral-400 mt-2">
+                                Only students who are not already in an active group are listed.
+                            </p>
+                        </div>
+
+                        <div className="px-6 flex-1 overflow-y-auto min-h-[120px]">
+                            {loadingCandidates ? (
+                                <div className="flex items-center justify-center py-10 text-neutral-400 gap-2 text-sm">
+                                    <Loader2 className="w-4 h-4 animate-spin" /> Searching…
+                                </div>
+                            ) : candidates.length === 0 ? (
+                                <p className="text-center py-10 text-sm text-neutral-400">No available students found.</p>
+                            ) : (
+                                <div className="space-y-1.5 pb-2">
+                                    {candidates.map((s: any) => {
+                                        const selected = selectedIds.has(s._id);
+                                        const wouldOverflow = !selected && group.members.length + selectedIds.size >= 3;
+                                        return (
+                                            <button
+                                                key={s._id}
+                                                type="button"
+                                                disabled={wouldOverflow}
+                                                onClick={() => setSelectedIds(prev => {
+                                                    const next = new Set(prev);
+                                                    if (next.has(s._id)) next.delete(s._id); else next.add(s._id);
+                                                    return next;
+                                                })}
+                                                className={`w-full flex items-center gap-3 p-2.5 rounded-xl border text-left transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${selected ? 'bg-indigo-50 border-indigo-300' : 'bg-white border-neutral-200 hover:border-indigo-300'}`}
+                                            >
+                                                <Avatar
+                                                    name={s.name}
+                                                    photoUrl={s.photoUrl}
+                                                    className="h-8 w-8 rounded-full shrink-0 text-xs"
+                                                    fallbackClassName="bg-neutral-100 text-neutral-600"
+                                                />
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="text-sm font-bold text-neutral-900 truncate">{s.name}</p>
+                                                    <p className="text-xs text-neutral-500 truncate font-mono">{s.rollNumber || s.email}</p>
+                                                </div>
+                                                {s.branch && (
+                                                    <span className="text-[10px] font-bold text-neutral-500 bg-neutral-100 px-2 py-0.5 rounded shrink-0">{s.branch}</span>
+                                                )}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+
+                        {rosterError && (
+                            <p className="mx-6 mb-2 text-xs font-medium text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2 shrink-0">
+                                {rosterError}
+                            </p>
+                        )}
+
+                        <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3 shrink-0">
+                            <button
+                                type="button"
+                                onClick={closeAddMember}
+                                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-xl hover:bg-gray-200"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleAddMembers}
+                                disabled={rosterBusy || selectedIds.size === 0}
+                                className="px-4 py-2 text-sm font-bold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 shadow-md disabled:opacity-50"
+                            >
+                                {rosterBusy ? 'Adding…' : `Add ${selectedIds.size || ''} student${selectedIds.size === 1 ? '' : 's'}`.trim()}
+                            </button>
+                        </div>
+                    </motion.div>
+                </div>
+            )}
 
             {/* Update Modal */}
             {isUpdateModalOpen && (

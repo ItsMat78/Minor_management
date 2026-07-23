@@ -102,7 +102,7 @@ export const getFacultyProjects = async (req: Request, res: Response) => {
         const projects = await Project.find({ faculty: userId, isArchived: { $ne: true } })
             .populate({
                 path: 'group',
-                populate: { path: 'members', select: 'name email rollNumber branch' }
+                populate: { path: 'members', select: 'name email rollNumber branch photoUrl' }
             })
             .populate('updates.createdBy', 'name role')
             .sort({ hasNewUpdate: -1, createdAt: -1 });
@@ -351,7 +351,7 @@ export const getFacultyArchivedProjects = async (req: Request, res: Response) =>
             .populate({
                 path: 'group',
                 select: 'name targetBatch members isArchived',
-                populate: { path: 'members', select: 'name email rollNumber branch' }
+                populate: { path: 'members', select: 'name email rollNumber branch photoUrl' }
             })
             .sort({ updatedAt: -1 })
             .lean();

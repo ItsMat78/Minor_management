@@ -158,7 +158,7 @@ export const getAllStudents = async (req: Request, res: Response) => {
 
         // Fetch students
         let studentQuery = User.find(query)
-            .select('name email rollNumber branch semester targetBatch isVerified isParticipating _id')
+            .select('name email rollNumber branch semester targetBatch isVerified isParticipating photoUrl _id')
             .sort({ rollNumber: 1 });
         if (usePagination) studentQuery = studentQuery.skip((page - 1) * limit).limit(limit);
         const students = await studentQuery;
@@ -257,11 +257,12 @@ export const updateUser = async (req: Request, res: Response) => {
 };
 
 // Fields a user may change on their OWN profile (self-service). Scoped by role:
-// branch/department/expertise are faculty-descriptive only. A student's branch is
-// derived from their roll number and must stay admin-controlled, so it is NOT
-// self-editable. Capacity/verification/participation fields are admin-only everywhere.
+// department/expertise are faculty-descriptive only. Branch is admin-controlled for
+// everyone: a student's is derived from their roll number, and a faculty's decides which
+// students can see them as a supervisor, so it must not be self-assignable.
+// Capacity/verification/participation fields are admin-only everywhere.
 const SELF_EDITABLE_FIELDS: Record<string, string[]> = {
-    [UserRole.FACULTY]: ['name', 'department', 'expertise', 'branch'],
+    [UserRole.FACULTY]: ['name', 'department', 'expertise'],
     [UserRole.STUDENT]: ['name'],
     [UserRole.ADMIN]: ['name'],
 };
@@ -276,19 +277,6 @@ export const updateMyProfile = async (req: Request, res: Response) => {
         const updates: Record<string, any> = Object.fromEntries(
             Object.entries(req.body).filter(([key]) => allowed.includes(key))
         );
-
-        // Faculty branches: accept a comma-separated subset of the three branches
-        // (mirrors the import rule). An empty selection means "visible to all branches".
-        if (me.role === UserRole.FACULTY && 'branch' in updates) {
-            const VALID_BRANCHES = ['CSE', 'DSAI', 'ECE'];
-            const parts = String(updates.branch || '')
-                .split(',').map((s: string) => s.trim().toUpperCase()).filter(Boolean);
-            const invalid = parts.filter((p: string) => !VALID_BRANCHES.includes(p));
-            if (invalid.length > 0) {
-                return res.status(400).json({ message: `Invalid branch value${invalid.length > 1 ? 's' : ''}: ${invalid.join(', ')}. Allowed: CSE, DSAI, ECE.` });
-            }
-            updates.branch = Array.from(new Set(parts)).join(',');
-        }
 
         const updated = await User.findByIdAndUpdate(userId, updates, { new: true }).select('-password');
         res.json(updated);
