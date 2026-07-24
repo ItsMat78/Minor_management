@@ -170,8 +170,11 @@ export const updateProjectStatus = async (req: Request, res: Response) => {
                     // only those belonging to this group's batch. This also means the check no
                     // longer depends on parsing a batch year off a roll number — it previously
                     // skipped enforcement entirely for a member with a missing roll number.
+                    // The student count is the hard ceiling. The group count is only a rough
+                    // guideline — small groups can legitimately push the group total past the old
+                    // 7-group proxy while staying well under the student cap — so it no longer
+                    // blocks approval on its own.
                     const maxStudents = facultyUser.maxStudents ?? 21;
-                    const maxGroups = facultyUser.maxGroups ?? 7;
 
                     const approvedProjects = await Project.find({
                         faculty: facultyId,
@@ -183,21 +186,13 @@ export const updateProjectStatus = async (req: Request, res: Response) => {
                         populate: { path: 'members' }
                     });
 
-                    let currentGroupsCount = 0;
                     let currentStudentsCount = 0;
 
                     approvedProjects.forEach((p: any) => {
                         if (p.group && p.group.members && p.group.members.length > 0) {
-                            currentGroupsCount++;
                             currentStudentsCount += p.group.members.length;
                         }
                     });
-
-                    if (currentGroupsCount + 1 > maxGroups) {
-                        return res.status(400).json({
-                            message: `Supervisor limit reached: max ${maxGroups} groups this semester across all batches. Current: ${currentGroupsCount}.`
-                        });
-                    }
 
                     if (currentStudentsCount + projectGroup.members.length > maxStudents) {
                         return res.status(400).json({

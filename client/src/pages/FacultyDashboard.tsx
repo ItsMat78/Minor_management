@@ -254,7 +254,7 @@ const MenteeCard = ({ item, activeTab, navigate, setSelectedProject }: any) => {
                                 {tag}
                             </span>
                         ))}
-                        {(item.tags || item.project?.tags).length > 3 && <span className="text-xs text-neutral-400">+{item.tags.length - 3}</span>}
+                        {(item.tags || item.project?.tags).length > 3 && <span className="text-xs text-neutral-400">+{(item.tags || item.project?.tags).length - 3}</span>}
                     </div>
                 )}
 
@@ -905,9 +905,9 @@ const FacultyDashboard: React.FC = () => {
     const totalTeamsCount = mentees.length;
     const totalStudentsCount = mentees.reduce(
         (acc, m) => acc + (m.members?.length || 0), 0);
-    const maxGroupsLimit = user?.maxGroups ?? 7;
+    // Groups are informational only — 21 students is the hard supervisor cap (enforced
+    // server-side at approval), so the Teams badge shows a plain count with no limit.
     const maxStudentsLimit = user?.maxStudents ?? 21;
-    const atGroupCap = totalTeamsCount >= maxGroupsLimit;
     const atStudentCap = totalStudentsCount >= maxStudentsLimit;
 
     return (
@@ -1355,16 +1355,16 @@ const FacultyDashboard: React.FC = () => {
                                                 <div className="flex items-center gap-2 sm:gap-3">
                                                     {/* Tighter padding and non-wrapping labels below sm — at full size the
                                                         "· all batches" suffix wrapped these captions onto three lines. */}
-                                                    <div className={`px-3 sm:px-5 py-2 sm:py-2.5 bg-white rounded-xl border flex items-center gap-2 sm:gap-3 shadow-sm ${atGroupCap ? 'text-rose-600 border-rose-100' : 'text-indigo-600 border-indigo-100'}`}>
-                                                        <div className={`p-1.5 rounded-lg shrink-0 ${atGroupCap ? 'bg-rose-50' : 'bg-indigo-50'}`}>
+                                                    <div className="px-3 sm:px-5 py-2 sm:py-2.5 bg-white rounded-xl border border-indigo-100 text-indigo-600 flex items-center gap-2 sm:gap-3 shadow-sm">
+                                                        <div className="p-1.5 rounded-lg shrink-0 bg-indigo-50">
                                                             <Users className="w-4 h-4" />
                                                         </div>
                                                         <div className="flex flex-col">
-                                                            <span className={`text-[10px] font-bold uppercase tracking-wider whitespace-nowrap ${atGroupCap ? 'text-rose-400' : 'text-indigo-400'}`}>
+                                                            <span className="text-[10px] font-bold uppercase tracking-wider whitespace-nowrap text-indigo-400">
                                                                 Teams<span className="hidden sm:inline"> · all batches</span>
                                                             </span>
                                                             <span className="text-base font-bold leading-none whitespace-nowrap">
-                                                                {totalTeamsCount} <span className={`text-sm ${atGroupCap ? 'text-rose-200' : 'text-indigo-200'}`}>/ {maxGroupsLimit}</span>
+                                                                {totalTeamsCount}
                                                             </span>
                                                         </div>
                                                     </div>
@@ -1969,7 +1969,7 @@ const FacultyDashboard: React.FC = () => {
                                                                                 <ChevronDown className={`w-5 h-5 transition-transform duration-300 ${!isBatchExpanded(batchKey) ? '-rotate-90' : ''}`} />
                                                                             </div>
                                                                             <div>
-                                                                                <h3 className="text-xl font-bold text-neutral-900">{batchKey === 'Unknown' ? 'Other/Uncategorized' : `Batch ${batchKey}`}</h3>
+                                                                                <h3 className="text-xl font-bold text-neutral-900">{batchKey === 'Unknown' ? 'Other/Uncategorized' : `Batch ${batchKey}-${parseInt(batchKey) + 4}`}</h3>
                                                                                 <p className="text-sm font-medium text-neutral-500 mt-0.5">{batchMentees.length} Active Projects</p>
                                                                             </div>
                                                                         </div>
