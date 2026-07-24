@@ -381,11 +381,13 @@ export const createPanel = async (req: any, res: Response) => {
         const newPanel = new Panel({ faculty, batchYear, room: room || undefined });
         await newPanel.save();
 
-        // Send Email to Faculty Panel Members
-        const panelFaculty = await User.find({ _id: { $in: faculty } }).select('email');
+        // Notify the panel members. Only createPanel sends this — editing a panel (updatePanel)
+        // deliberately stays silent so re-shuffling doesn't spam evaluators.
+        const panelFaculty = await User.find({ _id: { $in: faculty } }).select('email name');
         const emails = panelFaculty.map(f => f.email).filter(e => e);
+        const memberNames = panelFaculty.map(f => f.name).filter((n): n is string => !!n);
         if (emails.length > 0) {
-            sendPanelAssignmentEmail(emails, `Batch ${batchYear} Evaluations`, { batch: String(batchYear), room: room || undefined }).catch(err => console.error("Email failed:", err));
+            sendPanelAssignmentEmail(emails, `Batch ${batchYear} Evaluations`, { batch: String(batchYear), room: room || undefined, members: memberNames }).catch(err => console.error("Email failed:", err));
         }
 
         res.status(201).json(newPanel);

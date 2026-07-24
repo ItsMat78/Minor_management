@@ -4063,6 +4063,16 @@ const AdminDashboard: React.FC = () => {
                                     <p className="text-xs text-gray-500 mt-1">{newPanelFaculty.length}/3 selected</p>
                                 </div>
                             </div>
+                            <div className="px-6 pt-4">
+                                <div className="flex items-start gap-2 text-xs text-gray-500">
+                                    <Mail className="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
+                                    <span>
+                                        {editingPanelId
+                                            ? 'Saving changes to an existing panel will not email anyone.'
+                                            : 'Creating this panel will email its members their assignment, including who else is on the panel.'}
+                                    </span>
+                                </div>
+                            </div>
                             <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-3">
                                 <button onClick={() => {
                                     setShowCreatePanel(false);

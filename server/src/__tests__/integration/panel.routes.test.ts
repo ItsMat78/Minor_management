@@ -7,6 +7,9 @@ import app from '../../app';
 import Panel from '../../models/Panel';
 import { createTestUser, generateToken } from '../helpers/factories';
 import { UserRole } from '../../models/User';
+import { sendPanelAssignmentEmail } from '../../utils/emailService';
+
+const mockPanelEmail = sendPanelAssignmentEmail as jest.Mock;
 
 jest.mock('../../utils/emailService', () => ({
     sendEmail: jest.fn().mockResolvedValue({ ok: true }),
@@ -100,6 +103,26 @@ describe('POST /api/panels', () => {
         expect(res.status).toBe(201);
         expect(res.body.room).toBeUndefined();
     });
+
+    it('emails the members on create, with the panel roster', async () => {
+        mockPanelEmail.mockClear();
+        const admin = await createTestUser({ role: UserRole.ADMIN });
+        const f1 = await createTestUser({ role: UserRole.FACULTY, email: 'pe1@t.ac.in', name: 'Dr Alpha' });
+        const f2 = await createTestUser({ role: UserRole.FACULTY, email: 'pe2@t.ac.in', name: 'Dr Beta' });
+
+        const res = await request(app)
+            .post('/api/panels')
+            .set('x-auth-token', generateToken(admin))
+            .send({ faculty: [f1._id.toString(), f2._id.toString()], batchYear: 2023, room: 'Lab A' });
+        expect(res.status).toBe(201);
+
+        expect(mockPanelEmail).toHaveBeenCalledTimes(1);
+        const [emails, title, opts] = mockPanelEmail.mock.calls[0];
+        expect(emails).toEqual(expect.arrayContaining(['pe1@t.ac.in', 'pe2@t.ac.in']));
+        expect(title).toMatch(/Batch 2023/);
+        expect(opts.members).toEqual(expect.arrayContaining(['Dr Alpha', 'Dr Beta']));
+        expect(opts.room).toBe('Lab A');
+    });
 });
 
 // ── GET /api/panels ───────────────────────────────────────────────────────────
@@ -153,6 +176,21 @@ describe('PUT /api/panels/:id', () => {
         expect(res.status).toBe(200);
         expect(res.body.room).toBe('Lab B');
         expect(res.body.faculty).toHaveLength(2);
+    });
+
+    it('does not email anyone on update', async () => {
+        mockPanelEmail.mockClear();
+        const admin = await createTestUser({ role: UserRole.ADMIN });
+        const f1 = await createTestUser({ role: UserRole.FACULTY, email: 'pu1@t.ac.in' });
+        const f2 = await createTestUser({ role: UserRole.FACULTY, email: 'pu2@t.ac.in' });
+        const panel = await Panel.create({ faculty: [f1._id], batchYear: 2023 });
+
+        const res = await request(app)
+            .put(`/api/panels/${panel._id}`)
+            .set('x-auth-token', generateToken(admin))
+            .send({ faculty: [f1._id.toString(), f2._id.toString()], batchYear: 2023, room: 'Lab B' });
+        expect(res.status).toBe(200);
+        expect(mockPanelEmail).not.toHaveBeenCalled();
     });
 
     it('returns 404 for a non-existent panel id', async () => {

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Users, GripVertical, AlertTriangle } from 'lucide-react';
+import { X, Users, GripVertical, AlertTriangle, Mail } from 'lucide-react';
 import {
     DndContext,
     DragOverlay,
@@ -540,7 +540,16 @@ const AutoCreatePanelsModal: React.FC<AutoCreatePanelsModalProps> = ({ faculties
                     </DndContext>
                 </div>
 
-                <div className="px-8 py-5 bg-white border-t border-gray-100 flex justify-end gap-4 shadow-[0_-10px_40px_rgba(0,0,0,0.03)] focus:outline-none">
+                <div className="px-8 py-5 bg-white border-t border-gray-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 shadow-[0_-10px_40px_rgba(0,0,0,0.03)] focus:outline-none">
+                    <div className="flex items-start gap-2 text-xs text-neutral-500 max-w-xl">
+                        <Mail className="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
+                        <span>
+                            {isEditingMode
+                                ? 'Existing panels will not be re-notified. Any newly added panel will email its members their assignment.'
+                                : 'Confirming will email every faculty member their panel assignment, including who else is on their panel.'}
+                        </span>
+                    </div>
+                    <div className="flex justify-end gap-4 shrink-0">
                     <button
                         onClick={onClose}
                         className="px-6 py-2.5 text-sm font-bold text-neutral-600 hover:bg-neutral-100 rounded-xl transition"
@@ -558,6 +567,7 @@ const AutoCreatePanelsModal: React.FC<AutoCreatePanelsModalProps> = ({ faculties
                         ) : null}
                         Confirm & Save Panels
                     </button>
+                    </div>
                 </div>
             </div>
         </div>

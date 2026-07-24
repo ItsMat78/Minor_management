@@ -361,21 +361,23 @@ export const sendProposalStatusEmail = async (
 export const sendPanelAssignmentEmail = async (
     emails: string[],
     eventTitle: string,
-    opts: { batch?: string; room?: string } = {}
+    opts: { batch?: string; room?: string; members?: string[] } = {}
 ) => {
     const url = portalLink('/dashboard?tab=mid-term');
+    const panel = opts.members?.length ? opts.members.join(', ') : '';
     const subject = `Panel assignment: ${eventTitle}`;
     const text =
         `You have been assigned as a panel evaluator for ${eventTitle}.\n` +
         (opts.batch ? `Batch: ${opts.batch}\n` : '') +
         (opts.room ? `Room: ${opts.room}\n` : '') +
+        (panel ? `Panel members: ${panel}\n` : '') +
         `\nWhen the evaluation window opens, your dashboard lists the groups assigned to your panel so you can record marks for each.\n` +
         `Open evaluations: ${url}` + textFooter();
     const html = renderHtml({
         title: 'Panel Evaluator Assignment',
         accent: '#4f46e5',
         lead: `You have been assigned as a <strong>panel evaluator</strong> for ${eventTitle}.`,
-        details: [['Batch', opts.batch], ['Room', opts.room]],
+        details: [['Batch', opts.batch], ['Room', opts.room], ['Panel members', panel]],
         body: `<p style="margin:0;color:#6b7280;font-size:13px;line-height:1.6;">When the evaluation window opens, your dashboard lists the groups assigned to your panel so you can record marks for each. Groups you supervise are graded as the guide; the rest as panel.</p>`,
         cta: { label: 'Open Evaluations', url },
     });
