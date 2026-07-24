@@ -237,10 +237,22 @@ const MenteeCard = ({ item, activeTab, navigate, setSelectedProject }: any) => {
                 <div className="flex items-center gap-2 text-sm text-neutral-600 font-medium mb-4">
                     <Users className={`w-4 h-4 ${isDropper ? 'text-red-400' : 'text-neutral-400'}`} />
                     <span className={isDropper ? 'text-red-700 font-bold' : ''}>
-                        {item.group?.name || item.name}
+                        Group {item.group?.name || item.name}
                         {isDropper && ` (Dropper/Batch override: ${groupData.targetBatch})`}
                     </span>
                 </div>
+
+                {/* Proposals hide the member chips at the top (that slot shows the status badge),
+                    so list the group's members here — the faculty needs to see who's in the team. */}
+                {activeTab !== 'mentees' && (item.group?.members?.length > 0) && (
+                    <div className="flex flex-wrap gap-1 -mt-2 mb-4">
+                        {item.group.members.map((m: any, idx: number) => (
+                            <span key={idx} className="text-[10px] font-bold text-neutral-500 bg-neutral-100 px-1.5 py-0.5 rounded border border-neutral-200">
+                                {m.name}
+                            </span>
+                        ))}
+                    </div>
+                )}
 
                 <p className="text-sm text-neutral-500 line-clamp-3 mb-4 leading-relaxed">
                     {activeTab === 'mentees' ? (item.project?.description || "No description provided.") : (item.description || "No description provided.")}
