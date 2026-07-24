@@ -7,6 +7,44 @@ import { sendEmail, emailOutageMessage, getEmailOutage, EmailFailure } from '../
 
 const JWT_SECRET = process.env.JWT_SECRET || 'secret';
 
+// Portal deep links for OTP mail. Defaults to the production portal (the host in the CORS
+// defaults); override with CLIENT_URL per environment.
+const PORTAL_URL = (process.env.CLIENT_URL || 'https://minor-project.iiitnr.ac.in').replace(/\/+$/, '');
+const LOGIN_URL = `${PORTAL_URL}/login`;
+const SUPPORT_EMAIL = process.env.EMAIL_REPLY_TO || 'btechminiproject@iiitnr.edu.in';
+
+// Shared, branded OTP email body (HTML + plain text). Every one-time-code mail carries the
+// code, its expiry, a direct link to the sign-in page, a security warning, and a contact.
+const otpEmailHtml = (heading: string, otp: string, extraNote = ''): string => `
+    <div style="background:#f3f4f6;padding:24px;font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+      <div style="max-width:480px;margin:0 auto;background:#ffffff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
+        <div style="background:#4f46e5;padding:18px 24px;">
+          <h1 style="margin:0;color:#ffffff;font-size:18px;font-weight:700;">${heading}</h1>
+          <p style="margin:2px 0 0;color:rgba(255,255,255,0.85);font-size:12px;">IIITNR Minor Project Portal</p>
+        </div>
+        <div style="padding:24px;">
+          <p style="margin:0 0 8px;color:#374151;font-size:14px;">Use this one-time code:</p>
+          <p style="font-size:32px;font-weight:800;letter-spacing:8px;color:#111827;margin:0 0 8px;">${otp}</p>
+          <p style="margin:0 0 18px;color:#6b7280;font-size:13px;">This code expires in <strong>10 minutes</strong>. Enter it on the sign-in screen.</p>
+          <a href="${LOGIN_URL}" style="display:inline-block;background:#4f46e5;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:11px 22px;border-radius:8px;">Open the sign-in page</a>
+          <p style="margin:12px 0 0;color:#9ca3af;font-size:12px;word-break:break-all;">Or paste this link into your browser:<br>${LOGIN_URL}</p>
+          ${extraNote ? `<p style="margin:16px 0 0;color:#9ca3af;font-size:12px;">${extraNote}</p>` : ''}
+        </div>
+        <div style="background:#f9fafb;border-top:1px solid #e5e7eb;padding:16px 24px;">
+          <p style="margin:0;color:#9ca3af;font-size:12px;line-height:1.7;">
+            Never share this code with anyone — portal staff will never ask for it.<br>
+            Need help? Contact <a href="mailto:${SUPPORT_EMAIL}" style="color:#4f46e5;">${SUPPORT_EMAIL}</a>.
+          </p>
+        </div>
+      </div>
+    </div>`;
+
+const otpEmailText = (otp: string, extraNote = ''): string =>
+    `Your one-time code is: ${otp}\n\n` +
+    `This code expires in 10 minutes. Enter it on the sign-in screen: ${LOGIN_URL}\n` +
+    (extraNote ? `\n${extraNote}\n` : '') +
+    `\nNever share this code with anyone. Need help? Contact ${SUPPORT_EMAIL}.`;
+
 // Local-dev convenience: when LOG_OTP=true, print generated OTPs to the SERVER console so devs
 // (where SMTP may be unconfigured) can activate / sign in without a real email. Off by default,
 // so production never logs OTPs. Set LOG_OTP=true in server/.env to enable.
@@ -58,16 +96,9 @@ export const login = async (req: Request, res: Response) => {
             await user.save();
             logOtpForDev(user.email, otp, 'Account activation');
 
-            const subject = 'Your IIITNR Minor Portal Activation OTP';
-            const text = `Your OTP to activate your account is: ${otp}\n\nThis code expires in 10 minutes.`;
-            const html = `
-                <div style="font-family: sans-serif; padding: 20px;">
-                    <h2 style="color: #4f46e5;">Account Activation</h2>
-                    <p>Use the following OTP to activate your Minor Project Portal account:</p>
-                    <p style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #111827;">${otp}</p>
-                    <p style="color: #6b7280;">This code expires in <strong>10 minutes</strong>.</p>
-                </div>
-            `;
+            const subject = 'Your IIITNR Minor Portal activation code';
+            const text = otpEmailText(otp);
+            const html = otpEmailHtml('Account Activation', otp);
             const delivery = await sendEmail(user.email, subject, text, html);
             if (!delivery.ok) return failOtpDelivery(res, user, delivery);
 
@@ -156,16 +187,9 @@ export const resendOtp = async (req: Request, res: Response) => {
         await user.save();
         logOtpForDev(user.email, otp, 'OTP resend');
 
-        const subject = 'Your IIITNR Minor Portal Activation OTP';
-        const text = `Your OTP to activate your account is: ${otp}\n\nThis code expires in 10 minutes.`;
-        const html = `
-            <div style="font-family: sans-serif; padding: 20px;">
-                <h2 style="color: #4f46e5;">Account Activation (Resent)</h2>
-                <p>Use the following OTP to activate your Minor Project Portal account:</p>
-                <p style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #111827;">${otp}</p>
-                <p style="color: #6b7280;">This code expires in <strong>10 minutes</strong>.</p>
-            </div>
-        `;
+        const subject = 'Your IIITNR Minor Portal activation code (resent)';
+        const text = otpEmailText(otp, 'This code was re-sent at your request.');
+        const html = otpEmailHtml('Account Activation', otp, 'This code was re-sent at your request.');
         const delivery = await sendEmail(user.email, subject, text, html);
         if (!delivery.ok) return failOtpDelivery(res, user, delivery);
 
@@ -215,17 +239,10 @@ export const forgotPassword = async (req: Request, res: Response) => {
         await user.save();
         logOtpForDev(user.email, otp, 'Password reset / sign-in');
 
-        const subject = 'Your IIITNR Minor Portal Password Reset OTP';
-        const text = `Your OTP to sign in to the Minor Project Portal is: ${otp}\n\nThis code expires in 10 minutes.\n\nIf you did not request this, ignore this email.`;
-        const html = `
-            <div style="font-family: sans-serif; padding: 20px;">
-                <h2 style="color: #1e3a8a;">Password Reset</h2>
-                <p>Use the following OTP to sign in to the Minor Project Portal:</p>
-                <p style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #111827;">${otp}</p>
-                <p style="color: #6b7280;">This code expires in <strong>10 minutes</strong>.</p>
-                <p style="color: #9ca3af; font-size: 12px;">If you did not request this, ignore this email.</p>
-            </div>
-        `;
+        const subject = 'Your IIITNR Minor Portal sign-in code';
+        const resetNote = 'If you did not request this, you can ignore this email — your password will not change.';
+        const text = otpEmailText(otp, resetNote);
+        const html = otpEmailHtml('Password Reset / Sign-in', otp, resetNote);
         const delivery = await sendEmail(user.email, subject, text, html);
         if (!delivery.ok) return failOtpDelivery(res, user, delivery);
 

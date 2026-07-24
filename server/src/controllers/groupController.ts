@@ -178,7 +178,7 @@ export const createGroup = async (req: Request, res: Response) => {
         ]);
         for (const invitee of inviteUsers) {
             if (invitee.email) {
-                sendGroupInviteEmail(invitee.email, creatorUser?.name || 'A classmate', newGroup.name || 'Unnamed Group').catch(err => console.error("Invite email failed:", err));
+                sendGroupInviteEmail(invitee.email, creatorUser?.name || 'A classmate', newGroup.name || 'Unnamed Group', { batch: newGroup.targetBatch }).catch(err => console.error("Invite email failed:", err));
             }
         }
 
@@ -276,10 +276,11 @@ export const acceptInvite = async (req: Request, res: Response) => {
         // per-accept blast cost O(size^2) sends per group and double-counted the creator (who is
         // already in group.members). Intermediate accepts are visible in-app on the dashboard.
         if (group.pendingMembers.length === 0) {
-            const memberUsers = await User.find({ _id: { $in: group.members } }).select('email');
+            const memberUsers = await User.find({ _id: { $in: group.members } }).select('email name');
             const emails = memberUsers.map(m => m.email).filter((e): e is string => !!e);
+            const memberNames = memberUsers.map(m => m.name).filter((n): n is string => !!n);
             if (emails.length > 0) {
-                sendGroupCompleteEmail(emails, group.name || 'Unnamed Group').catch(err => console.error('Group-complete email failed:', err));
+                sendGroupCompleteEmail(emails, group.name || 'Unnamed Group', { batch: group.targetBatch, memberNames }).catch(err => console.error('Group-complete email failed:', err));
             }
         }
 
@@ -311,7 +312,7 @@ export const rejectInvite = async (req: Request, res: Response) => {
             group.createdBy ? User.findById(group.createdBy).select('email') : null
         ]);
         if (creatorUser?.email) {
-            sendGroupInviteResponseEmail([creatorUser.email], me?.name || 'A member', group.name || 'Unnamed Group', 'rejected').catch(err => console.error('Reject email failed:', err));
+            sendGroupInviteResponseEmail([creatorUser.email], me?.name || 'A member', group.name || 'Unnamed Group', 'rejected', { batch: group.targetBatch }).catch(err => console.error('Reject email failed:', err));
         }
 
         res.json({ message: 'Invite rejected' });
@@ -441,7 +442,7 @@ export const inviteMembers = async (req: Request, res: Response) => {
         ]);
         for (const invitee of inviteUsers) {
             if (invitee.email) {
-                sendGroupInviteEmail(invitee.email, inviter?.name || 'A classmate', group.name || 'Unnamed Group')
+                sendGroupInviteEmail(invitee.email, inviter?.name || 'A classmate', group.name || 'Unnamed Group', { batch: group.targetBatch })
                     .catch(err => console.error('Invite email failed:', err));
             }
         }

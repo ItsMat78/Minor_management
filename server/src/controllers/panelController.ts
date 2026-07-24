@@ -385,7 +385,7 @@ export const createPanel = async (req: any, res: Response) => {
         const panelFaculty = await User.find({ _id: { $in: faculty } }).select('email');
         const emails = panelFaculty.map(f => f.email).filter(e => e);
         if (emails.length > 0) {
-            sendPanelAssignmentEmail(emails, `Batch ${batchYear} Evaluations`).catch(err => console.error("Email failed:", err));
+            sendPanelAssignmentEmail(emails, `Batch ${batchYear} Evaluations`, { batch: String(batchYear), room: room || undefined }).catch(err => console.error("Email failed:", err));
         }
 
         res.status(201).json(newPanel);

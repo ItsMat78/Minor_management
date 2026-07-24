@@ -90,7 +90,14 @@ export const createProject = async (req: Request, res: Response) => {
             if (faculty) {
                 const facUser = await User.findById(faculty).select('email');
                 if (facUser && facUser.email) {
-                    sendProposalSubmissionEmail([facUser.email], title, group.name || 'Unnamed Group').catch(err => console.error("Email failed:", err));
+                    const memberUsers = await User.find({ _id: { $in: group.members } }).select('name');
+                    const memberNames = memberUsers.map(m => m.name).filter((n): n is string => !!n);
+                    sendProposalSubmissionEmail([facUser.email], title, group.name || 'Unnamed Group', {
+                        batch: group.targetBatch,
+                        memberNames,
+                        description,
+                        tags: Array.isArray(tags) ? tags : undefined
+                    }).catch(err => console.error("Email failed:", err));
                 }
             }
         }
@@ -239,7 +246,11 @@ export const updateProjectStatus = async (req: Request, res: Response) => {
                 const memberUsers = await User.find({ _id: { $in: groupForEmail.members } }).select('email');
                 const emails = memberUsers.map(u => u.email).filter(e => e);
                 if (emails.length > 0 && (status === 'Approved' || status === 'Rejected')) {
-                    sendProposalStatusEmail(emails, project.title, status as any, feedback).catch(err => console.error("Email failed:", err));
+                    const facultyDoc = project.faculty ? await User.findById(project.faculty).select('name') : null;
+                    sendProposalStatusEmail(emails, project.title, status as any, feedback, {
+                        facultyName: facultyDoc?.name,
+                        projectId: String(project._id)
+                    }).catch(err => console.error("Email failed:", err));
                 }
             }
         } catch (emailErr) {
