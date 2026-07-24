@@ -168,13 +168,14 @@ describe('PUT /api/projects/:id/status', () => {
         expect(updatedGroup!.status).toBe('Approved');
     });
 
-    it('counts a supervisor group limit across ALL batches, not per batch', async () => {
-        // Capacity is a semester-wide total. A supervisor at their group cap because of
-        // 2023 groups must be blocked from taking on a 2024 group too.
+    it('does not block approval on the group-count guideline alone — the student cap is the hard limit', async () => {
+        // The group count is only a rough guideline now: a supervisor can go past the old group
+        // proxy as long as the semester-wide student cap still has room. (Small groups legitimately
+        // push the group total up while staying well under the student cap.)
         const faculty = await createTestUser({ role: UserRole.FACULTY, email: 'cap_groups@t.ac.in' });
         await User.updateOne({ _id: faculty._id }, { $set: { maxGroups: 2, maxStudents: 99 } });
 
-        // Two approved groups from the 2023 batch fill the cap.
+        // Two approved single-member groups already meet the group proxy (2 groups, 2 students).
         for (let i = 0; i < 2; i++) {
             const member = await createTestUser({
                 email: `cap23-${i}@t.ac.in`, rollNumber: `2310000${i}`,
@@ -186,7 +187,8 @@ describe('PUT /api/projects/:id/status', () => {
             await createTestProject(g._id, { status: 'Approved', faculty: faculty._id });
         }
 
-        // A group from a DIFFERENT batch now asks for approval.
+        // A third group asks for approval: 3 groups (over maxGroups=2) but only 3 students (well
+        // under maxStudents=99), so approval must still succeed.
         const member24 = await createTestUser({ email: 'cap24@t.ac.in', rollNumber: '241000001' });
         const group24 = await Group.create({
             name: 'Cap24', members: [member24._id], createdBy: member24._id,
@@ -201,8 +203,8 @@ describe('PUT /api/projects/:id/status', () => {
             .set('x-auth-token', generateToken(faculty))
             .send({ status: 'Approved' });
 
-        expect(res.status).toBe(400);
-        expect(res.body.message).toMatch(/across all batches/i);
+        expect(res.status).toBe(200);
+        expect(res.body.status).toBe('Approved');
     });
 
     it('counts a supervisor student limit across ALL batches, not per batch', async () => {
@@ -253,6 +255,36 @@ describe('PUT /api/projects/:id/status', () => {
 
         // Suppress unused variable
         void student;
+    });
+
+    it('refuses to approve a Draft (unsent) proposal', async () => {
+        const faculty = await createTestUser({ role: UserRole.FACULTY, email: 'fac-draft@t.ac.in' });
+        const { group } = await createTestGroup(1);
+        const draft = await createTestProject(group._id, { status: 'Draft', faculty: faculty._id });
+
+        const res = await request(app)
+            .put(`/api/projects/${draft._id}/status`)
+            .set('x-auth-token', generateToken(faculty))
+            .send({ status: 'Approved' });
+
+        expect(res.status).toBe(400);
+        expect(res.body.message).toMatch(/draft/i);
+        expect((await Project.findById(draft._id))!.status).toBe('Draft'); // unchanged
+    });
+
+    it('rejects a status value that is not Approved or Rejected', async () => {
+        const faculty = await createTestUser({ role: UserRole.FACULTY, email: 'fac-badstatus@t.ac.in' });
+        const { group } = await createTestGroup(1);
+        const project = await createTestProject(group._id, { status: 'Pending', faculty: faculty._id });
+
+        const res = await request(app)
+            .put(`/api/projects/${project._id}/status`)
+            .set('x-auth-token', generateToken(faculty))
+            .send({ status: 'Withdrawn' });
+
+        expect(res.status).toBe(400);
+        expect(res.body.message).toMatch(/Approved or Rejected/i);
+        expect((await Project.findById(project._id))!.status).toBe('Pending'); // unchanged
     });
 
     it('returns 403 when a non-assigned faculty tries to update status', async () => {
@@ -359,6 +391,32 @@ describe('PUT /api/projects/:id — editing an approved project', () => {
             .field('title', 'Hijacked');
 
         expect(res.status).toBe(403);
+    });
+});
+
+describe('PUT /api/projects/:id — resubmitting a rejected proposal', () => {
+    it('promotes a rejected proposal back to Pending and clears the old rejection feedback', async () => {
+        const { group, members: [student] } = await createTestGroup(1);
+        const mentor = await createTestUser({ role: UserRole.FACULTY, email: 'mentor.resub@t.ac.in' });
+        const project = await createTestProject(group._id, { status: 'Rejected', faculty: mentor._id as any });
+        await Project.updateOne({ _id: project._id }, { feedback: 'Scope too broad' });
+
+        const res = await request(app)
+            .put(`/api/projects/${project._id}`)
+            .set('x-auth-token', generateToken(student))
+            // The proposal editor posts status: 'Pending' when a group revises and resubmits.
+            .field('title', 'Revised Proposal')
+            .field('status', 'Pending');
+
+        expect(res.status).toBe(200);
+        expect(res.body.status).toBe('Pending');
+
+        const saved = await Project.findById(project._id);
+        expect(saved!.status).toBe('Pending');
+        expect(saved!.feedback).toBeFalsy(); // stale rejection remark must not carry over
+
+        const updatedGroup = await Group.findById(group._id);
+        expect(updatedGroup!.status).toBe('ProposalPending');
     });
 });
 

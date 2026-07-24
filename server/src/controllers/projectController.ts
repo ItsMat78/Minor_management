@@ -99,7 +99,10 @@ export const createProject = async (req: Request, res: Response) => {
 export const getFacultyProjects = async (req: Request, res: Response) => {
     try {
         const userId = (req as any).user.id;
-        const projects = await Project.find({ faculty: userId, isArchived: { $ne: true } })
+        // Exclude Draft: a draft is a group's unsent, private work-in-progress. It only carries a
+        // faculty because the student picked a mentor on step 2 before saving — it was never
+        // submitted for review, so it must not surface in the mentor's proposal queue.
+        const projects = await Project.find({ faculty: userId, isArchived: { $ne: true }, status: { $ne: 'Draft' } })
             .populate({
                 path: 'group',
                 populate: { path: 'members', select: 'name email rollNumber branch photoUrl' }
@@ -121,10 +124,13 @@ export const getAdminProposals = async (req: Request, res: Response) => {
         }
 
         // The sidebar badge only needs the count — skip the full populated payload for it.
+        // Count only Pending: the badge signals proposals awaiting a decision. Drafts are unsent
+        // and need no admin action, so counting them overstated the queue. (The full list below
+        // still returns drafts for oversight.)
         if (req.query.countOnly) {
             const pending = await Project.countDocuments({
                 isArchived: { $ne: true },
-                status: { $in: ['Pending', 'Draft'] }
+                status: 'Pending'
             });
             return res.json({ pending });
         }
@@ -148,9 +154,21 @@ export const updateProjectStatus = async (req: Request, res: Response) => {
         const { id } = req.params;
         const { status, feedback } = req.body; // Approved, Rejected
 
+        // This endpoint decides a submitted proposal — the only valid outcomes are Approved or
+        // Rejected. Reject anything else so a stray/crafted payload can't push a project into an
+        // arbitrary state.
+        if (!['Approved', 'Rejected'].includes(status)) {
+            return res.status(400).json({ message: 'Status must be Approved or Rejected' });
+        }
+
         const project = await Project.findById(id);
         if (!project) return res.status(404).json({ message: 'Project not found' });
         if (project.isArchived) return res.status(400).json({ message: 'Cannot update status of an archived project' });
+        // A draft was never submitted, so there is nothing to approve or reject. This is the hard
+        // guard behind the UI filters: even if a draft leaks into a review list, it can't be decided.
+        if (project.status === 'Draft') {
+            return res.status(400).json({ message: 'This proposal is still a draft and has not been submitted for review' });
+        }
 
         // Verify faculty (security check)
         const userId = (req as any).user.id;
@@ -511,11 +529,15 @@ export const updateProject = async (req: Request, res: Response) => {
 
         // An approved project stays approved through edits — skip every status transition so a
         // client-sent status (the editor posts 'Pending' by default) can't un-approve it.
-        // If status changes (e.g. back to Pending from Draft)
+        // Both promotions a group can make from the editor — Draft→Pending and (re)submitting a
+        // Rejected proposal → Pending — are handled here in one place. (Previously a second block
+        // duplicated this for the Rejected case, but the first block had already flipped the status
+        // to Pending, so that block never ran and its feedback-clear was dead — a resubmitted
+        // proposal kept the mentor's old rejection remarks.)
         if (!wasApproved && status && status !== project.status) {
             if (status === 'Pending') {
-                // Only one active proposal at a time — block promoting a Draft to Pending
-                // while the group already has another Pending/Approved project.
+                // Only one active proposal at a time — block promoting to Pending while the group
+                // already has another Pending/Approved project.
                 const existingActive = await Project.findOne({
                     group: group._id,
                     _id: { $ne: project._id },
@@ -525,29 +547,15 @@ export const updateProject = async (req: Request, res: Response) => {
                     return res.status(400).json({ message: 'Your group already has an active proposal. Withdraw or wait for it to be rejected before sending another.' });
                 }
                 project.status = 'Pending';
+                // Fresh submission for review — drop any prior rejection remarks so the mentor
+                // doesn't see the note they left on the version they turned down.
+                project.feedback = undefined;
                 group.status = 'ProposalPending';
                 group.project = project._id; // Ensure group points to the active proposal
                 await group.save();
             } else if (status === 'Draft') {
                 project.status = 'Draft';
             }
-        }
-
-        // If it was Rejected, and now being updated, set to Pending — but only if no other Pending exists
-        if (!wasApproved && project.status === 'Rejected') {
-            const otherPending = await Project.findOne({
-                group: group._id,
-                _id: { $ne: project._id },
-                status: 'Pending'
-            });
-            if (otherPending) {
-                return res.status(400).json({ message: 'Your group already has an active proposal. Withdraw it before re-submitting this one.' });
-            }
-            project.status = 'Pending';
-            project.feedback = undefined; // Clear feedback
-            group.status = 'ProposalPending';
-            group.project = project._id; // Ensure group points to updated proposal
-            await group.save();
         }
 
         await project.save();

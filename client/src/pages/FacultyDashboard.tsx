@@ -536,7 +536,7 @@ const FacultyDashboard: React.FC = () => {
     useEffect(() => {
         api.get('/projects/faculty')
             .then(res => {
-                const pending = (res.data || []).filter((p: any) => p.status === 'Pending' || p.status === 'Draft');
+                const pending = (res.data || []).filter((p: any) => p.status === 'Pending');
                 setPendingProposalCount(pending.length);
             })
             .catch(() => {});
@@ -570,7 +570,7 @@ const FacultyDashboard: React.FC = () => {
             const res = await api.get('/projects/faculty');
             setProjects(res.data);
             // Keep the badge count in sync whenever we do a full fetch.
-            const pending = (res.data || []).filter((p: any) => p.status === 'Pending' || p.status === 'Draft');
+            const pending = (res.data || []).filter((p: any) => p.status === 'Pending');
             setPendingProposalCount(pending.length);
         } catch (error) {
             console.error("Failed to fetch projects", error);
@@ -620,7 +620,7 @@ const FacultyDashboard: React.FC = () => {
             const res = await api.put(`/projects/${id}/status`, { status, feedback });
             setProjects(prev => {
                 const updated = prev.map(p => p._id === id ? { ...p, status, feedback: res.data.feedback, updatedAt: res.data.updatedAt } : p);
-                setPendingProposalCount(updated.filter(p => p.status === 'Pending' || (p.status as string) === 'Draft').length);
+                setPendingProposalCount(updated.filter(p => p.status === 'Pending').length);
                 return updated;
             });
 
@@ -852,7 +852,9 @@ const FacultyDashboard: React.FC = () => {
 
             if (activeTab === 'proposals') {
                 if (proposalView === 'proposals') {
-                    if ((p.status as string) !== 'Pending' && (p.status as string) !== 'Draft') matches = false;
+                    // Only submitted proposals are reviewable. Drafts are the group's private,
+                    // unsent work — the server hides them from /projects/faculty anyway.
+                    if ((p.status as string) !== 'Pending') matches = false;
                 } else { // proposalView === 'approved'
                     if ((p.status as string) !== 'Approved') matches = false;
                 }
@@ -2178,7 +2180,7 @@ const FacultyDashboard: React.FC = () => {
                                 <div className="pt-6 border-t border-neutral-200">
                                     <h4 className="flex items-center gap-2 text-xs font-black text-neutral-400 uppercase tracking-widest mb-4">Project Action</h4>
 
-                                    {(selectedProject?.status === 'Pending' || (selectedProject?.status as any) === 'Draft' || (selectedProject?.status as any) === 'Rejected') ? (
+                                    {selectedProject?.status === 'Pending' ? (
                                         <div className="flex flex-col gap-4">
                                             <label className="block text-[10px] font-black text-neutral-400 uppercase tracking-[0.2em] px-1">Review & Decision</label>
                                             <div className="flex gap-4">

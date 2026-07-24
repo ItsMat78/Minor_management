@@ -900,7 +900,9 @@ const AdminDashboard: React.FC = () => {
         const res = await api.get('/projects/admin/proposals');
         const list = Array.isArray(res.data) ? res.data : [];
         setProposals(list);
-        setPendingProposalCount(list.filter((p: any) => p.status === 'Pending' || p.status === 'Draft').length);
+        // Badge counts only proposals awaiting a decision. Drafts are unsent and need no action —
+        // must match the countOnly endpoint, which now counts Pending only.
+        setPendingProposalCount(list.filter((p: any) => p.status === 'Pending').length);
     };
 
     // Eagerly load the pending count on mount so the sidebar badge is visible
@@ -939,7 +941,9 @@ const AdminDashboard: React.FC = () => {
 
         const matches = proposals.filter((p: any) => {
             if (proposalStatusFilter === 'Pending') {
-                if (p.status !== 'Pending' && p.status !== 'Draft') return false;
+                // 'Pending' = awaiting a decision. Drafts are unsent WIP and can't be decided
+                // (the server rejects it); they remain visible under the 'All' filter for oversight.
+                if (p.status !== 'Pending') return false;
             } else if (proposalStatusFilter !== 'All' && p.status !== proposalStatusFilter) {
                 return false;
             }
@@ -2546,7 +2550,7 @@ const AdminDashboard: React.FC = () => {
                                         ) : (
                                             proposalsByFaculty.map(bucket => {
                                                 const collapsed = collapsedProposalFaculty.includes(bucket.id);
-                                                const pendingHere = bucket.items.filter((p: any) => p.status === 'Pending' || p.status === 'Draft').length;
+                                                const pendingHere = bucket.items.filter((p: any) => p.status === 'Pending').length;
                                                 return (
                                                     <div key={bucket.id} className="bg-white rounded-2xl border border-neutral-200 shadow-sm overflow-hidden">
                                                         <button
@@ -3934,7 +3938,7 @@ const AdminDashboard: React.FC = () => {
                                     <div className="pt-6 border-t border-neutral-200">
                                         <h4 className="flex items-center gap-2 text-xs font-black text-neutral-400 uppercase tracking-widest mb-4">Project Action</h4>
 
-                                        {(selectedProposal?.status === 'Pending' || selectedProposal?.status === 'Draft' || selectedProposal?.status === 'Rejected') ? (
+                                        {(selectedProposal?.status === 'Pending' || selectedProposal?.status === 'Rejected') ? (
                                             <div className="flex flex-col gap-4">
                                                 <label className="block text-[10px] font-black text-neutral-400 uppercase tracking-[0.2em] px-1">Review & Decision</label>
                                                 <div className="flex gap-4">
