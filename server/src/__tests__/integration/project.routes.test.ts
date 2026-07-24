@@ -58,13 +58,25 @@ describe('POST /api/projects', () => {
     it('defaults to Pending status when no status is provided', async () => {
         // The controller destructures: status = 'Pending' — omitting status sends a Pending proposal
         const { members: [student] } = await createTestGroup(1);
+        const mentor = await createTestUser({ role: UserRole.FACULTY, email: 'mentor-default@t.ac.in' });
         const res = await request(app)
             .post('/api/projects')
             .set('x-auth-token', generateToken(student))
-            .send({ title: 'Default Status Project', description: 'A description' });
+            .send({ title: 'Default Status Project', description: 'A description', facultyId: String(mentor._id) });
         expect(res.status).toBe(201);
         expect(res.body.status).toBe('Pending');
         expect(res.body.title).toBe('Default Status Project');
+    });
+
+    it('returns 400 when submitting a Pending proposal without a faculty', async () => {
+        // 'Decide Later' is only valid for a Draft — a submitted proposal must name a mentor.
+        const { members: [student] } = await createTestGroup(1);
+        const res = await request(app)
+            .post('/api/projects')
+            .set('x-auth-token', generateToken(student))
+            .send({ title: 'Mentorless Proposal', description: 'Desc', status: 'Pending' });
+        expect(res.status).toBe(400);
+        expect(res.body.message).toMatch(/faculty mentor before submitting/i);
     });
 
     it('creates a Draft project when status: Draft is explicitly sent', async () => {
@@ -79,10 +91,11 @@ describe('POST /api/projects', () => {
 
     it('creates a Pending project and sets group status to ProposalPending', async () => {
         const { group, members: [student] } = await createTestGroup(1);
+        const mentor = await createTestUser({ role: UserRole.FACULTY, email: 'mentor-pending@t.ac.in' });
         const res = await request(app)
             .post('/api/projects')
             .set('x-auth-token', generateToken(student))
-            .send({ title: 'Pending Project', description: 'Desc', status: 'Pending' });
+            .send({ title: 'Pending Project', description: 'Desc', status: 'Pending', facultyId: String(mentor._id) });
         expect(res.status).toBe(201);
         expect(res.body.status).toBe('Pending');
 
@@ -124,11 +137,12 @@ describe('POST /api/projects', () => {
             name: '1', members: [student._id], createdBy: student._id, status: 'Forming',
         });
         await newGroup.save();
+        const mentor = await createTestUser({ role: UserRole.FACULTY, email: 'mentor-archived@t.ac.in' });
 
         const res = await request(app)
             .post('/api/projects')
             .set('x-auth-token', generateToken(student))
-            .send({ title: 'New Proposal', description: 'Desc' });
+            .send({ title: 'New Proposal', description: 'Desc', facultyId: String(mentor._id) });
 
         expect(res.status).toBe(201);
         expect(res.body.status).toBe('Pending');
@@ -417,6 +431,21 @@ describe('PUT /api/projects/:id — resubmitting a rejected proposal', () => {
 
         const updatedGroup = await Group.findById(group._id);
         expect(updatedGroup!.status).toBe('ProposalPending');
+    });
+
+    it('blocks promoting a mentor-less Draft to Pending', async () => {
+        const { group, members: [student] } = await createTestGroup(1);
+        const draft = await createTestProject(group._id, { status: 'Draft' }); // no faculty
+
+        const res = await request(app)
+            .put(`/api/projects/${draft._id}`)
+            .set('x-auth-token', generateToken(student))
+            .field('title', 'Still no mentor')
+            .field('status', 'Pending');
+
+        expect(res.status).toBe(400);
+        expect(res.body.message).toMatch(/faculty mentor before submitting/i);
+        expect((await Project.findById(draft._id))!.status).toBe('Draft'); // unchanged
     });
 });
 

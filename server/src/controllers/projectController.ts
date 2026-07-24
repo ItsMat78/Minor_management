@@ -40,6 +40,13 @@ export const createProject = async (req: Request, res: Response) => {
             }
         }
 
+        // A submitted proposal must name a mentor. 'Decide Later' is valid only for a Draft — a
+        // mentor-less Pending never reaches any faculty's review queue (that queue is keyed on
+        // faculty), so it would sit in limbo, reviewable by no one and blocking a fresh proposal.
+        if (status !== 'Draft' && !facultyId) {
+            return res.status(400).json({ message: 'Select a faculty mentor before submitting. Save as a draft to decide later.' });
+        }
+
         // Validate faculty if provided
         let faculty = null;
         if (facultyId) {
@@ -536,6 +543,11 @@ export const updateProject = async (req: Request, res: Response) => {
         // proposal kept the mentor's old rejection remarks.)
         if (!wasApproved && status && status !== project.status) {
             if (status === 'Pending') {
+                // A submitted proposal must name a mentor. The faculty was assigned just above if
+                // the editor sent one; 'Decide Later' stays a Draft-only choice.
+                if (!project.faculty) {
+                    return res.status(400).json({ message: 'Select a faculty mentor before submitting. Save as a draft to decide later.' });
+                }
                 // Only one active proposal at a time — block promoting to Pending while the group
                 // already has another Pending/Approved project.
                 const existingActive = await Project.findOne({

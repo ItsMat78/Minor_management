@@ -204,6 +204,15 @@ const ProjectProposal: React.FC = () => {
 
     const handleSubmit = async (e: React.FormEvent, isDraft = false) => {
         e.preventDefault();
+
+        // A mentor is required to submit for review. 'Decide Later' is only valid for a draft —
+        // the server enforces this too, but stop here so we don't post a doomed request.
+        if (!isDraft && !isApprovedEdit && !formData.facultyId) {
+            setStep(2);
+            setError('Select a faculty mentor to submit for review, or use "Save as Draft" to decide later.');
+            return;
+        }
+
         setLoading(true);
         setError('');
 
@@ -438,6 +447,9 @@ const ProjectProposal: React.FC = () => {
                                                     />
                                                     <span className="font-medium text-gray-700">Decide Later (No Faculty Selected)</span>
                                                 </label>
+                                                <p className="mt-1.5 text-xs text-gray-400 pl-1">
+                                                    Deciding later lets you <strong>Save as Draft</strong> only. Pick a mentor to submit the proposal for review.
+                                                </p>
                                             </div>
                                         )}
 
@@ -575,7 +587,8 @@ const ProjectProposal: React.FC = () => {
                                     <button
                                         type="button"
                                         onClick={(e) => handleSubmit(e, false)}
-                                        disabled={loading}
+                                        disabled={loading || (!isApprovedEdit && !formData.facultyId)}
+                                        title={!isApprovedEdit && !formData.facultyId ? 'Select a faculty mentor to submit, or use Save as Draft' : undefined}
                                         className="px-8 py-3 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 shadow-lg shadow-green-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
                                         {loading ? 'Submitting...' : (isApprovedEdit ? 'Save Changes' : (projectId ? 'Update Proposal' : 'Submit Proposal'))} <Send className="w-4 h-4" />
