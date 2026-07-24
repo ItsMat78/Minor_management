@@ -480,7 +480,7 @@ const ProjectProposal: React.FC = () => {
                                                                     name={faculty.name}
                                                                     photoUrl={faculty.photoUrl}
                                                                     className="w-10 h-10 rounded-full shrink-0 border border-gray-200"
-                                                                    fallbackClassName="bg-indigo-50 text-indigo-700"
+                                                                    fallbackClassName="w-10 h-10 rounded-full shrink-0 border border-gray-200 flex items-center justify-center font-bold bg-indigo-50 text-indigo-700"
                                                                 />
                                                                 <div className="flex-1 min-w-0">
                                                                     <p className="font-semibold text-gray-900 truncate">{faculty.name}</p>

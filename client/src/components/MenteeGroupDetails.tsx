@@ -393,7 +393,7 @@ const MenteeGroupDetails: React.FC<MenteeGroupDetailsProps> = ({ group: groupPro
                                             name={member.name}
                                             photoUrl={member.photoUrl}
                                             className="h-8 w-8 rounded-full shrink-0 text-xs"
-                                            fallbackClassName="bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow-sm"
+                                            fallbackClassName="h-8 w-8 rounded-full shrink-0 text-xs flex items-center justify-center font-bold bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow-sm"
                                         />
                                         <div className="flex-1 min-w-0">
                                             <p className="font-bold text-gray-900 text-sm truncate">{member.name}</p>
@@ -423,7 +423,7 @@ const MenteeGroupDetails: React.FC<MenteeGroupDetailsProps> = ({ group: groupPro
                                                     name={member.name}
                                                     photoUrl={member.photoUrl}
                                                     className="h-8 w-8 rounded-full shrink-0 text-xs"
-                                                    fallbackClassName="bg-amber-100 text-amber-700"
+                                                    fallbackClassName="h-8 w-8 rounded-full shrink-0 text-xs flex items-center justify-center font-bold bg-amber-100 text-amber-700"
                                                 />
                                                 <div className="flex-1 min-w-0">
                                                     <p className="font-semibold text-gray-700 text-sm truncate">{member.name}</p>
@@ -456,7 +456,7 @@ const MenteeGroupDetails: React.FC<MenteeGroupDetailsProps> = ({ group: groupPro
                                     name={faculty?.name || user?.name || 'F'}
                                     photoUrl={faculty?.photoUrl}
                                     className="h-9 w-9 rounded-full shrink-0 text-sm border border-orange-200"
-                                    fallbackClassName="bg-orange-100 text-orange-700"
+                                    fallbackClassName="h-9 w-9 rounded-full shrink-0 text-sm border border-orange-200 flex items-center justify-center font-bold bg-orange-100 text-orange-700"
                                 />
                                 <div className="overflow-hidden">
                                     <p className="font-bold text-gray-900 text-sm truncate">{faculty?.name || user?.name || 'Unassigned'}</p>
@@ -532,7 +532,7 @@ const MenteeGroupDetails: React.FC<MenteeGroupDetailsProps> = ({ group: groupPro
                                                     name={s.name}
                                                     photoUrl={s.photoUrl}
                                                     className="h-8 w-8 rounded-full shrink-0 text-xs"
-                                                    fallbackClassName="bg-neutral-100 text-neutral-600"
+                                                    fallbackClassName="h-8 w-8 rounded-full shrink-0 text-xs flex items-center justify-center font-bold bg-neutral-100 text-neutral-600"
                                                 />
                                                 <div className="flex-1 min-w-0">
                                                     <p className="text-sm font-bold text-neutral-900 truncate">{s.name}</p>

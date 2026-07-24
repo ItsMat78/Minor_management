@@ -234,7 +234,7 @@ const MenteeGroupPage: React.FC = () => {
                             name={user?.name}
                             photoUrl={user?.photoUrl}
                             className="h-9 w-9 rounded-full shrink-0 border-2 border-white shadow-sm"
-                            fallbackClassName="bg-indigo-100 text-indigo-700"
+                            fallbackClassName="h-9 w-9 rounded-full shrink-0 border-2 border-white shadow-sm flex items-center justify-center font-bold text-sm bg-indigo-100 text-indigo-700"
                         />
                         <div className="overflow-hidden">
                             <p className="text-sm font-bold text-gray-900 truncate">{user?.name}</p>
@@ -532,7 +532,7 @@ const MenteeGroupPage: React.FC = () => {
                                         name={user?.name}
                                         photoUrl={user?.photoUrl}
                                         className="h-12 w-12 rounded-full border-2 border-orange-200 shadow-sm shrink-0 text-lg"
-                                        fallbackClassName="bg-orange-100 text-orange-600"
+                                        fallbackClassName="h-12 w-12 rounded-full border-2 border-orange-200 shadow-sm shrink-0 text-lg flex items-center justify-center font-bold bg-orange-100 text-orange-600"
                                     />
                                     <div className="overflow-hidden flex-1">
                                         <p className="font-bold text-gray-900 text-sm truncate">{user?.name}</p>
