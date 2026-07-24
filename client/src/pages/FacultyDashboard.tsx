@@ -899,10 +899,12 @@ const FacultyDashboard: React.FC = () => {
 
     // Capacity is a semester-wide total across every batch, so the load shown against the limit
     // must ignore the batch filter — a per-batch count would read as far below the cap.
-    const approvedAllBatches = projects.filter(p => p.status === 'Approved');
-    const totalTeamsCount = approvedAllBatches.length;
-    const totalStudentsCount = approvedAllBatches.reduce(
-        (acc, p) => acc + (p.group?.members?.length || 0), 0);
+    // Source from `mentees` (approved, non-archived groups for this faculty) rather than
+    // `projects`: the Mentees tab never fetches `projects`, so reading it here pinned the
+    // badge at 0 whenever the faculty landed straight on Mentees without opening Proposals.
+    const totalTeamsCount = mentees.length;
+    const totalStudentsCount = mentees.reduce(
+        (acc, m) => acc + (m.members?.length || 0), 0);
     const maxGroupsLimit = user?.maxGroups ?? 7;
     const maxStudentsLimit = user?.maxStudents ?? 21;
     const atGroupCap = totalTeamsCount >= maxGroupsLimit;
