@@ -52,23 +52,46 @@ export const publicUrlFor = (req: Request, file: Express.Multer.File): string =>
     return `${base.replace(/\/$/, '')}/uploads/${bucket}/${file.filename}`;
 };
 
+// Accept docs, pdfs, ppts, zips, spreadsheets (any image/* passes separately).
+const ALLOWED_MIME_TYPES = new Set([
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.ms-powerpoint',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    'application/zip',
+    'application/x-zip-compressed',
+    'text/plain',
+    'text/csv',
+    'text/markdown',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+]);
+
+// Second chance by extension. Plain-text formats often have no registered type on the uploader's
+// machine, so the browser sends '' or application/octet-stream for them — a mimetype-only
+// allowlist rejects an ordinary .md readme, which is both surprising and hard to diagnose.
+const ALLOWED_EXTENSIONS = new Set(['.md', '.markdown', '.txt', '.csv']);
+
+const ALLOWED_DESCRIPTION =
+    'Allowed: images, PDF, Word, PowerPoint, Excel, CSV, text, Markdown and ZIP files.';
+
+/** Thrown by the file filter so the error handler can answer 400 with a usable reason. */
+export class UnsupportedFileTypeError extends Error {
+    constructor(fileName: string) {
+        super(`"${fileName}" is not a supported file type. ${ALLOWED_DESCRIPTION}`);
+        this.name = 'UnsupportedFileTypeError';
+    }
+}
+
 const fileFilter = (req: any, file: any, cb: any) => {
-    // Accept images, docs, pdfs, ppts, zips, spreadsheets
-    if (file.mimetype.startsWith('image/') ||
-        file.mimetype === 'application/pdf' ||
-        file.mimetype === 'application/msword' ||
-        file.mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
-        file.mimetype === 'application/vnd.ms-powerpoint' ||
-        file.mimetype === 'application/vnd.openxmlformats-officedocument.presentationml.presentation' ||
-        file.mimetype === 'application/zip' ||
-        file.mimetype === 'application/x-zip-compressed' ||
-        file.mimetype === 'text/plain' ||
-        file.mimetype === 'text/csv' ||
-        file.mimetype === 'application/vnd.ms-excel' ||
-        file.mimetype === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') {
+    const mimetype = String(file.mimetype || '');
+    const ext = path.extname(String(file.originalname || '')).toLowerCase();
+
+    if (mimetype.startsWith('image/') || ALLOWED_MIME_TYPES.has(mimetype) || ALLOWED_EXTENSIONS.has(ext)) {
         cb(null, true);
     } else {
-        cb(new Error('Invalid file type'), false);
+        cb(new UnsupportedFileTypeError(file.originalname || 'That file'), false);
     }
 };
 

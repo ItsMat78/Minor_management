@@ -124,9 +124,9 @@ const MenteeGroupDetails: React.FC<MenteeGroupDetailsProps> = ({ group: groupPro
             setUpdateContent('');
             setUpdateLinks('');
             setUpdateFiles([]);
-        } catch (error) {
+        } catch (error: any) {
             console.error("Failed to submit update", error);
-            alert("Failed to submit update. Please try again.");
+            alert(error?.response?.data?.message || "Failed to submit update. Please try again.");
         } finally {
             setSubmittingUpdate(false);
         }

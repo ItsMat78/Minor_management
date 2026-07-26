@@ -49,6 +49,10 @@ const ProjectProposal: React.FC = () => {
     // Editing an already-approved project: edits are saved in place and it stays Approved (no
     // re-review), and the mentor is locked. Drives the submit status and the button labels below.
     const [isApprovedEdit, setIsApprovedEdit] = useState(false);
+    // Set by the server once mid-semester evaluation has opened: the project is frozen for the
+    // rest of the semester, so the whole editor goes read-only. The update endpoint refuses the
+    // save regardless — this just stops the student filling in a form that can't be submitted.
+    const [detailsLocked, setDetailsLocked] = useState(false);
     // Faculty are scoped to the student's branch ONLY when the student's batch is branch-restricted
     // this semester. Non-restricted batches see every faculty.
     const [isBatchBranchRestricted, setIsBatchBranchRestricted] = useState(false);
@@ -133,6 +137,7 @@ const ProjectProposal: React.FC = () => {
                             semester: p.semester || 0
                         });
                         setExistingAttachments(p.attachments || []);
+                        setDetailsLocked(!!p.detailsLocked);
 
                         // Editing the group's approved project: keep it Approved on save and lock the
                         // mentor. The lock detection above skips the project being edited, so set it here.
@@ -204,6 +209,11 @@ const ProjectProposal: React.FC = () => {
 
     const handleSubmit = async (e: React.FormEvent, isDraft = false) => {
         e.preventDefault();
+
+        if (detailsLocked) {
+            setError('Project details are locked because mid-semester evaluation has begun. Ask your mentor or the admin if something still needs to change.');
+            return;
+        }
 
         // A mentor is required to submit for review. 'Decide Later' is only valid for a draft —
         // the server enforces this too, but stop here so we don't post a doomed request.
@@ -311,6 +321,17 @@ const ProjectProposal: React.FC = () => {
                         </div>
                     )}
 
+                    {detailsLocked && (
+                        <div className="mb-6 p-4 bg-amber-50 text-amber-800 border border-amber-200 rounded-lg text-sm flex items-start gap-2">
+                            <Info className="w-4 h-4 shrink-0 mt-0.5" />
+                            <span>
+                                <strong>Locked for editing.</strong> Mid-semester evaluation has begun, so this project's
+                                details are frozen for the rest of the semester. Ask your mentor or the admin if something
+                                still needs to change.
+                            </span>
+                        </div>
+                    )}
+
                     <form>
                         <AnimatePresence mode="wait">
                             {step === 1 && (
@@ -339,6 +360,7 @@ const ProjectProposal: React.FC = () => {
                                             placeholder="e.g. Smart Traffic Management System"
                                             value={formData.title}
                                             onChange={handleChange}
+                                            disabled={detailsLocked}
                                             autoFocus
                                         />
                                     </div>
@@ -351,6 +373,7 @@ const ProjectProposal: React.FC = () => {
                                             placeholder="Describe the problem, solution, and scope..."
                                             value={formData.description}
                                             onChange={handleChange}
+                                            disabled={detailsLocked}
                                         />
                                     </div>
                                     <div>
@@ -362,6 +385,7 @@ const ProjectProposal: React.FC = () => {
                                             placeholder="AI, Machine Learning, Web App"
                                             value={formData.tags}
                                             onChange={handleChange}
+                                            disabled={detailsLocked}
                                         />
                                     </div>
                                     <div>
@@ -373,6 +397,7 @@ const ProjectProposal: React.FC = () => {
                                             placeholder="https://github.com/..."
                                             value={formData.links}
                                             onChange={handleChange}
+                                            disabled={detailsLocked}
                                         />
                                     </div>
                                     <div>
@@ -381,7 +406,8 @@ const ProjectProposal: React.FC = () => {
                                             type="file"
                                             multiple
                                             onChange={handleFileChange}
-                                            className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all"
+                                            disabled={detailsLocked}
+                                            className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all disabled:bg-gray-50 disabled:cursor-not-allowed"
                                         />
                                         {existingAttachments.length > 0 && (
                                             <div className="mt-2 text-xs text-gray-500">
@@ -390,13 +416,15 @@ const ProjectProposal: React.FC = () => {
                                                     {existingAttachments.map((url, index) => (
                                                         <div key={index} className="relative group">
                                                             <FilePreview url={url} description={`Attachment ${index + 1} `} />
-                                                            <button
-                                                                type="button" // Prevent form submission
-                                                                onClick={() => setExistingAttachments(prev => prev.filter((_, i) => i !== index))}
-                                                                className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-md hover:bg-red-600 transition-colors opacity-0 group-hover:opacity-100"
-                                                            >
-                                                                <X className="w-3 h-3" />
-                                                            </button>
+                                                            {!detailsLocked && (
+                                                                <button
+                                                                    type="button" // Prevent form submission
+                                                                    onClick={() => setExistingAttachments(prev => prev.filter((_, i) => i !== index))}
+                                                                    className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-md hover:bg-red-600 transition-colors opacity-0 group-hover:opacity-100"
+                                                                >
+                                                                    <X className="w-3 h-3" />
+                                                                </button>
+                                                            )}
                                                         </div>
                                                     ))}
                                                 </div>
@@ -558,8 +586,8 @@ const ProjectProposal: React.FC = () => {
                                         <button
                                             type="button"
                                             onClick={(e) => handleSubmit(e, true)}
-                                            disabled={loading}
-                                            className="px-6 py-3 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 transition-colors"
+                                            disabled={loading || detailsLocked}
+                                            className="px-6 py-3 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                         >
                                             Save as Draft
                                         </button>
@@ -578,8 +606,8 @@ const ProjectProposal: React.FC = () => {
                                         <button
                                             type="button"
                                             onClick={(e) => handleSubmit(e, true)}
-                                            disabled={loading}
-                                            className="px-6 py-3 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200"
+                                            disabled={loading || detailsLocked}
+                                            className="px-6 py-3 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
                                         >
                                             Save as Draft
                                         </button>
@@ -587,8 +615,10 @@ const ProjectProposal: React.FC = () => {
                                     <button
                                         type="button"
                                         onClick={(e) => handleSubmit(e, false)}
-                                        disabled={loading || (!isApprovedEdit && !formData.facultyId)}
-                                        title={!isApprovedEdit && !formData.facultyId ? 'Select a faculty mentor to submit, or use Save as Draft' : undefined}
+                                        disabled={loading || detailsLocked || (!isApprovedEdit && !formData.facultyId)}
+                                        title={detailsLocked
+                                            ? 'Locked — mid-semester evaluation has begun'
+                                            : (!isApprovedEdit && !formData.facultyId ? 'Select a faculty mentor to submit, or use Save as Draft' : undefined)}
                                         className="px-8 py-3 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 shadow-lg shadow-green-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
                                         {loading ? 'Submitting...' : (isApprovedEdit ? 'Save Changes' : (projectId ? 'Update Proposal' : 'Submit Proposal'))} <Send className="w-4 h-4" />

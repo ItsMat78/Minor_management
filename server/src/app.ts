@@ -1,7 +1,9 @@
-import express from 'express';
+import express, { NextFunction, Request, Response } from 'express';
 import cors from 'cors';
+import multer from 'multer';
 import path from 'path';
 import { allowedOrigins } from './config/cors';
+import { UnsupportedFileTypeError } from './middleware/uploadMiddleware';
 
 import authRoutes from './routes/authRoutes';
 import groupRoutes from './routes/groupRoutes';
@@ -42,6 +44,25 @@ app.use('/api/import', importRoutes);
 
 app.get('/', (_req, res) => {
     res.send('IIITNR Minor Project Portal API is running!');
+});
+
+// Upload failures reach here as thrown errors from multer, which runs as route middleware and so
+// never gets to the controller's try/catch. Without this they fall through to Express's default
+// handler and come back as a 500 HTML page, leaving the client to say "upload failed" while the
+// user never learns their file was the wrong type or over the size limit.
+app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
+    if (err instanceof UnsupportedFileTypeError) {
+        return res.status(400).json({ message: err.message });
+    }
+    if (err instanceof multer.MulterError) {
+        const reasons: Record<string, string> = {
+            LIMIT_FILE_SIZE: 'That file is larger than the 10MB upload limit.',
+            LIMIT_FILE_COUNT: 'Too many files in one upload.',
+            LIMIT_UNEXPECTED_FILE: 'Too many files for this form, or a file arrived in an unexpected field.',
+        };
+        return res.status(400).json({ message: reasons[err.code] || `Upload failed: ${err.message}` });
+    }
+    return next(err);
 });
 
 export default app;

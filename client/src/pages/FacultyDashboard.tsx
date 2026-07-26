@@ -8,6 +8,7 @@ import { Search, ChevronDown, ChevronUp, Users, Clock, CheckCircle, XCircle, Fil
 import { motion } from 'framer-motion';
 import * as Dialog from '@radix-ui/react-dialog';
 import MenteeGroupDetails from '../components/MenteeGroupDetails';
+import AttachmentGallery from '../components/AttachmentGallery';
 import CustomBatchDropdown from '../components/CustomBatchDropdown';
 import { useParticipatingBatches } from '../hooks/useParticipatingBatches';
 
@@ -1178,10 +1179,6 @@ const FacultyDashboard: React.FC = () => {
                                                 <p className="text-xs text-neutral-500 uppercase tracking-wider font-bold">Department</p>
                                                 <p className="font-semibold text-neutral-900">{user?.department || 'N/A'}</p>
                                             </div>
-                                            <div className="px-6 py-3 bg-neutral-50 rounded-2xl border border-neutral-100">
-                                                <p className="text-xs text-neutral-500 uppercase tracking-wider font-bold">Branches mentored</p>
-                                                <p className="font-semibold text-neutral-900">{user?.branch ? user.branch.split(',').join(', ') : 'All branches'}</p>
-                                            </div>
                                         </div>
                                         {user?.expertise && user.expertise.length > 0 && (
                                             <div className="mt-4 flex flex-wrap justify-center gap-2">
@@ -1224,13 +1221,6 @@ const FacultyDashboard: React.FC = () => {
                                                 onChange={e => setProfileForm(f => ({ ...f, expertise: e.target.value }))}
                                             />
                                             <p className="text-[11px] text-neutral-400">Separate multiple areas with commas.</p>
-                                        </div>
-                                        <div className="flex flex-col gap-1">
-                                            <label className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Branches mentored</label>
-                                            <p className="text-sm font-semibold text-neutral-700 mt-1">
-                                                {user?.branch ? user.branch.split(',').join(', ') : 'All branches'}
-                                            </p>
-                                            <p className="text-[11px] text-neutral-400">Set by the admin. Contact them to change which branches you supervise.</p>
                                         </div>
                                         {profileError && <p className="text-sm text-red-600">{profileError}</p>}
                                         <div className="flex justify-end gap-3 mt-2">
@@ -2138,34 +2128,7 @@ const FacultyDashboard: React.FC = () => {
                                         <div className="h-px flex-1 bg-neutral-200/50"></div>
                                     </h4>
                                     {selectedProject?.attachments && selectedProject.attachments.length > 0 ? (
-                                        <div className="grid grid-cols-1 gap-3">
-                                            {selectedProject.attachments.map((url: string, i: number) => {
-                                                const fileName = url.split('/').pop()?.split('-').pop() || `File ${i + 1}`;
-                                                const isLink = url.startsWith('http') && !url.includes('/uploads/');
-                                                return (
-                                                    <a
-                                                        key={i}
-                                                        href={url}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        className="flex items-center gap-4 p-4 bg-white border border-neutral-200 rounded-2xl hover:border-indigo-500 hover:shadow-lg hover:shadow-indigo-500/5 group transition-all"
-                                                    >
-                                                        <div className="p-3 bg-indigo-50 text-indigo-600 rounded-xl group-hover:bg-indigo-600 group-hover:text-white transition-colors border border-indigo-100/50">
-                                                            {isLink ? <Layout className="w-5 h-5" /> : <FileText className="w-5 h-5" />}
-                                                        </div>
-                                                        <div className="flex-1 min-w-0">
-                                                            <p className="text-xs font-bold text-neutral-900 truncate mb-0.5">
-                                                                {isLink ? "External Resource" : fileName}
-                                                            </p>
-                                                            <p className="text-[9px] text-neutral-400 font-black uppercase tracking-widest leading-none">
-                                                                {isLink ? "Digital Link" : "Document Asset"}
-                                                            </p>
-                                                        </div>
-                                                        <ChevronRight className="w-4 h-4 text-neutral-300 group-hover:text-indigo-600 group-hover:translate-x-1 transition-all" />
-                                                    </a>
-                                                );
-                                            })}
-                                        </div>
+                                        <AttachmentGallery urls={selectedProject.attachments} />
                                     ) : (
                                         <div className="p-6 sm:p-10 border-2 border-dashed border-neutral-200 rounded-3xl text-center bg-white/50 backdrop-blur-sm">
                                             <div className="w-12 h-12 bg-neutral-50 rounded-full flex items-center justify-center mx-auto mb-3 text-neutral-300">

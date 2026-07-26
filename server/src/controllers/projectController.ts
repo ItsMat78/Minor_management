@@ -8,6 +8,7 @@ import { publicUrlFor, deleteFileByUrl } from '../middleware/uploadMiddleware';
 import Panel from '../models/Panel';
 import Event, { EventType } from '../models/Event';
 import { nextActiveGroupNumber } from '../utils/groupNumbering';
+import { midTermEvaluationOpened, projectDetailsFrozen, DETAILS_FROZEN_MESSAGE } from '../utils/evaluationLock';
 
 // ... (imports)
 
@@ -397,7 +398,7 @@ export const getFacultyArchivedProjects = async (req: Request, res: Response) =>
 export const addUpdate = async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
-        const { content, links } = req.body;
+        const { title, content, links } = req.body;
         const userId = (req as any).user.id;
         const files = (req as any).files;
 
@@ -428,6 +429,8 @@ export const addUpdate = async (req: Request, res: Response) => {
         }
 
         project.updates.push({
+            // Optional heading — the mentor's update form offers one; the student form doesn't.
+            title: typeof title === 'string' && title.trim() ? title.trim() : undefined,
             content,
             date: new Date(),
             attachments: fileUrls,
@@ -490,6 +493,12 @@ export const updateProject = async (req: Request, res: Response) => {
         const group = await Group.findById(project.group);
         if (!group || !group.members.map(m => m.toString()).includes(userId)) {
             return res.status(403).json({ message: 'Not authorized to update this project' });
+        }
+
+        // Details are the group's to refine only until mid-semester evaluation opens — after that
+        // the project is what it is for the rest of the semester. See utils/evaluationLock.
+        if (projectDetailsFrozen(project, await midTermEvaluationOpened())) {
+            return res.status(403).json({ message: DETAILS_FROZEN_MESSAGE, detailsLocked: true });
         }
 
         // Members may edit Draft/Pending/Rejected proposals, and also an Approved project to keep

@@ -6,6 +6,7 @@ import Project from '../models/Project';
 import Event, { EventType } from '../models/Event';
 import { sendGroupCompleteEmail, sendGroupInviteEmail, sendGroupInviteResponseEmail } from '../utils/emailService';
 import { nextActiveGroupNumber } from '../utils/groupNumbering';
+import { midTermEvaluationOpened, projectDetailsFrozen } from '../utils/evaluationLock';
 
 // Batch years that require single-branch groups for the given GF event. Prefers the explicit
 // per-batch list; falls back to the legacy boolean (which meant "all participating batches").
@@ -211,8 +212,15 @@ export const getMyGroup = async (req: Request, res: Response) => {
             .populate('updates.createdBy', 'name role')
             .sort({ createdAt: -1 });
 
-        const groupData = group.toObject();
-        (groupData as any).projects = allProjects;
+        // detailsLocked tells the dashboard and the proposal editor whether the group may still
+        // change this project — it goes read-only once mid-semester evaluation opens, which the
+        // update endpoint enforces server-side too.
+        const midTermOpened = await midTermEvaluationOpened();
+        const withLock = (p: any) => ({ ...p, detailsLocked: projectDetailsFrozen(p, midTermOpened) });
+
+        const groupData: any = group.toObject();
+        groupData.projects = allProjects.map(p => withLock(p.toObject()));
+        if (groupData.project) groupData.project = withLock(groupData.project);
 
         res.json(groupData);
     } catch (error) {
@@ -737,6 +745,90 @@ export const adminRemoveGroupMember = async (req: Request, res: Response) => {
         res.json({ message: 'Student removed from the group.', group: await populatedGroup(group._id) });
     } catch (error: any) {
         console.error('Error removing group member:', error);
+        res.status(500).json({ message: error?.message || 'Server error' });
+    }
+};
+
+// Students a supervisor is already committed to this semester, summed across every batch they
+// mentor. `excludeProjectId` drops the project being reassigned so it can't be double-counted.
+// Mirrors the ceiling enforced when a proposal is approved (see updateProjectStatus).
+const approvedStudentLoad = async (facultyId: any, excludeProjectId?: any): Promise<number> => {
+    const approved = await Project.find({
+        faculty: facultyId,
+        status: 'Approved',
+        isArchived: { $ne: true }, // current semester only — past-semester archives don't count
+        ...(excludeProjectId ? { _id: { $ne: excludeProjectId } } : {})
+    }).populate({ path: 'group', populate: { path: 'members' } });
+
+    return approved.reduce((sum: number, p: any) => sum + (p.group?.members?.length || 0), 0);
+};
+
+/**
+ * Reassign a group's faculty mentor from the Group Directory.
+ * PUT /api/groups/:id/mentor  { facultyId }
+ *
+ * The mentor lives on the group's project, so the group must have one. The incoming
+ * supervisor's semester-wide student cap is a hard limit: a reassignment that would push
+ * them past it is refused, and the response names the shortfall so the admin can raise
+ * that supervisor's student limit (Faculty tab) or pick someone else.
+ */
+export const adminSetGroupMentor = async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const { facultyId } = req.body;
+        if (!facultyId) return res.status(400).json({ message: 'Select a faculty mentor.' });
+
+        const group = await Group.findById(id);
+        if (!group) return res.status(404).json({ message: 'Group not found' });
+        if (group.isArchived) return res.status(403).json({ message: 'Archived groups are read-only.' });
+
+        // The group's live project: its own pointer when that still resolves, else the one
+        // active proposal/project it owns (the pointer can lag behind a rejection).
+        let project = group.project
+            ? await Project.findOne({ _id: group.project, isArchived: { $ne: true } })
+            : null;
+        if (!project) {
+            project = await Project.findOne({
+                group: group._id,
+                isArchived: { $ne: true },
+                status: { $in: ['Pending', 'Approved'] }
+            }).sort({ createdAt: -1 });
+        }
+        if (!project) {
+            return res.status(400).json({
+                message: 'This group has no active project. A mentor is attached to the project, so the group must submit one first.'
+            });
+        }
+
+        const faculty = await User.findById(facultyId).select('name role maxStudents');
+        if (!faculty || faculty.role !== 'Faculty') {
+            return res.status(400).json({ message: 'Invalid faculty selected.' });
+        }
+        if (project.faculty && String(project.faculty) === String(faculty._id)) {
+            return res.status(400).json({ message: `${faculty.name} already mentors this group.` });
+        }
+
+        const maxStudents = faculty.maxStudents ?? 21;
+        const currentStudents = await approvedStudentLoad(faculty._id, project._id);
+        const incoming = group.members.length;
+
+        if (currentStudents + incoming > maxStudents) {
+            return res.status(400).json({
+                message: `Mentee limit reached — ${faculty.name} already mentors ${currentStudents} of ${maxStudents} students this semester, and this group adds ${incoming} more. Raise their student limit in the Faculty tab (or pick another mentor) before reassigning this group.`,
+                limitExceeded: true,
+                limit: { facultyId: String(faculty._id), facultyName: faculty.name, maxStudents, currentStudents, incoming }
+            });
+        }
+
+        project.faculty = faculty._id as any;
+        await project.save();
+
+        res.json({
+            message: `Mentor changed to ${faculty.name}.`,
+            group: await populatedGroup(group._id)
+        });
+    } catch (error: any) {
+        console.error('Error changing group mentor:', error);
         res.status(500).json({ message: error?.message || 'Server error' });
     }
 };

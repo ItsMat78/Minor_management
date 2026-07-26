@@ -69,9 +69,9 @@ const MenteeGroupPage: React.FC = () => {
             setUpdateContent('');
             setUpdateLinks('');
             setUpdateFiles([]);
-        } catch (error) {
+        } catch (error: any) {
             console.error("Failed to submit update", error);
-            alert("Failed to submit update. Please try again.");
+            alert(error?.response?.data?.message || "Failed to submit update. Please try again.");
         } finally {
             setSubmittingUpdate(false);
         }
@@ -455,6 +455,7 @@ const MenteeGroupPage: React.FC = () => {
                                                 <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
                                                     <div className="flex justify-between items-start mb-3">
                                                         <div>
+                                                            {update.title && <h4 className="font-bold text-gray-900 text-base mb-1">{update.title}</h4>}
                                                             {update.createdBy?.name && (
                                                                 <h4 className="font-bold text-gray-900 text-sm mb-1">
                                                                     {update.createdBy.name}

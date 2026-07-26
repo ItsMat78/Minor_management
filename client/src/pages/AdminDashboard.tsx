@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { Search, Users, Clock, CheckCircle, XCircle, FileText, X, LogOut, ChevronDown, ChevronUp, ChevronRight, Settings, Menu, Calendar, Download, AlertCircle, AlertTriangle, Save, Pencil, LayoutGrid, MoreVertical, Plus, Edit3, Power, Info, Trash2, Upload, Mail, Copy, Check, UserCheck, UserX, ShieldCheck, ShieldOff, Archive as ArchiveIcon } from 'lucide-react';
 import { motion } from 'framer-motion';
 import MenteeGroupDetails from '../components/MenteeGroupDetails';
+import AttachmentGallery from '../components/AttachmentGallery';
 import AutoCreatePanelsModal from '../components/AutoCreatePanelsModal';
 import { GlobalEventBanner } from '../components/GlobalEventBanner';
 import * as Dialog from '@radix-ui/react-dialog';
@@ -298,6 +299,13 @@ const AdminDashboard: React.FC = () => {
     const [sortOption, setSortOption] = useState<string>('Default'); // Added sort state
     const [collapsedPanelsBatches, setCollapsedPanelsBatches] = useState<Record<string, boolean>>({});
     const [configBatchGroup, setConfigBatchGroup] = useState<any>(null); // For configure batch modal
+    // Change-mentor modal (Group Directory). `mentorLimit` holds the server's rejection detail
+    // when the pick would break that supervisor's semester student cap.
+    const [mentorGroup, setMentorGroup] = useState<any>(null);
+    const [mentorFacultyId, setMentorFacultyId] = useState<string>('');
+    const [mentorSaving, setMentorSaving] = useState(false);
+    const [mentorError, setMentorError] = useState('');
+    const [mentorLimit, setMentorLimit] = useState<any>(null);
     const [configStudentBatch, setConfigStudentBatch] = useState<any>(null); // For student batch override modal
     const [studentParticipationOverride, setStudentParticipationOverride] = useState<boolean>(true);
     const [configBatchMenuOpen, setConfigBatchMenuOpen] = useState<string | null>(null); // To toggle menu per row
@@ -1395,6 +1403,50 @@ const AdminDashboard: React.FC = () => {
         }
     };
 
+    const openMentorModal = async (group: any) => {
+        setMentorGroup(group);
+        setMentorFacultyId(group.project?.faculty?._id || group.project?.faculty || '');
+        setMentorError('');
+        setMentorLimit(null);
+        // Load per-supervisor load so the picker can show how full each one is before committing.
+        try {
+            const res = await api.get('/users/faculty');
+            setFaculty(Array.isArray(res.data) ? res.data : []);
+        } catch {
+            /* keep whatever list is already loaded */
+        }
+    };
+
+    const closeMentorModal = () => {
+        setMentorGroup(null);
+        setMentorFacultyId('');
+        setMentorError('');
+        setMentorLimit(null);
+    };
+
+    const handleChangeMentor = async () => {
+        if (!mentorGroup || !mentorFacultyId) return;
+        setMentorSaving(true);
+        setMentorError('');
+        setMentorLimit(null);
+        try {
+            await api.put(`/groups/${mentorGroup._id}/mentor`, { facultyId: mentorFacultyId });
+            await refreshGroups();
+            // The supervisor loads shown in the picker just shifted — refresh them too.
+            try {
+                const res = await api.get('/users/faculty');
+                setFaculty(Array.isArray(res.data) ? res.data : []);
+            } catch { /* non-fatal */ }
+            closeMentorModal();
+        } catch (err: any) {
+            const data = err.response?.data;
+            setMentorError(data?.message || 'Failed to change the mentor.');
+            if (data?.limitExceeded) setMentorLimit(data.limit || null);
+        } finally {
+            setMentorSaving(false);
+        }
+    };
+
     const handleUpdateStudentBatch = async (newBatch: string, isParticipating: boolean) => {
         if (!configStudentBatch) return;
         try {
@@ -2467,6 +2519,17 @@ const AdminDashboard: React.FC = () => {
                                                                                                                 >
                                                                                                                     <Settings className="w-4 h-4" /> Configure Batch
                                                                                                                 </button>
+                                                                                                                {item.project && (
+                                                                                                                    <button
+                                                                                                                        onClick={() => {
+                                                                                                                            openMentorModal(item);
+                                                                                                                            setConfigBatchMenuOpen(null);
+                                                                                                                        }}
+                                                                                                                        className="w-full text-left px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-50 flex items-center gap-2"
+                                                                                                                    >
+                                                                                                                        <Users className="w-4 h-4" /> Change Mentor
+                                                                                                                    </button>
+                                                                                                                )}
                                                                                                                 {item.project && item.status === 'Approved' && (
                                                                                                                     <>
                                                                                                                         <div className="h-px bg-neutral-100 my-1" />
@@ -3897,34 +3960,7 @@ const AdminDashboard: React.FC = () => {
                                             <div className="h-px flex-1 bg-neutral-200/50"></div>
                                         </h4>
                                         {selectedProposal?.attachments && selectedProposal.attachments.length > 0 ? (
-                                            <div className="grid grid-cols-1 gap-3">
-                                                {selectedProposal.attachments.map((url: string, i: number) => {
-                                                    const fileName = url.split('/').pop()?.split('-').pop() || `File ${i + 1}`;
-                                                    const isLink = url.startsWith('http') && !url.includes('/uploads/');
-                                                    return (
-                                                        <a
-                                                            key={i}
-                                                            href={url}
-                                                            target="_blank"
-                                                            rel="noopener noreferrer"
-                                                            className="flex items-center gap-4 p-4 bg-white border border-neutral-200 rounded-2xl hover:border-indigo-500 hover:shadow-lg group transition-all"
-                                                        >
-                                                            <div className="p-3 bg-indigo-50 text-indigo-600 rounded-xl group-hover:bg-indigo-600 group-hover:text-white transition-colors border border-indigo-100/50">
-                                                                {isLink ? <LayoutGrid className="w-5 h-5" /> : <FileText className="w-5 h-5" />}
-                                                            </div>
-                                                            <div className="flex-1 min-w-0">
-                                                                <p className="text-xs font-bold text-neutral-900 truncate mb-0.5">
-                                                                    {isLink ? "External Resource" : fileName}
-                                                                </p>
-                                                                <p className="text-[9px] text-neutral-400 font-black uppercase tracking-widest leading-none">
-                                                                    {isLink ? "Digital Link" : "Document Asset"}
-                                                                </p>
-                                                            </div>
-                                                            <ChevronRight className="w-4 h-4 text-neutral-300 group-hover:text-indigo-600 transition-all" />
-                                                        </a>
-                                                    );
-                                                })}
-                                            </div>
+                                            <AttachmentGallery urls={selectedProposal.attachments} />
                                         ) : (
                                             <div className="p-6 sm:p-10 border-2 border-dashed border-neutral-200 rounded-3xl text-center bg-white/50">
                                                 <div className="w-12 h-12 bg-neutral-50 rounded-full flex items-center justify-center mx-auto mb-3 text-neutral-300">
@@ -4482,6 +4518,91 @@ const AdminDashboard: React.FC = () => {
                         </div>
                     </div>
                 )}
+
+                {/* Change mentor modal — reassigns the supervisor on the group's project */}
+                {mentorGroup && (() => {
+                    const currentMentorId = mentorGroup.project?.faculty?._id || mentorGroup.project?.faculty || '';
+                    const groupSize = mentorGroup.members?.length || 0;
+                    return (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm">
+                            <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col">
+                                <div className="px-6 py-4 border-b border-neutral-100 flex items-center justify-between">
+                                    <h3 className="text-lg font-bold text-neutral-900">Change Mentor</h3>
+                                    <button onClick={closeMentorModal} className="text-neutral-400 hover:text-neutral-600">
+                                        <X className="w-5 h-5" />
+                                    </button>
+                                </div>
+                                <div className="p-6 space-y-4">
+                                    <div className="text-sm text-neutral-600 bg-neutral-50 p-3 rounded-lg border border-neutral-200 space-y-1">
+                                        <p><strong>Group:</strong> {mentorGroup.name ? `Group ${mentorGroup.name}` : '(unnamed)'} · {groupSize} student{groupSize === 1 ? '' : 's'}</p>
+                                        <p><strong>Project:</strong> {mentorGroup.project?.title || 'No project'}</p>
+                                        <p><strong>Current mentor:</strong> {mentorGroup.project?.faculty?.name || 'Unassigned'}</p>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium text-neutral-700 mb-1">New mentor</label>
+                                        <select
+                                            value={mentorFacultyId}
+                                            onChange={(e) => { setMentorFacultyId(e.target.value); setMentorError(''); setMentorLimit(null); }}
+                                            className="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                                        >
+                                            <option value="">Select a faculty member</option>
+                                            {[...faculty]
+                                                .sort((a: any, b: any) => (a.name || '').localeCompare(b.name || ''))
+                                                .map((f: any) => {
+                                                    const max = f.maxStudents ?? 21;
+                                                    const load = f.currentStudents ?? 0;
+                                                    // Reassigning frees this group from its current mentor, so their own
+                                                    // headroom shouldn't count this group against them.
+                                                    const effectiveLoad = f._id === currentMentorId ? Math.max(0, load - groupSize) : load;
+                                                    const wouldExceed = effectiveLoad + groupSize > max;
+                                                    return (
+                                                        <option key={f._id} value={f._id}>
+                                                            {f.name} — {load}/{max} students{wouldExceed ? ' (no room)' : ''}
+                                                        </option>
+                                                    );
+                                                })}
+                                        </select>
+                                        <p className="mt-2 text-xs text-neutral-500">
+                                            The mentor is stored on the group's project, so this also moves the group out of the
+                                            previous supervisor's mentee list. A supervisor's student limit is a semester-wide total
+                                            across every batch, and it is enforced here.
+                                        </p>
+                                    </div>
+
+                                    {mentorError && (
+                                        <div className={`p-3 rounded-lg text-sm border ${mentorLimit ? 'bg-amber-50 border-amber-200 text-amber-800' : 'bg-red-50 border-red-100 text-red-600'}`}>
+                                            <div className="flex items-start gap-2">
+                                                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                                                <div className="space-y-2">
+                                                    <p>{mentorError}</p>
+                                                    {mentorLimit && (
+                                                        <button
+                                                            onClick={() => { closeMentorModal(); setActiveTab('faculty'); }}
+                                                            className="text-xs font-bold underline hover:no-underline"
+                                                        >
+                                                            Go to the Faculty tab to raise {mentorLimit.facultyName}'s student limit
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="px-6 py-4 bg-neutral-50 border-t border-neutral-100 flex justify-end gap-3">
+                                    <button onClick={closeMentorModal} className="px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-100 rounded-lg transition">Cancel</button>
+                                    <button
+                                        onClick={handleChangeMentor}
+                                        disabled={mentorSaving || !mentorFacultyId || mentorFacultyId === currentMentorId}
+                                        className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                        {mentorSaving ? 'Saving…' : 'Change Mentor'}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })()}
 
                 {/* Edit user modal */}
                 {editingUser && (

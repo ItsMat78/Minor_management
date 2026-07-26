@@ -607,3 +607,118 @@ describe('GET /api/projects/admin/proposals', () => {
         expect(res.body.map((p: any) => p.title)).not.toContain('Old semester');
     });
 });
+
+// ── POST /api/projects/:id/updates ───────────────────────────────────────────
+
+describe('POST /api/projects/:id/updates', () => {
+    it('stores the optional heading the mentor\'s update form sends', async () => {
+        const { group } = await createTestGroup(1);
+        const mentor = await createTestUser({ role: UserRole.FACULTY, email: 'mentor-upd@t.ac.in' });
+        const project = await createTestProject(group._id, { status: 'Approved', faculty: mentor._id as any });
+
+        const res = await request(app)
+            .post(`/api/projects/${project._id}/updates`)
+            .set('x-auth-token', generateToken(mentor))
+            .field('title', 'Week 3 review')
+            .field('content', 'Discussed the dataset split.');
+
+        expect(res.status).toBe(200);
+
+        const saved = await Project.findById(project._id);
+        expect(saved!.updates).toHaveLength(1);
+        expect(saved!.updates[0].title).toBe('Week 3 review');
+        expect(saved!.updates[0].content).toBe('Discussed the dataset split.');
+    });
+
+    it('leaves the heading unset when none is sent, and trims a blank one away', async () => {
+        const { group, members: [student] } = await createTestGroup(1);
+        const project = await createTestProject(group._id, { status: 'Approved' });
+
+        await request(app)
+            .post(`/api/projects/${project._id}/updates`)
+            .set('x-auth-token', generateToken(student))
+            .field('content', 'No heading on the student form.');
+
+        await request(app)
+            .post(`/api/projects/${project._id}/updates`)
+            .set('x-auth-token', generateToken(student))
+            .field('title', '   ')
+            .field('content', 'Whitespace heading.');
+
+        const saved = await Project.findById(project._id);
+        expect(saved!.updates).toHaveLength(2);
+        expect(saved!.updates[0].title).toBeUndefined();
+        expect(saved!.updates[1].title).toBeUndefined();
+    });
+
+    it('records links posted alongside an update', async () => {
+        const { group, members: [student] } = await createTestGroup(1);
+        const project = await createTestProject(group._id, { status: 'Approved' });
+
+        const res = await request(app)
+            .post(`/api/projects/${project._id}/updates`)
+            .set('x-auth-token', generateToken(student))
+            .field('content', 'Pushed the repo.')
+            .field('links', 'https://github.com/a, https://github.com/b');
+
+        expect(res.status).toBe(200);
+        const saved = await Project.findById(project._id);
+        expect(saved!.updates[0].links).toEqual(['https://github.com/a', 'https://github.com/b']);
+    });
+
+    it('accepts a Markdown attachment even when the browser reports no useful mimetype', async () => {
+        // Many systems have no registered type for .md, so Chrome sends application/octet-stream.
+        const { group, members: [student] } = await createTestGroup(1);
+        const project = await createTestProject(group._id, { status: 'Approved' });
+
+        const res = await request(app)
+            .post(`/api/projects/${project._id}/updates`)
+            .set('x-auth-token', generateToken(student))
+            .field('content', 'Notes attached.')
+            .attach('files', Buffer.from('# Sprint notes\n'), {
+                filename: 'notes.md',
+                contentType: 'application/octet-stream',
+            });
+
+        expect(res.status).toBe(200);
+        const saved = await Project.findById(project._id);
+        expect(saved!.updates[0].attachments).toHaveLength(1);
+        expect(saved!.updates[0].attachments![0]).toMatch(/\.md$/);
+    });
+
+    it('answers 400 with a readable reason for an unsupported file type', async () => {
+        const { group, members: [student] } = await createTestGroup(1);
+        const project = await createTestProject(group._id, { status: 'Approved' });
+
+        const res = await request(app)
+            .post(`/api/projects/${project._id}/updates`)
+            .set('x-auth-token', generateToken(student))
+            .field('content', 'Trying to attach a binary.')
+            .attach('files', Buffer.from('MZ\x00\x00'), {
+                filename: 'tool.exe',
+                contentType: 'application/x-msdownload',
+            });
+
+        // Not a 500 HTML page: the client needs the reason to show the user.
+        expect(res.status).toBe(400);
+        expect(res.body.message).toMatch(/tool\.exe.*not a supported file type/i);
+        expect(res.body.message).toMatch(/Markdown/);
+
+        // Nothing was recorded for a rejected upload.
+        const saved = await Project.findById(project._id);
+        expect(saved!.updates).toHaveLength(0);
+    });
+
+    it('rejects an update from someone who is neither a member nor the mentor', async () => {
+        const { group } = await createTestGroup(1);
+        const outsider = await createTestUser({ role: UserRole.STUDENT, email: 'outsider-upd@t.ac.in' });
+        const project = await createTestProject(group._id, { status: 'Approved' });
+
+        const res = await request(app)
+            .post(`/api/projects/${project._id}/updates`)
+            .set('x-auth-token', generateToken(outsider))
+            .field('content', 'Not mine to post on.');
+
+        expect(res.status).toBe(403);
+    });
+});

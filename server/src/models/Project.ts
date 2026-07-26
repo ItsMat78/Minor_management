@@ -35,6 +35,7 @@ export interface IProject extends Document {
     archivedSession?: string; // Academic session the project was archived in, e.g. "Even 2025-26"
     archivedMembers?: { name: string; email?: string; rollNumber?: string; branch?: string }[];
     updates: {
+        title?: string;
         content: string;
         date: Date;
         attachments?: string[];
@@ -131,6 +132,7 @@ const ProjectSchema: Schema = new Schema({
         updatedAt: { type: Date, default: Date.now }
     }],
     updates: [{
+        title: { type: String },
         content: { type: String, required: true },
         date: { type: Date, default: Date.now },
         attachments: [{ type: String }],

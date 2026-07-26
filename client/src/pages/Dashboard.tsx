@@ -5,6 +5,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../utils/api';
 import { Layout, Users, CheckSquare, MessageSquare, Menu, Clock, Calendar, X, ChevronRight, Plus, Archive, FileText, Search, Square, AlertCircle, Trash2, AlertTriangle, Trophy, Star, Pencil } from 'lucide-react';
 import FilePreview from '../components/FilePreview';
+import AttachmentGallery from '../components/AttachmentGallery';
 import AdminDashboard from './AdminDashboard';
 import FacultyDashboard from './FacultyDashboard';
 import Chat from '../components/Chat';
@@ -388,9 +389,9 @@ const Dashboard: React.FC = () => {
             setUpdateLinks('');
             setUpdateFiles(null);
             setIsUpdateDialogOpen(false);
-        } catch (error) {
+        } catch (error: any) {
             console.error("Failed to post update", error);
-            alert("Failed to post update");
+            alert(error?.response?.data?.message || "Failed to post update");
         } finally {
             setIsUpdateSubmitting(false);
         }
@@ -1089,15 +1090,26 @@ const Dashboard: React.FC = () => {
                                                                     <h3 className="text-2xl font-bold text-neutral-900 mt-3 capitalize">{approvedProject.title}</h3>
                                                                     <p className="text-neutral-500 mt-2 leading-relaxed max-w-2xl text-sm">{approvedProject.description}</p>
                                                                 </div>
-                                                                {/* Members can refine an active project's details; it stays approved (mentor stays locked). */}
+                                                                {/* Members can refine an active project's details; it stays approved (mentor stays locked).
+                                                                    That window closes when mid-semester evaluation opens — from then on the
+                                                                    project is frozen (the server rejects edits too). */}
                                                                 {!approvedProject.isArchived && (
-                                                                    <button
-                                                                        onClick={() => navigate(`/project/propose?edit=${approvedProject._id}`)}
-                                                                        className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-600 bg-indigo-50 border border-indigo-100 rounded-lg hover:bg-indigo-100 transition-colors"
-                                                                        title="Edit project details"
-                                                                    >
-                                                                        <Pencil className="w-3.5 h-3.5" /> Edit
-                                                                    </button>
+                                                                    approvedProject.detailsLocked ? (
+                                                                        <span
+                                                                            className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-neutral-500 bg-neutral-100 border border-neutral-200 rounded-lg cursor-not-allowed"
+                                                                            title="Project details are locked because mid-semester evaluation has begun"
+                                                                        >
+                                                                            <Pencil className="w-3.5 h-3.5" /> Locked after mid-term
+                                                                        </span>
+                                                                    ) : (
+                                                                        <button
+                                                                            onClick={() => navigate(`/project/propose?edit=${approvedProject._id}`)}
+                                                                            className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-600 bg-indigo-50 border border-indigo-100 rounded-lg hover:bg-indigo-100 transition-colors"
+                                                                            title="Edit project details"
+                                                                        >
+                                                                            <Pencil className="w-3.5 h-3.5" /> Edit
+                                                                        </button>
+                                                                    )
                                                                 )}
                                                             </div>
 
@@ -1213,6 +1225,9 @@ const Dashboard: React.FC = () => {
                                                                         <div className="bg-white p-5 rounded-xl border border-neutral-200 shadow-sm hover:shadow-md transition-shadow">
                                                                             <div className="flex justify-between items-start mb-2">
                                                                                 <div>
+                                                                                    {update.title && (
+                                                                                        <h4 className="font-bold text-neutral-900 text-base mb-1">{update.title}</h4>
+                                                                                    )}
                                                                                     {update.createdBy?.name && (
                                                                                         <h4 className="font-bold text-neutral-900">
                                                                                             {update.createdBy.name}
@@ -1239,6 +1254,9 @@ const Dashboard: React.FC = () => {
                                                                                             className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-neutral-50 text-indigo-600 text-xs font-medium rounded-lg hover:bg-indigo-50 border border-neutral-200 hover:border-indigo-200 transition-colors">
                                                                                             <FileText className="w-3 h-3" /> Link {lIdx + 1}
                                                                                         </a>
+                                                                                    ))}
+                                                                                    {update.attachments?.map((url: string, aIdx: number) => (
+                                                                                        <FilePreview key={`a-${aIdx}`} url={url} description={`Attachment ${aIdx + 1}`} />
                                                                                     ))}
                                                                                 </div>
                                                                             )}
@@ -1371,9 +1389,9 @@ const Dashboard: React.FC = () => {
                                                                                 >
                                                                                     <Trash2 className="w-4 h-4" />
                                                                                 </button>
-                                                                                <button 
+                                                                                <button
                                                                                      onClick={() => {
-                                                                                         if (project.status === 'Draft') {
+                                                                                         if (project.status === 'Draft' && !project.detailsLocked) {
                                                                                              navigate(`/project/propose?edit=${project._id}`);
                                                                                          } else {
                                                                                              setSelectedProject(project);
@@ -1381,7 +1399,7 @@ const Dashboard: React.FC = () => {
                                                                                      }}
                                                                                      className="text-[12px] font-black text-indigo-600 flex items-center gap-1 hover:translate-x-1 transition-transform"
                                                                                  >
-                                                                                    {project.status === 'Draft' ? 'Finish' : 'View Details'} <ChevronRight className="w-4 h-4" />
+                                                                                    {project.status === 'Draft' && !project.detailsLocked ? 'Finish' : 'View Details'} <ChevronRight className="w-4 h-4" />
                                                                                  </button>
                                                                             </div>
                                                                         </div>
@@ -1405,7 +1423,11 @@ const Dashboard: React.FC = () => {
                                                                                 </div>
                                                                             )}
                                                                             <p className="text-xs text-neutral-500 line-clamp-1 mb-3">{project.feedback}</p>
-                                                                            <button onClick={() => navigate(`/project/propose?edit=${project._id}`)} className="text-[10px] font-black text-indigo-600 uppercase tracking-widest hover:underline">Revise Proposal</button>
+                                                                            {project.detailsLocked ? (
+                                                                                <span className="text-[10px] font-black text-neutral-400 uppercase tracking-widest" title="Locked because mid-semester evaluation has begun">Locked after mid-term</span>
+                                                                            ) : (
+                                                                                <button onClick={() => navigate(`/project/propose?edit=${project._id}`)} className="text-[10px] font-black text-indigo-600 uppercase tracking-widest hover:underline">Revise Proposal</button>
+                                                                            )}
                                                                         </div>
                                                                     ))}
                                                                 </div>
@@ -2489,23 +2511,7 @@ const Dashboard: React.FC = () => {
                             <div>
                                 <h4 className="flex items-center gap-2 text-xs font-black text-neutral-400 uppercase tracking-widest mb-4">Project Assets</h4>
                                 {selectedProject?.attachments && selectedProject.attachments.length > 0 ? (
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                        {selectedProject.attachments.map((url: string, i: number) => {
-                                            const fileName = url.split('/').pop()?.split('-').pop() || `File ${i + 1}`;
-                                            const isLink = url.startsWith('http') && !url.includes('/uploads/');
-                                            return (
-                                                <a key={i} href={url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 p-3 bg-white border border-neutral-200 rounded-2xl hover:border-indigo-500 group transition-all shadow-sm">
-                                                    <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg group-hover:bg-indigo-600 group-hover:text-white transition-colors border border-indigo-100">
-                                                        {isLink ? <Layout className="w-4 h-4" /> : <FileText className="w-4 h-4" />}
-                                                    </div>
-                                                    <div className="flex-1 min-w-0">
-                                                        <p className="text-xs font-bold text-neutral-900 truncate">{isLink ? "Web Link" : fileName}</p>
-                                                        <p className="text-[9px] text-neutral-400 font-bold uppercase tracking-widest leading-none mt-0.5">{isLink ? "External Resource" : "Document Asset"}</p>
-                                                    </div>
-                                                </a>
-                                            );
-                                        })}
-                                    </div>
+                                    <AttachmentGallery urls={selectedProject.attachments} />
                                 ) : (
                                     <div className="p-8 border-2 border-dashed border-neutral-200 rounded-3xl text-center bg-neutral-50/30">
                                         <p className="text-xs text-neutral-400 font-medium">No attachments provided.</p>
