@@ -358,6 +358,162 @@ export const sendProposalStatusEmail = async (
     await sendEmail(emails, subject, text, html);
 };
 
+/**
+ * A progress update was posted on a project's timeline.
+ *
+ * Deliberately one-directional per post: a student's update notifies only the mentor, and a
+ * mentor's update notifies only the group. Nobody is mailed about their own post, and the
+ * portal never fans a single update out to everyone involved.
+ */
+export const sendProjectUpdateEmail = async (
+    emails: string[],
+    projectTitle: string,
+    authorName: string,
+    audience: 'mentor' | 'members',
+    opts: {
+        groupName?: string;
+        groupId?: string;
+        batch?: string;
+        updateTitle?: string;
+        content?: string;
+        attachmentCount?: number;
+        linkCount?: number;
+    } = {}
+) => {
+    if (emails.length === 0) return;
+
+    const toMentor = audience === 'mentor';
+    const url = toMentor
+        ? portalLink(opts.groupId ? `/faculty/group/${opts.groupId}` : '/dashboard?tab=mentees')
+        : portalLink('/dashboard?tab=project');
+
+    const excerpt = opts.content
+        ? (opts.content.length > 300 ? `${opts.content.slice(0, 300)}…` : opts.content)
+        : '';
+
+    // "2 files, 1 link" — tells the reader whether opening the portal is worth it right now.
+    const attached = [
+        opts.attachmentCount ? `${opts.attachmentCount} file${opts.attachmentCount === 1 ? '' : 's'}` : '',
+        opts.linkCount ? `${opts.linkCount} link${opts.linkCount === 1 ? '' : 's'}` : '',
+    ].filter(Boolean).join(', ');
+
+    const lead = toMentor
+        ? `<strong>${authorName}</strong> posted a progress update on a project you supervise.`
+        : `Your mentor <strong>${authorName}</strong> posted an update on your project timeline.`;
+    const subject = toMentor
+        ? `Progress update on "${projectTitle}"${opts.groupName ? ` (Group ${opts.groupName})` : ''}`
+        : `Your mentor posted an update on "${projectTitle}"`;
+
+    const text =
+        (toMentor
+            ? `${authorName} posted a progress update on "${projectTitle}"${opts.groupName ? `, group ${opts.groupName}` : ''}.\n`
+            : `Your mentor ${authorName} posted an update on your project "${projectTitle}".\n`) +
+        (opts.updateTitle ? `\n${opts.updateTitle}\n` : '') +
+        (excerpt ? `\n${excerpt}\n` : '') +
+        (attached ? `\nAttached: ${attached}\n` : '') +
+        `\nRead it on the project timeline: ${url}` + textFooter();
+
+    const html = renderHtml({
+        title: 'Project Update',
+        accent: '#4f46e5',
+        lead,
+        details: [
+            ['Project', projectTitle],
+            ['Group', opts.groupName],
+            ['Batch', opts.batch],
+            ['Posted by', authorName],
+            ['Attached', attached],
+        ],
+        body: (opts.updateTitle || excerpt)
+            ? `<div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:12px 14px;">
+                 ${opts.updateTitle ? `<p style="margin:0 0 6px;color:#111827;font-size:13px;font-weight:700;">${opts.updateTitle}</p>` : ''}
+                 ${excerpt ? `<p style="margin:0;color:#374151;font-size:13px;line-height:1.6;white-space:pre-wrap;">${excerpt}</p>` : ''}
+               </div>`
+            : '',
+        cta: { label: 'Open Project Timeline', url },
+    });
+
+    await sendEmail(emails, subject, text, html);
+};
+
+/**
+ * An admin moved a group to a different supervisor. Sent to three audiences with the same facts
+ * but different framing, since "you have a new group" and "this group is no longer yours" are
+ * very different messages to open.
+ */
+export const sendMentorChangeEmail = async (
+    emails: string[],
+    audience: 'new-mentor' | 'previous-mentor' | 'members',
+    opts: {
+        projectTitle: string;
+        newMentorName: string;
+        previousMentorName?: string;
+        groupName?: string;
+        groupId?: string;
+        batch?: string;
+        memberNames?: string[];
+    }
+) => {
+    if (emails.length === 0) return;
+
+    const members = opts.memberNames?.length ? opts.memberNames.join(', ') : '';
+    const groupLabel = opts.groupName ? `Group ${opts.groupName}` : 'A group';
+
+    const url = audience === 'members'
+        ? portalLink('/dashboard?tab=project')
+        : portalLink(opts.groupId && audience === 'new-mentor' ? `/faculty/group/${opts.groupId}` : '/dashboard?tab=mentees');
+
+    const copy = {
+        'new-mentor': {
+            subject: `You are now the mentor for "${opts.projectTitle}"`,
+            accent: '#10b981',
+            lead: `${groupLabel} has been assigned to you as their faculty mentor by the portal administrator.`,
+            note: 'This group now appears in your mentees list, and its evaluation falls to the panel you sit on.',
+        },
+        'previous-mentor': {
+            subject: `"${opts.projectTitle}" has been reassigned to another mentor`,
+            accent: '#f59e0b',
+            lead: `${groupLabel} is no longer supervised by you. The portal administrator has reassigned them to <strong>${opts.newMentorName}</strong>.`,
+            note: 'The group has been removed from your mentees list. Any marks you already recorded for them are preserved.',
+        },
+        members: {
+            subject: `Your Minor Project mentor is now ${opts.newMentorName}`,
+            accent: '#4f46e5',
+            lead: `The portal administrator has changed your group's faculty mentor to <strong>${opts.newMentorName}</strong>.`,
+            note: 'Direct any further questions about your project to your new mentor. Your project details, timeline and uploaded files are unchanged.',
+        },
+    }[audience];
+
+    const text =
+        `${copy.lead.replace(/<[^>]+>/g, '')}\n\n` +
+        `Project: ${opts.projectTitle}\n` +
+        (opts.groupName ? `Group: ${opts.groupName}\n` : '') +
+        (opts.batch ? `Batch: ${opts.batch}\n` : '') +
+        `New mentor: ${opts.newMentorName}\n` +
+        (opts.previousMentorName ? `Previous mentor: ${opts.previousMentorName}\n` : '') +
+        (members ? `Members: ${members}\n` : '') +
+        `\n${copy.note}\n` +
+        `\nOpen the portal: ${url}` + textFooter();
+
+    const html = renderHtml({
+        title: 'Mentor Changed',
+        accent: copy.accent,
+        lead: copy.lead,
+        details: [
+            ['Project', opts.projectTitle],
+            ['Group', opts.groupName],
+            ['Batch', opts.batch],
+            ['New mentor', opts.newMentorName],
+            ['Previous mentor', opts.previousMentorName],
+            ['Members', members],
+        ],
+        body: `<p style="margin:0;color:#6b7280;font-size:13px;line-height:1.6;">${copy.note}</p>`,
+        cta: { label: audience === 'members' ? 'Open Your Project' : 'Open Your Mentees', url },
+    });
+
+    await sendEmail(emails, copy.subject, text, html);
+};
+
 export const sendPanelAssignmentEmail = async (
     emails: string[],
     eventTitle: string,

@@ -3,7 +3,7 @@ import Project from '../models/Project';
 import Group from '../models/Group';
 import User, { UserRole } from '../models/User';
 import mongoose from 'mongoose';
-import { sendProposalStatusEmail, sendProposalSubmissionEmail } from '../utils/emailService';
+import { sendProposalStatusEmail, sendProposalSubmissionEmail, sendProjectUpdateEmail } from '../utils/emailService';
 import { publicUrlFor, deleteFileByUrl } from '../middleware/uploadMiddleware';
 import Panel from '../models/Panel';
 import Event, { EventType } from '../models/Event';
@@ -444,10 +444,39 @@ export const addUpdate = async (req: Request, res: Response) => {
         }
         await project.save();
 
-        // Progress updates no longer send email in either direction (student→mentor,
-        // mentor→students). These fired on every post and scaled with how chatty each group was,
-        // dwarfing the OTP/proposal traffic. Updates surface in-app via the project timeline and
-        // the hasNewUpdate flag set above.
+        // Notify the other side of the conversation, never the poster. A student's update goes to
+        // the mentor alone; a mentor's update goes to the group. One post therefore produces one
+        // email in one direction, which is what keeps this off the daily quota even for chatty
+        // groups. In-app, the hasNewUpdate flag set above still drives the mentor's badge.
+        try {
+            const author = await User.findById(userId).select('name').lean() as any;
+            const groupBatch = group?.targetBatch ? String(group.targetBatch) : undefined;
+            const common = {
+                groupName: group?.name,
+                groupId: group ? String(group._id) : undefined,
+                batch: groupBatch,
+                updateTitle: typeof title === 'string' ? title.trim() || undefined : undefined,
+                content,
+                attachmentCount: fileUrls.length,
+                linkCount: linkUrls.length,
+            };
+
+            if (isFaculty) {
+                const memberUsers = await User.find({ _id: { $in: group?.members ?? [] } }).select('email').lean();
+                const emails = memberUsers.map((m: any) => m.email).filter((e: string) => !!e);
+                sendProjectUpdateEmail(emails, project.title, author?.name || 'Your mentor', 'members', common)
+                    .catch(err => console.error('Update email failed:', err));
+            } else if (project.faculty) {
+                const mentor = await User.findById(project.faculty).select('email').lean() as any;
+                if (mentor?.email) {
+                    sendProjectUpdateEmail([mentor.email], project.title, author?.name || 'A group member', 'mentor', common)
+                        .catch(err => console.error('Update email failed:', err));
+                }
+            }
+        } catch (emailErr) {
+            // A notification must never fail the post that triggered it.
+            console.error('Failed to prepare project update email', emailErr);
+        }
 
         res.json(project);
     } catch (error) {

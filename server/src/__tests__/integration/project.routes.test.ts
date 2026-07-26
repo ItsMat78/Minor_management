@@ -8,6 +8,9 @@ import Project from '../../models/Project';
 import Group from '../../models/Group';
 import { createTestUser, generateToken, createTestGroup, createTestProject } from '../helpers/factories';
 import User, { UserRole } from '../../models/User';
+import { sendProjectUpdateEmail } from '../../utils/emailService';
+
+const mockUpdateEmail = sendProjectUpdateEmail as jest.Mock;
 
 jest.mock('../../utils/emailService', () => ({
     sendEmail: jest.fn().mockResolvedValue({ ok: true }),
@@ -21,6 +24,8 @@ jest.mock('../../utils/emailService', () => ({
     sendProposalSubmissionEmail: jest.fn().mockResolvedValue(undefined),
     sendProposalStatusEmail: jest.fn().mockResolvedValue(undefined),
     sendPanelAssignmentEmail: jest.fn().mockResolvedValue(undefined),
+    sendProjectUpdateEmail: jest.fn().mockResolvedValue(undefined),
+    sendMentorChangeEmail: jest.fn().mockResolvedValue(undefined),
 }));
 
 // ── POST /api/projects ───────────────────────────────────────────────────────
@@ -707,6 +712,63 @@ describe('POST /api/projects/:id/updates', () => {
         // Nothing was recorded for a rejected upload.
         const saved = await Project.findById(project._id);
         expect(saved!.updates).toHaveLength(0);
+    });
+
+    it('emails only the mentor when a student posts', async () => {
+        mockUpdateEmail.mockClear();
+        const { group, members: [student] } = await createTestGroup(2);
+        const mentor = await createTestUser({ role: UserRole.FACULTY, email: 'mentor-notify@t.ac.in' });
+        const project = await createTestProject(group._id, { status: 'Approved', faculty: mentor._id as any });
+
+        const res = await request(app)
+            .post(`/api/projects/${project._id}/updates`)
+            .set('x-auth-token', generateToken(student))
+            .field('title', 'Week 4')
+            .field('content', 'Finished the parser.')
+            .field('links', 'https://github.com/a');
+        expect(res.status).toBe(200);
+
+        expect(mockUpdateEmail).toHaveBeenCalledTimes(1);
+        const [emails, projectTitle, authorName, audience, opts] = mockUpdateEmail.mock.calls[0];
+        expect(emails).toEqual(['mentor-notify@t.ac.in']); // the co-member is NOT mailed
+        expect(projectTitle).toBe('Test Project');
+        expect(authorName).toBe(student.name);
+        expect(audience).toBe('mentor');
+        expect(opts).toMatchObject({ updateTitle: 'Week 4', content: 'Finished the parser.', linkCount: 1, attachmentCount: 0 });
+    });
+
+    it('emails every group member when the mentor posts', async () => {
+        mockUpdateEmail.mockClear();
+        const { group, members } = await createTestGroup(3);
+        const mentor = await createTestUser({ role: UserRole.FACULTY, name: 'Dr. Guide', email: 'guide-posts@t.ac.in' });
+        const project = await createTestProject(group._id, { status: 'Approved', faculty: mentor._id as any });
+
+        const res = await request(app)
+            .post(`/api/projects/${project._id}/updates`)
+            .set('x-auth-token', generateToken(mentor))
+            .field('content', 'Please tighten the scope before mid-term.');
+        expect(res.status).toBe(200);
+
+        expect(mockUpdateEmail).toHaveBeenCalledTimes(1);
+        const [emails, , authorName, audience] = mockUpdateEmail.mock.calls[0];
+        expect(emails).toEqual(expect.arrayContaining(members.map(m => m.email)));
+        expect(emails).not.toContain('guide-posts@t.ac.in'); // never mail the poster
+        expect(authorName).toBe('Dr. Guide');
+        expect(audience).toBe('members');
+    });
+
+    it('sends nothing when a student posts on a project with no mentor yet', async () => {
+        mockUpdateEmail.mockClear();
+        const { group, members: [student] } = await createTestGroup(1);
+        const project = await createTestProject(group._id, { status: 'Approved' }); // no faculty
+
+        const res = await request(app)
+            .post(`/api/projects/${project._id}/updates`)
+            .set('x-auth-token', generateToken(student))
+            .field('content', 'Nobody to tell.');
+
+        expect(res.status).toBe(200);
+        expect(mockUpdateEmail).not.toHaveBeenCalled();
     });
 
     it('rejects an update from someone who is neither a member nor the mentor', async () => {

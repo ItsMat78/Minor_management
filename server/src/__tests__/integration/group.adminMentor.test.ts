@@ -13,6 +13,9 @@ import Group from '../../models/Group';
 import Project from '../../models/Project';
 import User, { UserRole } from '../../models/User';
 import { createTestUser, generateToken, createTestGroup, createTestProject } from '../helpers/factories';
+import { sendMentorChangeEmail } from '../../utils/emailService';
+
+const mockMentorEmail = sendMentorChangeEmail as jest.Mock;
 
 jest.mock('../../utils/emailService', () => ({
     sendEmail: jest.fn().mockResolvedValue({ ok: true }),
@@ -26,6 +29,8 @@ jest.mock('../../utils/emailService', () => ({
     sendProposalSubmissionEmail: jest.fn().mockResolvedValue(undefined),
     sendProposalStatusEmail: jest.fn().mockResolvedValue(undefined),
     sendPanelAssignmentEmail: jest.fn().mockResolvedValue(undefined),
+    sendProjectUpdateEmail: jest.fn().mockResolvedValue(undefined),
+    sendMentorChangeEmail: jest.fn().mockResolvedValue(undefined),
 }));
 
 const adminToken = async () => generateToken(await createTestUser({ role: UserRole.ADMIN }));
@@ -147,6 +152,74 @@ describe('PUT /api/groups/:id/mentor', () => {
             .send({ facultyId: String(mentor._id) });
 
         expect(res.status).toBe(200);
+    });
+
+    it('tells the new mentor, the previous mentor and the group', async () => {
+        mockMentorEmail.mockClear();
+        const { group, members } = await createTestGroup(2);
+        const oldMentor = await createTestUser({ role: UserRole.FACULTY, name: 'Dr. Outgoing', email: 'outgoing@t.ac.in' });
+        const project = await createTestProject(group._id, { status: 'Approved', faculty: oldMentor._id as any });
+        group.project = project._id as any;
+        await group.save();
+        const newMentor = await createTestUser({ role: UserRole.FACULTY, name: 'Dr. Incoming', email: 'incoming@t.ac.in' });
+
+        const res = await request(app)
+            .put(`/api/groups/${group._id}/mentor`)
+            .set('x-auth-token', await adminToken())
+            .send({ facultyId: String(newMentor._id) });
+        expect(res.status).toBe(200);
+
+        expect(mockMentorEmail).toHaveBeenCalledTimes(3);
+        const byAudience = Object.fromEntries(
+            mockMentorEmail.mock.calls.map(([emails, audience, opts]: any) => [audience, { emails, opts }])
+        );
+
+        expect(byAudience['new-mentor'].emails).toEqual(['incoming@t.ac.in']);
+        expect(byAudience['previous-mentor'].emails).toEqual(['outgoing@t.ac.in']);
+        expect(byAudience['members'].emails).toEqual(
+            expect.arrayContaining(members.map(m => m.email))
+        );
+
+        // Every audience gets the same facts, including who it moved from and to.
+        for (const audience of ['new-mentor', 'previous-mentor', 'members']) {
+            expect(byAudience[audience].opts).toMatchObject({
+                projectTitle: 'Test Project',
+                newMentorName: 'Dr. Incoming',
+                previousMentorName: 'Dr. Outgoing',
+            });
+        }
+    });
+
+    it('skips the previous-mentor email when the project had no mentor', async () => {
+        mockMentorEmail.mockClear();
+        const { group } = await createTestGroup(1);
+        await createTestProject(group._id, { status: 'Pending' }); // no faculty
+        const newMentor = await createTestUser({ role: UserRole.FACULTY, email: 'first@t.ac.in' });
+
+        const res = await request(app)
+            .put(`/api/groups/${group._id}/mentor`)
+            .set('x-auth-token', await adminToken())
+            .send({ facultyId: String(newMentor._id) });
+        expect(res.status).toBe(200);
+
+        const audiences = mockMentorEmail.mock.calls.map(([, audience]: any) => audience);
+        expect(audiences).toEqual(expect.arrayContaining(['new-mentor', 'members']));
+        expect(audiences).not.toContain('previous-mentor');
+    });
+
+    it('sends nothing when the reassignment is refused', async () => {
+        mockMentorEmail.mockClear();
+        const { group } = await mentoredGroup(3);
+        const newMentor = await createTestUser({ role: UserRole.FACULTY });
+        await User.findByIdAndUpdate(newMentor._id, { maxStudents: 1 });
+
+        const res = await request(app)
+            .put(`/api/groups/${group._id}/mentor`)
+            .set('x-auth-token', await adminToken())
+            .send({ facultyId: String(newMentor._id) });
+
+        expect(res.status).toBe(400);
+        expect(mockMentorEmail).not.toHaveBeenCalled();
     });
 
     it('rejects a faculty id that is not a faculty account', async () => {

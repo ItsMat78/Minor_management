@@ -4,7 +4,7 @@ import Group from '../models/Group';
 import User from '../models/User';
 import Project from '../models/Project';
 import Event, { EventType } from '../models/Event';
-import { sendGroupCompleteEmail, sendGroupInviteEmail, sendGroupInviteResponseEmail } from '../utils/emailService';
+import { sendGroupCompleteEmail, sendGroupInviteEmail, sendGroupInviteResponseEmail, sendMentorChangeEmail } from '../utils/emailService';
 import { nextActiveGroupNumber } from '../utils/groupNumbering';
 import { midTermEvaluationOpened, projectDetailsFrozen } from '../utils/evaluationLock';
 
@@ -800,7 +800,7 @@ export const adminSetGroupMentor = async (req: Request, res: Response) => {
             });
         }
 
-        const faculty = await User.findById(facultyId).select('name role maxStudents');
+        const faculty = await User.findById(facultyId).select('name email role maxStudents');
         if (!faculty || faculty.role !== 'Faculty') {
             return res.status(400).json({ message: 'Invalid faculty selected.' });
         }
@@ -820,8 +820,43 @@ export const adminSetGroupMentor = async (req: Request, res: Response) => {
             });
         }
 
+        // Read the outgoing mentor before the overwrite — they need telling too.
+        const previousMentor = project.faculty
+            ? await User.findById(project.faculty).select('name email').lean() as any
+            : null;
+
         project.faculty = faculty._id as any;
         await project.save();
+
+        // Everyone affected hears about it: the incoming mentor, the outgoing one, and the group.
+        // Each gets the same facts framed for their side (see sendMentorChangeEmail).
+        try {
+            const memberUsers = await User.find({ _id: { $in: group.members } }).select('name email').lean();
+            const context = {
+                projectTitle: project.title,
+                newMentorName: faculty.name,
+                previousMentorName: previousMentor?.name,
+                groupName: group.name,
+                groupId: String(group._id),
+                batch: group.targetBatch ? String(group.targetBatch) : undefined,
+                memberNames: memberUsers.map((m: any) => m.name).filter(Boolean),
+            };
+            const failed = (err: any) => console.error('Mentor change email failed:', err);
+
+            if (faculty.email) {
+                sendMentorChangeEmail([faculty.email], 'new-mentor', context).catch(failed);
+            }
+            if (previousMentor?.email) {
+                sendMentorChangeEmail([previousMentor.email], 'previous-mentor', context).catch(failed);
+            }
+            const memberEmails = memberUsers.map((m: any) => m.email).filter((e: string) => !!e);
+            if (memberEmails.length > 0) {
+                sendMentorChangeEmail(memberEmails, 'members', context).catch(failed);
+            }
+        } catch (emailErr) {
+            // The reassignment already succeeded; a notification failure must not undo it.
+            console.error('Failed to prepare mentor change emails', emailErr);
+        }
 
         res.json({
             message: `Mentor changed to ${faculty.name}.`,
