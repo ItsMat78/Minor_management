@@ -10,8 +10,12 @@
       tags: [nodejs]
     - role: pm2
       tags: [pm2]
+    # Opt-in: the live certificate is a wildcard managed outside ansible, and this role would
+    # overwrite it with ansible/ssl/*, which is gitignored and absent on a fresh checkout.
+    # Set manage_ssl_certificates=true only when you genuinely intend to replace the cert.
     - role: ssl_certificates
       tags: [ssl_certificates]
+      when: manage_ssl_certificates | default(false)
     - role: nginx
       tags: [nginx]
     - role: github_runner

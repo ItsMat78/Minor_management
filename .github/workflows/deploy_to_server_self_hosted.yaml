@@ -60,10 +60,14 @@ jobs:
           set -e
           TARGET=$HOME/minor_project_management_server
           mkdir -p "$TARGET"
+          # 'uploads' is gitignored, so it never exists in the checkout. Without this exclude,
+          # --delete treats it as extraneous and wipes every uploaded file in the system on
+          # each deploy: profile photos, proposal attachments, submissions, the lot.
           rsync -a --delete \
             --exclude '.git' \
             --exclude '.github' \
             --exclude 'node_modules' \
+            --exclude 'uploads' \
             ./server/ "$TARGET/"
 
       - name: Install dependencies

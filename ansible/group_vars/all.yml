@@ -5,16 +5,25 @@ ansible_python_interpreter: /usr/bin/python3
 project_title: minor_project_management
 
 deployment_group: iiitnr
-app_root: "/home/{{ ansible_user }}/{{ project_title }}"
+
+# The app is deployed as a git clone and served straight out of it: nginx serves the built SPA
+# from client/dist, and pm2 (app name "minor-portal") runs server/dist/index.js from server/.
+repo_root: "/home/{{ ansible_user }}/Minor_management"
+client_dist: "{{ repo_root }}/client/dist"
 
 nginx_server_name: minor-project.iiitnr.ac.in
 nginx_config_path: /etc/nginx/sites-available
 nginx_enabled_path: /etc/nginx/sites-enabled
-api_port: 3000          # external port nginx exposes for direct API access (SSL)
-api_backend_port: 5000  # internal port Node.js actually listens on
-ssl_cert_dir: "/home/{{ ansible_user }}/ssl_certificates"
-ssl_cert_file: "{{ ssl_cert_dir }}/certificate.crt"
-ssl_key_file: "{{ ssl_cert_dir }}/key.key"
+api_backend_port: 5000  # internal port Node.js listens on; nginx proxies /api to it from 443
+acme_webroot: /var/www/html
+
+# Certificates are managed outside ansible: a wildcard *.iiitnr.ac.in issued to the institute,
+# placed here by hand. The ssl_certificates role would overwrite them from ansible/ssl/, so it
+# is gated behind this flag in site.yml. Leave it false unless replacing the certificate.
+manage_ssl_certificates: false
+ssl_cert_dir: /etc/ssl/minor-project
+ssl_cert_file: "{{ ssl_cert_dir }}/college.cer"
+ssl_key_file: "{{ ssl_cert_dir }}/college.key"
 
 local_ssl_cert_path: ./ssl/certificate.crt
 local_ssl_key_path: ./ssl/key.key
