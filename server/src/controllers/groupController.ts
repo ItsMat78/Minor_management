@@ -603,7 +603,7 @@ export const getAllGroups = async (req: Request, res: Response) => {
             .populate({
                 path: 'project',
                 populate: { path: 'faculty', select: 'name email department photoUrl' },
-                select: 'title description status tags semester attachments feedback hasNewUpdate updates faculty midTermEvaluation endTermEvaluation finalReportEvaluation studentFeedback studentEvaluations'
+                select: 'title description status isArchived tags semester attachments feedback hasNewUpdate updates faculty midTermEvaluation endTermEvaluation finalReportEvaluation studentFeedback studentEvaluations'
             })
             .sort({ createdAt: -1 });
 
@@ -648,7 +648,7 @@ const populatedGroup = (id: any) =>
         .populate({
             path: 'project',
             populate: { path: 'faculty', select: 'name email department photoUrl' },
-            select: 'title description status tags semester attachments feedback hasNewUpdate updates faculty midTermEvaluation endTermEvaluation finalReportEvaluation studentFeedback studentEvaluations'
+            select: 'title description status isArchived tags semester attachments feedback hasNewUpdate updates faculty midTermEvaluation endTermEvaluation finalReportEvaluation studentFeedback studentEvaluations'
         });
 
 export const adminAddGroupMembers = async (req: Request, res: Response) => {

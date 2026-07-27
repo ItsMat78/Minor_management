@@ -1492,27 +1492,31 @@ const AdminDashboard: React.FC = () => {
 
     const displayGroups = getFilteredGroups();
 
-    // Helper to get faculty stats per batch
+    // Helper to get faculty stats per batch.
+    // Only approved projects count as mentorship. A group whose proposal is still Pending
+    // (or was rejected) has picked this faculty but isn't their mentee load yet, so it must
+    // stay out of these numbers — same rule the server uses to enforce mentorship limits.
+    // '/groups' already excludes archived groups; the isArchived guard covers a stale
+    // project pointer left behind by a past semester.
     const getFacultyBatchStats = (facultyId: string) => {
         const stats: Record<string, { students: number, groups: number }> = {};
 
-        // Iterate over all APPROVED groups to calculate stats
-        // Note: We should ideally use 'groups' state here, but need to ensure it contains ALL groups, not just filtered ones.
-        // Assuming 'groups' contains all fetched groups.
         groups.forEach(g => {
-            // Check if this group belongs to the faculty
-            // The group.project.faculty might be populated. 
-            // Ideally we need to check if the project is approved assigned to this faculty.
-            if (g.project?.faculty?._id === facultyId || g.project?.faculty === facultyId) {
-                // Determine batch from members or targetBatch
-                const batchYear = getGroupBatchYear(g);
+            const project = g.project;
+            if (!project) return;
+            if (project.status !== 'Approved' || project.isArchived) return;
 
-                if (!stats[batchYear]) {
-                    stats[batchYear] = { students: 0, groups: 0 };
-                }
-                stats[batchYear].groups += 1;
-                stats[batchYear].students += g.members.length;
+            const mentorId = project.faculty?._id || project.faculty;
+            if (String(mentorId) !== String(facultyId)) return;
+
+            // Determine batch from members or targetBatch
+            const batchYear = getGroupBatchYear(g);
+
+            if (!stats[batchYear]) {
+                stats[batchYear] = { students: 0, groups: 0 };
             }
+            stats[batchYear].groups += 1;
+            stats[batchYear].students += g.members?.length || 0;
         });
 
         return stats;
