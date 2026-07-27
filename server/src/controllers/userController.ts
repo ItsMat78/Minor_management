@@ -343,7 +343,15 @@ export const uploadProfilePhoto = async (req: Request, res: Response) => {
 
         const photoUrl = publicUrlFor(req, file);
 
-        await User.findByIdAndUpdate(userId, { photoUrl });
+        // Remove the photo being replaced. findByIdAndUpdate returns the pre-update document,
+        // so the outgoing URL costs no extra query. Without this every photo change left its
+        // predecessor on disk forever — the one replace-a-file path that wasn't cleaning up,
+        // unlike deleteUser above and the submission replacements in projectController.
+        const previous = await User.findByIdAndUpdate(userId, { photoUrl }).select('photoUrl');
+        if (previous?.photoUrl && previous.photoUrl !== photoUrl) {
+            deleteFileByUrl(previous.photoUrl);
+        }
+
         res.json({ photoUrl });
     } catch (error) {
         console.error("Error uploading profile photo:", error);
