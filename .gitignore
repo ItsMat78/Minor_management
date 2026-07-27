@@ -11,6 +11,7 @@ CLAUDE.md
 .claudeignore
 
 server/uploads
+server/upload-archives
 userManual
 # Production
 build

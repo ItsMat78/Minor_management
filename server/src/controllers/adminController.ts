@@ -9,7 +9,7 @@ import Panel from '../models/Panel';
 import Event, { EventType } from '../models/Event';
 import { getGlobalSettings } from '../models/Settings';
 import { sessionLabelFor, sessionSortKey, resolveSession } from '../utils/session';
-import { UPLOAD_ROOT } from '../middleware/uploadMiddleware';
+import { UPLOAD_ROOT, UPLOAD_ARCHIVE_ROOT } from '../middleware/uploadMiddleware';
 import bcrypt from 'bcryptjs';
 
 const verifyAdminPassword = async (userId: string, passwordToVerify: string) => {
@@ -459,20 +459,43 @@ export const semesterRollover = async (req: Request, res: Response) => {
         // Reset all students to not participating (next GF event will re-select batches)
         await User.updateMany({ role: 'Student' }, { $set: { isParticipating: false } });
 
-        // ── 2. Wipe uploaded files from disk (avatars are kept) ─────────────
+        // ── 2. Move uploaded files out of the live tree (avatars are kept) ──
 
-        let filesDeleted = 0;
+        // Archived, not deleted. Project rows survive rollover carrying their marks and
+        // evaluations, so destroying the reports those marks were awarded for leaves a record
+        // nobody can answer questions about later — an accreditation query, a disputed grade,
+        // a plagiarism follow-up. Buckets move wholesale into a per-session directory outside
+        // UPLOAD_ROOT, which also takes them out of express.static's reach, so past submissions
+        // stop being fetchable by anyone holding an old URL.
+        const sessionSlug = archivedSession.replace(/[^A-Za-z0-9-]+/g, '-');
+        let archiveDir = path.join(UPLOAD_ARCHIVE_ROOT, sessionSlug);
+        // A second rollover within the same session must not land on top of the first.
+        if (fs.existsSync(archiveDir)) archiveDir = `${archiveDir}-${Date.now()}`;
+
+        let filesArchived = 0;
         const buckets = ['submissions', 'proposals', 'updates', 'imports', 'misc'];
         for (const bucket of buckets) {
             const bucketPath = path.join(UPLOAD_ROOT, bucket);
             if (!fs.existsSync(bucketPath)) continue;
-            for (const file of fs.readdirSync(bucketPath)) {
+            const contents = fs.readdirSync(bucketPath);
+            if (contents.length === 0) continue;
+
+            const dest = path.join(archiveDir, bucket);
+            try {
+                fs.mkdirSync(archiveDir, { recursive: true });
                 try {
-                    fs.unlinkSync(path.join(bucketPath, file));
-                    filesDeleted++;
-                } catch (e) {
-                    console.error(`[Rollover] Could not delete ${file}:`, e);
+                    fs.renameSync(bucketPath, dest);
+                } catch {
+                    // rename cannot cross filesystems (EXDEV), which UPLOAD_ARCHIVE_DIR may well
+                    // do if it points at another volume. Copy then remove instead.
+                    fs.cpSync(bucketPath, dest, { recursive: true });
+                    fs.rmSync(bucketPath, { recursive: true, force: true });
                 }
+                filesArchived += contents.length;
+            } catch (e) {
+                // Never abort here: the database half of the rollover has already committed,
+                // and failing now would leave records archived with their files still live.
+                console.error(`[Rollover] Could not archive ${bucket}:`, e);
             }
         }
 
@@ -494,12 +517,13 @@ export const semesterRollover = async (req: Request, res: Response) => {
             { $set: { 'updates.$[].attachments': [] } }
         );
 
-        console.log(`[Rollover] Complete — ${groupsArchived} groups, ${projectsArchived} projects archived; ${filesDeleted} files deleted from disk.`);
+        console.log(`[Rollover] Complete — ${groupsArchived} groups, ${projectsArchived} projects archived; ${filesArchived} files moved to ${archiveDir}.`);
         res.json({
-            message: 'Semester rollover complete. All groups and projects have been archived, and uploaded files have been wiped. Evaluations, grades, and avatar photos are preserved.',
+            message: 'Semester rollover complete. All groups and projects have been archived, and uploaded files have been moved off the portal into a dated archive on the server. Evaluations, grades, and avatar photos are preserved.',
             groupsArchived,
             projectsArchived,
-            filesDeleted,
+            filesArchived,
+            archivePath: archiveDir,
         });
     } catch (error) {
         console.error('[Rollover] Error:', error);

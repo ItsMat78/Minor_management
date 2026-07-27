@@ -17,6 +17,15 @@ if (!fs.existsSync(UPLOAD_ROOT)) {
     fs.mkdirSync(UPLOAD_ROOT, { recursive: true });
 }
 
+// Where semester rollover parks the previous session's files. Deliberately OUTSIDE UPLOAD_ROOT:
+// everything under that is served by express.static with no authentication, so an archive kept
+// inside it would leave every past submission publicly fetchable by anyone holding an old URL.
+// Out here it is reachable only over ssh. Override with UPLOAD_ARCHIVE_DIR to park it on a
+// different volume.
+export const UPLOAD_ARCHIVE_ROOT = process.env.UPLOAD_ARCHIVE_DIR
+    ? path.resolve(process.env.UPLOAD_ARCHIVE_DIR)
+    : path.join(UPLOAD_ROOT, '..', 'upload-archives');
+
 // Sub-bucket derived from the route path: /projects/:id/updates → "updates"
 const bucketFor = (req: Request) => {
     const p = req.originalUrl || req.url || '';

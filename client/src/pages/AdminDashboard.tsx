@@ -37,7 +37,7 @@ export const getOriginalGroupBatchYear = (group: any) => {
 const SemesterRolloverButton: React.FC = () => {
     const [phase, setPhase] = useState<'idle' | 'confirm' | 'running' | 'done' | 'error'>('idle');
     const [password, setPassword] = useState('');
-    const [result, setResult] = useState<{ filesDeleted: number; groupsArchived: number; projectsArchived: number } | null>(null);
+    const [result, setResult] = useState<{ filesArchived: number; archivePath?: string; groupsArchived: number; projectsArchived: number } | null>(null);
     const [error, setError] = useState('');
 
     const handleRollover = async () => {
@@ -69,7 +69,7 @@ const SemesterRolloverButton: React.FC = () => {
                 <li>All current groups will be <strong>archived</strong> and dissolved</li>
                 <li>All current projects will be <strong>archived</strong> (evaluations &amp; grades preserved)</li>
                 <li>All panels will be archived</li>
-                <li>All uploaded files (reports, proposals, submissions) will be <strong>permanently deleted</strong></li>
+                <li>All uploaded files (reports, proposals, submissions) will be <strong>moved off the portal</strong> into a dated archive on the server — no longer downloadable here, but recoverable by an administrator</li>
                 <li>Faculty mentor counters will be reset to zero</li>
                 <li>Avatar photos are <strong>not</strong> deleted</li>
             </ul>
@@ -89,7 +89,7 @@ const SemesterRolloverButton: React.FC = () => {
                     disabled={!password}
                     className="px-5 py-2 bg-red-600 text-white rounded-lg font-bold hover:bg-red-700 transition-colors text-sm disabled:opacity-40 disabled:cursor-not-allowed"
                 >
-                    Yes, archive &amp; wipe
+                    Yes, archive &amp; clear
                 </button>
                 <button onClick={() => setPhase('idle')} className="px-5 py-2 bg-neutral-100 text-neutral-700 rounded-lg font-bold hover:bg-neutral-200 transition-colors text-sm">
                     Cancel
@@ -101,7 +101,7 @@ const SemesterRolloverButton: React.FC = () => {
     if (phase === 'running') return (
         <div className="flex items-center gap-3 text-red-700 font-medium text-sm">
             <div className="w-5 h-5 border-2 border-red-300 border-t-red-600 rounded-full animate-spin" />
-            Archiving records and wiping files…
+            Archiving records and moving files…
         </div>
     );
 
@@ -109,8 +109,11 @@ const SemesterRolloverButton: React.FC = () => {
         <div className="bg-white border border-green-200 rounded-xl p-4 text-sm text-green-800 font-medium space-y-1">
             <p>✓ Semester rollover complete.</p>
             <p className="text-green-700 font-normal">
-                {result?.groupsArchived} groups archived · {result?.projectsArchived} projects archived · {result?.filesDeleted} files deleted.
+                {result?.groupsArchived} groups archived · {result?.projectsArchived} projects archived · {result?.filesArchived} files archived.
                 All evaluations and avatar photos are preserved.
+                {result?.archivePath && (
+                    <> Files were moved to <code className="font-mono text-xs bg-green-50 px-1 py-0.5 rounded">{result.archivePath}</code> on the server.</>
+                )}
             </p>
         </div>
     );
