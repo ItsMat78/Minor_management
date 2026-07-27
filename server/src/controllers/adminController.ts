@@ -9,6 +9,7 @@ import Panel from '../models/Panel';
 import Event, { EventType } from '../models/Event';
 import { getGlobalSettings } from '../models/Settings';
 import { sessionLabelFor, sessionSortKey, resolveSession } from '../utils/session';
+import { UPLOAD_ROOT } from '../middleware/uploadMiddleware';
 import bcrypt from 'bcryptjs';
 
 const verifyAdminPassword = async (userId: string, passwordToVerify: string) => {
@@ -460,14 +461,10 @@ export const semesterRollover = async (req: Request, res: Response) => {
 
         // ── 2. Wipe uploaded files from disk (avatars are kept) ─────────────
 
-        const uploadDir = process.env.UPLOAD_DIR
-            ? path.resolve(process.env.UPLOAD_DIR)
-            : path.join(__dirname, '../../uploads');
-
         let filesDeleted = 0;
         const buckets = ['submissions', 'proposals', 'updates', 'imports', 'misc'];
         for (const bucket of buckets) {
-            const bucketPath = path.join(uploadDir, bucket);
+            const bucketPath = path.join(UPLOAD_ROOT, bucket);
             if (!fs.existsSync(bucketPath)) continue;
             for (const file of fs.readdirSync(bucketPath)) {
                 try {
