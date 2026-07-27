@@ -1,9 +1,8 @@
 import express, { NextFunction, Request, Response } from 'express';
 import cors from 'cors';
 import multer from 'multer';
-import path from 'path';
 import { allowedOrigins } from './config/cors';
-import { UnsupportedFileTypeError } from './middleware/uploadMiddleware';
+import { UnsupportedFileTypeError, UPLOAD_ROOT } from './middleware/uploadMiddleware';
 
 import authRoutes from './routes/authRoutes';
 import groupRoutes from './routes/groupRoutes';
@@ -30,8 +29,8 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '50mb' }));
 
-const uploadsPath = process.env.UPLOAD_DIR ? path.resolve(process.env.UPLOAD_DIR) : 'uploads';
-app.use('/uploads', express.static(uploadsPath));
+// UPLOAD_ROOT, not a cwd-relative string: this must be the exact directory multer writes into.
+app.use('/uploads', express.static(UPLOAD_ROOT));
 
 app.use('/api/auth', authRoutes);
 app.use('/api/groups', groupRoutes);

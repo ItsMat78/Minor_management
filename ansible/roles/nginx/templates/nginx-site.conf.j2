@@ -18,6 +18,24 @@ server {
     root  {{ app_root }};
     index index.html;
 
+    # Keep in step with the API block: an upload arriving here must not die on the 1MB default.
+    client_max_body_size 12m;
+
+    # Uploaded files live with the API, not in the SPA build. Without this they fall into the
+    # try_files catch-all below and come back as index.html with a 200, which a browser renders
+    # as a broken image rather than reporting as an error. Stored file URLs point at this port
+    # whenever UPLOAD_BASE_URL is unset, because nginx's $host drops the port when proxying.
+    # Proxied rather than served with alias so it follows the app's UPLOAD_DIR and needs no
+    # knowledge of where the server is deployed.
+    location /uploads/ {
+        proxy_pass         http://127.0.0.1:{{ api_backend_port }};
+        proxy_http_version 1.1;
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+    }
+
     location / {
         try_files $uri $uri/ @spa;
     }
@@ -36,6 +54,12 @@ server {
     ssl_certificate_key {{ ssl_key_file }};
     ssl_protocols       TLSv1.2 TLSv1.3;
     ssl_ciphers         HIGH:!aNULL:!MD5;
+
+    # Must stay above multer's 10MB limit (server/src/middleware/uploadMiddleware.ts) so an
+    # oversized file is refused by the app, which explains why, rather than by nginx, whose 413
+    # is an HTML page carrying no CORS headers and so reaches the browser as a network error.
+    # The 1MB default silently broke every profile photo taken on a phone.
+    client_max_body_size 12m;
 
     location / {
         proxy_pass         http://127.0.0.1:{{ api_backend_port }};

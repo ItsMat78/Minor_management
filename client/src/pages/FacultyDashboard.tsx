@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Avatar from '../components/Avatar';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../utils/api';
+import { errorMessage } from '../utils/apiError';
 import { useAuth } from '../context/AuthContext';
 import { GlobalEventBanner } from '../components/GlobalEventBanner';
 import { Search, ChevronDown, ChevronUp, Users, Clock, CheckCircle, XCircle, FileText, LayoutGrid, LayoutList, X, LogOut, ChevronRight, Layout, Settings, Menu, GraduationCap, Medal, Archive, Download, Upload, AlertCircle } from 'lucide-react';
@@ -1160,7 +1161,7 @@ const FacultyDashboard: React.FC = () => {
                                                 try {
                                                     await api.post('/users/profile-photo', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
                                                     window.location.reload();
-                                                } catch { alert('Photo upload failed'); }
+                                                } catch (err) { alert(errorMessage(err, 'Photo upload failed.')); }
                                             }}
                                         />
                                     </label>

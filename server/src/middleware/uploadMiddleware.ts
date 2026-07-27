@@ -3,12 +3,18 @@ import path from 'path';
 import fs from 'fs';
 import { Request } from 'express';
 
-// Base uploads directory — override via UPLOAD_DIR env for NAS mounts
-const uploadDir = process.env.UPLOAD_DIR
+// Base uploads directory — override via UPLOAD_DIR env for NAS mounts.
+//
+// Exported because app.ts must serve exactly this directory over /uploads. It used to pass the
+// bare string 'uploads' to express.static, which resolves against process.cwd() rather than the
+// file location, so writes and reads only agreed when the process happened to be started from
+// server/. That holds for `npm run dev` and breaks under pm2 started from anywhere else: files
+// upload fine and then every /uploads request 404s. Derive it once, use it everywhere.
+export const UPLOAD_ROOT = process.env.UPLOAD_DIR
     ? path.resolve(process.env.UPLOAD_DIR)
     : path.join(__dirname, '../../uploads');
-if (!fs.existsSync(uploadDir)) {
-    fs.mkdirSync(uploadDir, { recursive: true });
+if (!fs.existsSync(UPLOAD_ROOT)) {
+    fs.mkdirSync(UPLOAD_ROOT, { recursive: true });
 }
 
 // Sub-bucket derived from the route path: /projects/:id/updates → "updates"
@@ -25,7 +31,7 @@ const bucketFor = (req: Request) => {
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
         const bucket = bucketFor(req as Request);
-        const dest = path.join(uploadDir, bucket);
+        const dest = path.join(UPLOAD_ROOT, bucket);
         if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true });
         cb(null, dest);
     },
@@ -108,12 +114,9 @@ export const upload = multer({
 export const deleteFileByUrl = (url: string | null | undefined): void => {
     if (!url) return;
     try {
-        const localBase = process.env.UPLOAD_DIR
-            ? path.resolve(process.env.UPLOAD_DIR)
-            : path.join(__dirname, '../../uploads');
         const match = url.match(/\/uploads\/(.+)$/);
         if (!match) return;
-        const filePath = path.join(localBase, match[1]);
+        const filePath = path.join(UPLOAD_ROOT, match[1]);
         if (fs.existsSync(filePath)) {
             fs.unlinkSync(filePath);
             console.log(`[Storage] Deleted: ${filePath}`);
