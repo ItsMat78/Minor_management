@@ -250,7 +250,9 @@ describe('PUT /api/projects/:id/status', () => {
             .send({ status: 'Approved' });
 
         expect(res.status).toBe(400);
-        expect(res.body.message).toMatch(/max 3 students/i);
+        expect(res.body.message).toMatch(/supervisor limit reached/i);
+        // The batch-2023 group already mentored counts toward the batch-2024 approval.
+        expect(res.body.limit).toMatchObject({ maxStudents: 3, currentStudents: 3, incoming: 1 });
     });
 
     it('allows assigned faculty to reject a pending project', async () => {

@@ -9,6 +9,7 @@ import Panel from '../models/Panel';
 import Event, { EventType } from '../models/Event';
 import { nextActiveGroupNumber } from '../utils/groupNumbering';
 import { midTermEvaluationOpened, projectDetailsFrozen, DETAILS_FROZEN_MESSAGE } from '../utils/evaluationLock';
+import { supervisorCapacity, mentorFullMessage } from '../utils/supervisorCapacity';
 
 // ... (imports)
 
@@ -54,6 +55,22 @@ export const createProject = async (req: Request, res: Response) => {
             faculty = await User.findById(facultyId);
             if (!faculty || faculty.role !== UserRole.FACULTY) {
                 return res.status(400).json({ message: 'Invalid faculty selected' });
+            }
+
+            // Don't let a group submit to a mentor who has no room for them. Approval would be
+            // refused by the same ceiling (see updateProjectStatus), but that refusal is shown to
+            // the mentor and leaves the proposal sitting at Pending — the group would never learn
+            // why. Checked only for a real submission: a Draft is private work in progress, and a
+            // group deciding later shouldn't be stopped from saving it.
+            if (status === 'Pending') {
+                const load = await supervisorCapacity(faculty, group.members.length);
+                if (load.exceeded) {
+                    return res.status(400).json({
+                        message: mentorFullMessage(faculty.name, load),
+                        limitExceeded: true,
+                        limit: { facultyId: String(faculty._id), facultyName: faculty.name, ...load }
+                    });
+                }
             }
         }
 
@@ -200,36 +217,19 @@ export const updateProjectStatus = async (req: Request, res: Response) => {
                 if (facultyUser && projectGroup && projectGroup.members.length > 0) {
                     // A supervisor's capacity is a SEMESTER-WIDE total across every batch they
                     // mentor, so the load is counted over all their approved projects rather than
-                    // only those belonging to this group's batch. This also means the check no
-                    // longer depends on parsing a batch year off a roll number — it previously
-                    // skipped enforcement entirely for a member with a missing roll number.
-                    // The student count is the hard ceiling. The group count is only a rough
-                    // guideline — small groups can legitimately push the group total past the old
-                    // 7-group proxy while staying well under the student cap — so it no longer
-                    // blocks approval on its own.
-                    const maxStudents = facultyUser.maxStudents ?? 21;
+                    // only those belonging to this group's batch. This also means the check does
+                    // not depend on parsing a batch year off a roll number — it previously skipped
+                    // enforcement entirely for a member with a missing roll number.
+                    // This is the authoritative check: the submit-time one in createProject only
+                    // counts approved load, so several groups can queue past a mentor's remaining
+                    // places and the overflow is caught here.
+                    const load = await supervisorCapacity(facultyUser, projectGroup.members.length, project._id);
 
-                    const approvedProjects = await Project.find({
-                        faculty: facultyId,
-                        status: 'Approved',
-                        isArchived: { $ne: true }, // current semester only — ignore past-semester archives
-                        _id: { $ne: project._id }  // exclude the one being approved right now
-                    }).populate({
-                        path: 'group',
-                        populate: { path: 'members' }
-                    });
-
-                    let currentStudentsCount = 0;
-
-                    approvedProjects.forEach((p: any) => {
-                        if (p.group && p.group.members && p.group.members.length > 0) {
-                            currentStudentsCount += p.group.members.length;
-                        }
-                    });
-
-                    if (currentStudentsCount + projectGroup.members.length > maxStudents) {
+                    if (load.exceeded) {
                         return res.status(400).json({
-                            message: `Supervisor limit reached: max ${maxStudents} students this semester across all batches. Current: ${currentStudentsCount}.`
+                            message: `Supervisor limit reached: ${facultyUser.name} would be mentoring ${load.currentStudents + load.incoming} students this semester, over their limit of ${load.maxStudents}. Ask the admin to raise their student limit, or reject this proposal so the group can pick another mentor.`,
+                            limitExceeded: true,
+                            limit: { facultyId: String(facultyUser._id), facultyName: facultyUser.name, ...load }
                         });
                     }
                 }
@@ -537,6 +537,30 @@ export const updateProject = async (req: Request, res: Response) => {
             return res.status(400).json({ message: `Cannot edit project in ${project.status} status` });
         }
         const wasApproved = project.status === 'Approved';
+
+        // Same submit-time capacity guard as createProject, applied to what this edit would leave
+        // behind. Two ways in: promoting a Draft/Rejected proposal to Pending, and swapping the
+        // mentor on one that is already Pending (allowed below, and previously unchecked). An
+        // Approved project is exempt — its mentor is locked further down, so nothing can change.
+        // Runs before the file handling so a refusal doesn't leave uploads half-processed.
+        const nextFacultyId = (facultyId && !wasApproved) ? facultyId : project.faculty;
+        const nextStatus = (!wasApproved && status) ? status : project.status;
+
+        if (!wasApproved && nextStatus === 'Pending' && nextFacultyId) {
+            const nextFaculty = await User.findById(nextFacultyId);
+            if (!nextFaculty || nextFaculty.role !== UserRole.FACULTY) {
+                return res.status(400).json({ message: 'Invalid faculty selected' });
+            }
+
+            const load = await supervisorCapacity(nextFaculty, group.members.length, project._id);
+            if (load.exceeded) {
+                return res.status(400).json({
+                    message: mentorFullMessage(nextFaculty.name, load),
+                    limitExceeded: true,
+                    limit: { facultyId: String(nextFaculty._id), facultyName: nextFaculty.name, ...load }
+                });
+            }
+        }
 
         // Process files
         let fileUrls: string[] = [];

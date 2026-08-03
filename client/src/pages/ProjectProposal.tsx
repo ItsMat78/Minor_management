@@ -60,6 +60,9 @@ const ProjectProposal: React.FC = () => {
     // i.e. their configured cluster, e.g. ["CSE","DSAI"]. Falls back to their own branch when no
     // multi-branch cluster is set. null = not restricted / not yet computed.
     const [allowedBranches, setAllowedBranches] = useState<string[] | null>(null);
+    // Accepted members in the student's group. A mentor needs room for the whole group, not just
+    // one more student, so this is what the capacity checks below are measured against.
+    const [groupSize, setGroupSize] = useState(0);
 
     useEffect(() => {
         api.get('/users/faculty')
@@ -102,6 +105,10 @@ const ProjectProposal: React.FC = () => {
         // Fetch group projects to check for existing faculty locks or edit data
         api.get('/groups/my')
             .then(res => {
+                // How many places this group needs from a mentor. Drives the capacity warnings
+                // below, which mirror the server ceiling in utils/supervisorCapacity.
+                setGroupSize(res.data.members?.length || 0);
+
                 const projects = res.data.projects || (res.data.project ? [res.data.project] : []);
 
                 // Lock the faculty for new proposals only when there is a *live* commitment to one —
@@ -207,6 +214,17 @@ const ProjectProposal: React.FC = () => {
     const visibleFaculty = facultyList.filter(f => facultyMatchesBranch(f) || f._id === lockedFacultyId);
     const hiddenByBranch = facultyList.length - visibleFaculty.length;
 
+    // Mirrors the server ceiling (server/src/utils/supervisorCapacity.ts): a mentor must have room
+    // for every member, so a group of 3 needs 3 free places. Falls back to 1 while the group is
+    // still loading, which still catches a mentor sitting exactly on their cap.
+    // Only the STUDENT count gates submission. maxGroups is shown but never blocks, because the
+    // server does not enforce it either — small groups can pass 7 while well under the student cap.
+    const placesNeeded = Math.max(groupSize, 1);
+    const facultyHasRoom = (f: Faculty): boolean => f.currentStudents + placesNeeded <= f.maxStudents;
+    const selectedFaculty = visibleFaculty.find(f => f._id === formData.facultyId) || null;
+    // An approved project keeps its mentor regardless of load, so no warning applies there.
+    const selectedMentorIsFull = !isApprovedEdit && !!selectedFaculty && !facultyHasRoom(selectedFaculty);
+
     const handleSubmit = async (e: React.FormEvent, isDraft = false) => {
         e.preventDefault();
 
@@ -220,6 +238,20 @@ const ProjectProposal: React.FC = () => {
         if (!isDraft && !isApprovedEdit && !formData.facultyId) {
             setStep(2);
             setError('Select a faculty mentor to submit for review, or use "Save as Draft" to decide later.');
+            return;
+        }
+
+        // A mentor with no room can't take the group on, and the server refuses the submission for
+        // the same reason. Stop here so the student is told before posting a doomed request.
+        // Drafts are exempt: saving one commits nobody, so a full mentor can still be pencilled in.
+        if (!isDraft && selectedMentorIsFull && selectedFaculty) {
+            setStep(2);
+            const free = Math.max(0, selectedFaculty.maxStudents - selectedFaculty.currentStudents);
+            setError(
+                `${selectedFaculty.name} has ${free === 0 ? 'no places left' : `only ${free} place${free === 1 ? '' : 's'} left`} this semester ` +
+                `(already mentoring ${selectedFaculty.currentStudents} of ${selectedFaculty.maxStudents} students), and your group needs ${placesNeeded}. ` +
+                `Pick a different mentor, or save this as a draft and submit it if a place frees up.`
+            );
             return;
         }
 
@@ -540,16 +572,21 @@ const ProjectProposal: React.FC = () => {
                                                             </div>
                                                         </div>
                                                         {/* Capacity is a semester-wide total across every batch this
-                                                            supervisor mentors, so a full badge means full for everyone. */}
+                                                            supervisor mentors, so no room means no room for everyone.
+                                                            Red tracks the STUDENT cap only — that is the one the server
+                                                            enforces — and says so in words rather than by colour alone. */}
                                                         {(() => {
-                                                            const studentsFull = faculty.currentStudents >= faculty.maxStudents;
-                                                            const groupsFull = faculty.currentGroups >= faculty.maxGroups;
-                                                            const full = studentsFull || groupsFull;
+                                                            const noRoom = !facultyHasRoom(faculty);
                                                             return (
                                                                 <span
-                                                                    title={`${faculty.currentStudents}/${faculty.maxStudents} students and ${faculty.currentGroups}/${faculty.maxGroups} groups this semester, across all batches`}
-                                                                    className={`text-xs px-2 py-1 rounded-full shrink-0 font-medium text-center leading-tight ${full ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}`}
+                                                                    title={`${faculty.currentStudents}/${faculty.maxStudents} students and ${faculty.currentGroups}/${faculty.maxGroups} groups this semester, across all batches. Your group needs ${placesNeeded} place${placesNeeded === 1 ? '' : 's'}.`}
+                                                                    className={`text-xs px-2 py-1 rounded-full shrink-0 font-medium text-center leading-tight ${noRoom ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}`}
                                                                 >
+                                                                    {noRoom && (
+                                                                        <span className="block font-bold uppercase tracking-wide text-[10px]">
+                                                                            No room
+                                                                        </span>
+                                                                    )}
                                                                     {faculty.currentStudents}/{faculty.maxStudents} students
                                                                     <span className="block opacity-75">
                                                                         {faculty.currentGroups}/{faculty.maxGroups} groups
@@ -561,6 +598,23 @@ const ProjectProposal: React.FC = () => {
                                                 )
                                             })}
                                         </div>
+
+                                        {/* The selected mentor can't take this group on. Said here, at the point of
+                                            choosing, rather than leaving the group to find out from a submission the
+                                            server refuses. A draft is still allowed, hence the wording. */}
+                                        {selectedMentorIsFull && selectedFaculty && (
+                                            <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700 flex items-start gap-2">
+                                                <Info className="w-4 h-4 shrink-0 mt-0.5" />
+                                                <span>
+                                                    <strong>{selectedFaculty.name}</strong> has no room for your group this semester
+                                                    ({selectedFaculty.currentStudents} of {selectedFaculty.maxStudents} students already,
+                                                    and your group needs {placesNeeded} place{placesNeeded === 1 ? '' : 's'}).
+                                                    {lockedFacultyId === selectedFaculty._id
+                                                        ? ' Your mentor is locked to your live proposal, so ask the admin to raise their student limit.'
+                                                        : ' Pick a different mentor, or save this as a draft and submit it if a place frees up.'}
+                                                </span>
+                                            </div>
+                                        )}
                                     </div>
                                 </motion.div>
                             )}

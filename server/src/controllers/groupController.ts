@@ -7,6 +7,7 @@ import Event, { EventType } from '../models/Event';
 import { sendGroupCompleteEmail, sendGroupInviteEmail, sendGroupInviteResponseEmail, sendMentorChangeEmail } from '../utils/emailService';
 import { nextActiveGroupNumber } from '../utils/groupNumbering';
 import { midTermEvaluationOpened, projectDetailsFrozen } from '../utils/evaluationLock';
+import { supervisorCapacity } from '../utils/supervisorCapacity';
 
 // Batch years that require single-branch groups for the given GF event. Prefers the explicit
 // per-batch list; falls back to the legacy boolean (which meant "all participating batches").
@@ -749,20 +750,6 @@ export const adminRemoveGroupMember = async (req: Request, res: Response) => {
     }
 };
 
-// Students a supervisor is already committed to this semester, summed across every batch they
-// mentor. `excludeProjectId` drops the project being reassigned so it can't be double-counted.
-// Mirrors the ceiling enforced when a proposal is approved (see updateProjectStatus).
-const approvedStudentLoad = async (facultyId: any, excludeProjectId?: any): Promise<number> => {
-    const approved = await Project.find({
-        faculty: facultyId,
-        status: 'Approved',
-        isArchived: { $ne: true }, // current semester only — past-semester archives don't count
-        ...(excludeProjectId ? { _id: { $ne: excludeProjectId } } : {})
-    }).populate({ path: 'group', populate: { path: 'members' } });
-
-    return approved.reduce((sum: number, p: any) => sum + (p.group?.members?.length || 0), 0);
-};
-
 /**
  * Reassign a group's faculty mentor from the Group Directory.
  * PUT /api/groups/:id/mentor  { facultyId }
@@ -808,15 +795,13 @@ export const adminSetGroupMentor = async (req: Request, res: Response) => {
             return res.status(400).json({ message: `${faculty.name} already mentors this group.` });
         }
 
-        const maxStudents = faculty.maxStudents ?? 21;
-        const currentStudents = await approvedStudentLoad(faculty._id, project._id);
-        const incoming = group.members.length;
+        const load = await supervisorCapacity(faculty, group.members.length, project._id);
 
-        if (currentStudents + incoming > maxStudents) {
+        if (load.exceeded) {
             return res.status(400).json({
-                message: `Mentee limit reached — ${faculty.name} already mentors ${currentStudents} of ${maxStudents} students this semester, and this group adds ${incoming} more. Raise their student limit in the Faculty tab (or pick another mentor) before reassigning this group.`,
+                message: `Mentee limit reached — ${faculty.name} already mentors ${load.currentStudents} of ${load.maxStudents} students this semester, and this group adds ${load.incoming} more. Raise their student limit in the Faculty tab (or pick another mentor) before reassigning this group.`,
                 limitExceeded: true,
-                limit: { facultyId: String(faculty._id), facultyName: faculty.name, maxStudents, currentStudents, incoming }
+                limit: { facultyId: String(faculty._id), facultyName: faculty.name, ...load }
             });
         }
 
