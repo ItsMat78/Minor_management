@@ -9,6 +9,14 @@ const TYPE_LABELS: Record<string, string> = {
     end_term_evaluation: 'End-Term Eval',
 };
 
+// On a phone the full label plus a live countdown pushes the page title out of the
+// header, so the pill drops to these below `sm`.
+const SHORT_TYPE_LABELS: Record<string, string> = {
+    group_formation_project_proposal: 'Formation',
+    mid_term_evaluation: 'Mid-Term',
+    end_term_evaluation: 'End-Term',
+};
+
 // Break a positive millisecond span into whole days/hours/minutes/seconds.
 const splitDuration = (ms: number) => {
     const totalSeconds = Math.max(0, Math.floor(ms / 1000));
@@ -51,6 +59,7 @@ export const GlobalEventBanner: React.FC = () => {
                         ? `${days}d ${pad(hours)}:${pad(minutes)}:${pad(seconds)}`
                         : `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
                     const label = TYPE_LABELS[event.type] || event.type.replace(/_/g, ' ');
+                    const shortLabel = SHORT_TYPE_LABELS[event.type] || label;
                     const deadlineText = new Date(effectiveEnd).toLocaleString('en-IN', {
                         day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
                     });
@@ -63,7 +72,7 @@ export const GlobalEventBanner: React.FC = () => {
                             animate={{ opacity: 1, scale: 1, x: 0 }}
                             exit={{ opacity: 0, scale: 0.85, x: 20 }}
                             onClick={() => setOpenId(prev => prev === event._id ? null : event._id)}
-                            className={`group flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap cursor-pointer select-none shadow-sm border
+                            className={`group flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-full text-[11px] sm:text-xs font-bold whitespace-nowrap cursor-pointer select-none shadow-sm border
                                 ${isExpired
                                     ? 'bg-neutral-100 text-neutral-500 border-neutral-200'
                                     : isClosingSoon
@@ -77,7 +86,8 @@ export const GlobalEventBanner: React.FC = () => {
                                     ? <AlertCircle className="w-3 h-3" />
                                     : <Megaphone className="w-3 h-3" />
                             }
-                            <span>{label}</span>
+                            <span className="hidden sm:inline">{label}</span>
+                            <span className="sm:hidden">{shortLabel}</span>
                             <span className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold tabular-nums
                                 ${isExpired
                                     ? 'bg-neutral-200 text-neutral-600'

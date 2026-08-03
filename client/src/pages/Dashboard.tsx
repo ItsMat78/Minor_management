@@ -598,8 +598,8 @@ const Dashboard: React.FC = () => {
 
             {/* Main Content */}
             <div className="flex-1 flex flex-col min-w-0">
-                <header className="flex items-center h-16 px-4 sm:px-6 gap-2 border-b border-neutral-200 bg-white justify-between">
-                    <div className="flex items-center gap-2 sm:gap-4 min-w-0">
+                <header className="flex items-center h-16 px-3 sm:px-6 gap-2 border-b border-neutral-200 bg-white justify-between">
+                    <div className="flex items-center gap-1 sm:gap-4 min-w-0">
                         {!isSidebarOpen && (
                             <button onClick={() => setIsSidebarOpen(true)} className="p-2 hover:bg-neutral-100 rounded-lg shrink-0">
                                 <Menu className="w-5 h-5" />
@@ -615,7 +615,9 @@ const Dashboard: React.FC = () => {
                                      activeTab === 'archive' ? 'Archive' : 'My Project'}
                                 </span>
                             </div>
-                            <h1 className="text-lg sm:text-xl font-bold text-neutral-800 truncate">
+                            {/* The live countdown pill shares this row and never shrinks, so the
+                                title starts smaller on phones rather than truncating to nothing. */}
+                            <h1 className="text-base sm:text-xl font-bold text-neutral-800 truncate">
                                 {activeTab === 'directory' ? 'Student Directory' :
                                  activeTab === 'results' ? 'My Results' :
                                  activeTab === 'archive' ? 'Project Archive' : 'Project Workspace'}
@@ -625,7 +627,8 @@ const Dashboard: React.FC = () => {
                     <GlobalEventBanner />
                 </header>
 
-                <main className="flex-1 overflow-y-auto p-4 sm:p-6">
+                {/* pb-28 keeps the last card clear of the floating chat button on phones. */}
+                <main className="flex-1 overflow-y-auto p-4 pb-28 sm:p-6 sm:pb-28">
                     {/* Status Banners */}
                     <div className="max-w-5xl mx-auto space-y-4 mb-6">
                         {user?.isParticipating === false && (
@@ -1052,7 +1055,7 @@ const Dashboard: React.FC = () => {
                                 const approvedProject = allGroupProjects.find(p => p.status === 'Approved');
                                 
                                 return (
-                                    <div className={`grid grid-cols-1 ${approvedProject ? 'xl:grid-cols-4' : 'xl:grid-cols-1'} gap-8`}>
+                                    <div className={`grid grid-cols-1 ${approvedProject ? 'xl:grid-cols-4' : 'xl:grid-cols-1'} gap-6 sm:gap-8`}>
                                         {/* Main Content */}
                                         <div className={`${approvedProject ? 'xl:col-span-3' : 'xl:col-span-1'} space-y-6`}>
                                             {/* Project Tabs & Logic */}
@@ -1061,56 +1064,62 @@ const Dashboard: React.FC = () => {
                                                     return (
                                                     <div className="space-y-6">
                                                         {/* Project Status Stats */}
-                                                        <div className="bg-white p-8 rounded-2xl border border-neutral-100 shadow-xl shadow-neutral-100/50">
-                                                            <div className="flex justify-between items-start mb-6">
-                                                                <div>
-                                                                    <div className="flex items-center gap-3">
+                                                        <div className="bg-white p-5 sm:p-8 rounded-2xl border border-neutral-100 shadow-xl shadow-neutral-100/50">
+                                                            {/* On a phone these pills used to be squeezed into one row and each
+                                                                wrapped its own text onto three separate lines. Now they wrap as
+                                                                whole pills, and the title/description sit on their own row below
+                                                                so they get the full width of the card instead of whatever the
+                                                                Edit button leaves over. */}
+                                                            <div className="mb-6">
+                                                                <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
+                                                                    <div className="flex flex-wrap items-center gap-2 min-w-0">
                                                                         {approvedProject.isArchived ? (
-                                                                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold tracking-wide uppercase bg-amber-100 text-amber-700">
-                                                                                <Archive className="w-3 h-3" />
+                                                                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold tracking-wide uppercase bg-amber-100 text-amber-700 whitespace-nowrap">
+                                                                                <Archive className="w-3 h-3 shrink-0" />
                                                                                 Archived Project
                                                                             </span>
                                                                         ) : (
-                                                                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold tracking-wide uppercase bg-emerald-100 text-emerald-700">
-                                                                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                                                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold tracking-wide uppercase bg-emerald-100 text-emerald-700 whitespace-nowrap">
+                                                                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
                                                                                 Active Project
                                                                             </span>
                                                                         )}
                                                                         {approvedProject.semester && (
-                                                                            <span className="text-xs font-medium text-neutral-500 bg-neutral-100 px-2 py-0.5 rounded">
+                                                                            <span className="text-xs font-medium text-neutral-500 bg-neutral-100 px-2 py-1 rounded whitespace-nowrap">
                                                                                 Semester {approvedProject.semester}
                                                                             </span>
                                                                         )}
                                                                         {approvedProject.faculty && (
-                                                                            <span className="text-xs font-medium text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100 flex items-center gap-1">
-                                                                                <Users className="w-3 h-3" /> {approvedProject.faculty.name || 'Faculty'}
+                                                                            <span className="text-xs font-medium text-indigo-600 bg-indigo-50 px-2 py-1 rounded border border-indigo-100 inline-flex items-center gap-1 max-w-full">
+                                                                                <Users className="w-3 h-3 shrink-0" />
+                                                                                <span className="truncate">{approvedProject.faculty.name || 'Faculty'}</span>
                                                                             </span>
                                                                         )}
                                                                     </div>
-                                                                    <h3 className="text-2xl font-bold text-neutral-900 mt-3 capitalize">{approvedProject.title}</h3>
-                                                                    <p className="text-neutral-500 mt-2 leading-relaxed max-w-2xl text-sm">{approvedProject.description}</p>
+                                                                    {/* Members can refine an active project's details; it stays approved (mentor stays locked).
+                                                                        That window closes when mid-semester evaluation opens — from then on the
+                                                                        project is frozen (the server rejects edits too). */}
+                                                                    {!approvedProject.isArchived && (
+                                                                        approvedProject.detailsLocked ? (
+                                                                            <span
+                                                                                className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-neutral-500 bg-neutral-100 border border-neutral-200 rounded-lg cursor-not-allowed"
+                                                                                title="Project details are locked because mid-semester evaluation has begun"
+                                                                            >
+                                                                                <Pencil className="w-3.5 h-3.5 shrink-0" /> Locked after mid-term
+                                                                            </span>
+                                                                        ) : (
+                                                                            <button
+                                                                                onClick={() => navigate(`/project/propose?edit=${approvedProject._id}`)}
+                                                                                className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-600 bg-indigo-50 border border-indigo-100 rounded-lg hover:bg-indigo-100 transition-colors"
+                                                                                title="Edit project details"
+                                                                            >
+                                                                                <Pencil className="w-3.5 h-3.5 shrink-0" /> Edit
+                                                                            </button>
+                                                                        )
+                                                                    )}
                                                                 </div>
-                                                                {/* Members can refine an active project's details; it stays approved (mentor stays locked).
-                                                                    That window closes when mid-semester evaluation opens — from then on the
-                                                                    project is frozen (the server rejects edits too). */}
-                                                                {!approvedProject.isArchived && (
-                                                                    approvedProject.detailsLocked ? (
-                                                                        <span
-                                                                            className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-neutral-500 bg-neutral-100 border border-neutral-200 rounded-lg cursor-not-allowed"
-                                                                            title="Project details are locked because mid-semester evaluation has begun"
-                                                                        >
-                                                                            <Pencil className="w-3.5 h-3.5" /> Locked after mid-term
-                                                                        </span>
-                                                                    ) : (
-                                                                        <button
-                                                                            onClick={() => navigate(`/project/propose?edit=${approvedProject._id}`)}
-                                                                            className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-600 bg-indigo-50 border border-indigo-100 rounded-lg hover:bg-indigo-100 transition-colors"
-                                                                            title="Edit project details"
-                                                                        >
-                                                                            <Pencil className="w-3.5 h-3.5" /> Edit
-                                                                        </button>
-                                                                    )
-                                                                )}
+                                                                <h3 className="text-xl sm:text-2xl font-bold text-neutral-900 capitalize break-words">{approvedProject.title}</h3>
+                                                                <p className="text-neutral-500 mt-2 leading-relaxed max-w-2xl text-sm">{approvedProject.description}</p>
                                                             </div>
 
                                                             {approvedProject.tags && approvedProject.tags.length > 0 && (
@@ -1138,10 +1147,10 @@ const Dashboard: React.FC = () => {
                                                         </div>
 
                                                         {/* Final Deliverables Tray */}
-                                                        {(midTermActive || endTermActive) && <div className="mb-8 bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-100 rounded-2xl p-6">
-                                                            <div className="flex items-center justify-between mb-4">
+                                                        {(midTermActive || endTermActive) && <div className="mb-8 bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-100 rounded-2xl p-5 sm:p-6">
+                                                            <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
                                                                 <h3 className="text-lg font-bold text-neutral-900 flex items-center gap-2">
-                                                                    <Archive className="w-5 h-5 text-emerald-600" /> Final Deliverables
+                                                                    <Archive className="w-5 h-5 text-emerald-600 shrink-0" /> Final Deliverables
                                                                 </h3>
                                                                 {!approvedProject.isArchived && (midTermActive || endTermActive) && (
                                                                     <button
@@ -1216,13 +1225,15 @@ const Dashboard: React.FC = () => {
                                                                 )}
                                                             </div>
 
-                                                            <div className="relative pl-4">
-                                                                <div className="absolute left-6 top-6 bottom-6 w-0.5 bg-neutral-200/60" />
+                                                            {/* The rail indent is halved on phones — at pl-12 the update cards were
+                                                                narrower than the text inside them. */}
+                                                            <div className="relative pl-1 sm:pl-4">
+                                                                <div className="absolute left-3 sm:left-6 top-6 bottom-6 w-0.5 bg-neutral-200/60" />
 
                                                                 {approvedProject.updates && approvedProject.updates.slice().reverse().map((update: any, i: number) => (
-                                                                    <div key={i} className="relative pl-12 pb-8 group">
-                                                                        <div className="absolute left-[20px] top-6 w-3 h-3 rounded-full bg-white border-2 border-indigo-600 ring-4 ring-neutral-50 z-10" />
-                                                                        <div className="bg-white p-5 rounded-xl border border-neutral-200 shadow-sm hover:shadow-md transition-shadow">
+                                                                    <div key={i} className="relative pl-6 sm:pl-12 pb-6 sm:pb-8 group">
+                                                                        <div className="absolute left-[8px] sm:left-[20px] top-6 w-3 h-3 rounded-full bg-white border-2 border-indigo-600 ring-4 ring-neutral-50 z-10" />
+                                                                        <div className="bg-white p-4 sm:p-5 rounded-xl border border-neutral-200 shadow-sm hover:shadow-md transition-shadow">
                                                                             <div className="flex justify-between items-start mb-2">
                                                                                 <div>
                                                                                     {update.title && (
@@ -1265,7 +1276,7 @@ const Dashboard: React.FC = () => {
                                                                 ))}
 
                                                                 {(!approvedProject.updates || approvedProject.updates.length === 0) && (
-                                                                    <div className="text-center py-12 ml-6 bg-white border border-dashed border-neutral-200 rounded-xl">
+                                                                    <div className="text-center py-10 sm:py-12 ml-3 sm:ml-6 bg-white border border-dashed border-neutral-200 rounded-xl">
                                                                         <div className="w-12 h-12 bg-neutral-50 rounded-full flex items-center justify-center mx-auto mb-3 text-neutral-400">
                                                                             <Clock className="w-6 h-6" />
                                                                         </div>
@@ -1444,7 +1455,7 @@ const Dashboard: React.FC = () => {
                                         <div className="xl:col-span-1 space-y-6">
                                             <div className="sticky top-6 space-y-6">
                                                 {/* Team Members */}
-                                                <div className="bg-white p-6 rounded-2xl border border-neutral-200 shadow-sm relative">
+                                                <div className="bg-white p-5 sm:p-6 rounded-2xl border border-neutral-200 shadow-sm relative">
                                                     <h4 className="font-bold text-neutral-900 mb-4 flex items-center gap-2">
                                                         <Users className="w-4 h-4 text-indigo-600" /> Group {group.name}
                                                     </h4>
@@ -1467,7 +1478,7 @@ const Dashboard: React.FC = () => {
                                                 </div>
 
                                                 {/* Mentor */}
-                                                <div className="bg-white p-6 rounded-2xl border border-neutral-200 shadow-sm relative">
+                                                <div className="bg-white p-5 sm:p-6 rounded-2xl border border-neutral-200 shadow-sm relative">
                                                     <h4 className="font-bold text-neutral-900 mb-4 text-sm flex items-center gap-2">
                                                         <Users className="w-4 h-4 text-orange-600" /> Faculty Mentor
                                                     </h4>
@@ -2128,12 +2139,16 @@ const Dashboard: React.FC = () => {
                             onClose={() => setIsChatOpen(false)}
                         />
                         {!isChatOpen && (
+                            /* Full-width pill on desktop, plain circular FAB on phones — at the
+                               old size it covered most of the last card on screen. */
                             <button
                                 onClick={() => setIsChatOpen(true)}
-                                className="fixed bottom-6 right-6 bg-indigo-600 text-white px-6 py-3 rounded-full shadow-lg hover:bg-indigo-700 transition-transform hover:scale-105 z-30 flex items-center gap-2 font-medium"
+                                aria-label="Chat with your team"
+                                title="Chat with your team"
+                                className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 h-14 w-14 sm:h-auto sm:w-auto sm:px-6 sm:py-3 bg-indigo-600 text-white rounded-full shadow-lg hover:bg-indigo-700 transition-transform hover:scale-105 z-30 flex items-center justify-center gap-2 font-medium"
                             >
-                                <MessageSquare className="w-5 h-5" />
-                                Chat with your team
+                                <MessageSquare className="w-5 h-5 shrink-0" />
+                                <span className="hidden sm:inline">Chat with your team</span>
                             </button>
                         )}
                     </>
