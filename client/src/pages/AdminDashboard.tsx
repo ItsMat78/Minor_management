@@ -239,11 +239,23 @@ const BranchClusterBuilder: React.FC<{ batch: string; assign: Record<string, str
     );
 };
 
+type AdminTab = 'overview' | 'students' | 'groups' | 'faculty' | 'proposals' | 'events' | 'exports' | 'panels' | 'archive' | 'evaluations';
+
+// The Group.status values the server counts in /admin/stats — the Group Directory filter
+// has to speak the same vocabulary so the overview tiles can drill straight into it.
+type GroupStage = 'All' | 'Forming' | 'ProposalPending' | 'Approved';
+
+const GROUP_STAGE_LABELS: Record<Exclude<GroupStage, 'All'>, string> = {
+    Forming: 'Forming',
+    ProposalPending: 'Proposal Pending',
+    Approved: 'Approved',
+};
+
 const AdminDashboard: React.FC = () => {
     const { user, logout } = useAuth();
     const [searchParams, setSearchParams] = useSearchParams();
-    const initialAdminTab = searchParams.get('tab') as 'overview' | 'students' | 'groups' | 'faculty' | 'proposals' | 'events' | 'exports' | 'panels' | 'archive' | 'evaluations' | null;
-    const [activeTab, setActiveTab] = useState<'overview' | 'students' | 'groups' | 'faculty' | 'proposals' | 'events' | 'exports' | 'panels' | 'archive' | 'evaluations'>(initialAdminTab || 'overview');
+    const initialAdminTab = searchParams.get('tab') as AdminTab | null;
+    const [activeTab, setActiveTab] = useState<AdminTab>(initialAdminTab || 'overview');
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
     // Participating batches from server (active GF event), used for all batch dropdowns
@@ -296,10 +308,44 @@ const AdminDashboard: React.FC = () => {
     const [filterGroupStatus, setFilterGroupStatus] = useState<string>('All'); // Added group status filter
     const [filterVerificationStatus, setFilterVerificationStatus] = useState<string>('All'); // Added verification filter
     const [filterFaculty, setFilterFaculty] = useState<string>('All'); // Added faculty filter
+    const [filterGroupStage, setFilterGroupStage] = useState<GroupStage>('All'); // Group Directory: Forming / ProposalPending / Approved
     const [viewGroup, setViewGroup] = useState<any>(null); // Re-added viewGroup state
     const [editingFaculty, setEditingFaculty] = useState<any>(null);
     const [showLimitSettings, setShowLimitSettings] = useState(false);
     const [sortOption, setSortOption] = useState<string>('Default'); // Added sort state
+
+    // Every directory tab shares one pool of filter/search state, so a filter left over from
+    // the previous tab silently hides rows on the next one. Switching tabs always goes through
+    // here: wipe everything back to its default, then apply whatever the caller wants pre-set
+    // (that is how the overview tiles drill into a pre-filtered directory).
+    const selectTab = (
+        tab: AdminTab,
+        preset?: {
+            search?: string;
+            batch?: string;
+            branch?: string;
+            groupStatus?: string;
+            verification?: string;
+            participation?: string;
+            faculty?: string;
+            groupStage?: GroupStage;
+            proposalStatus?: 'Pending' | 'Approved' | 'Rejected' | 'All';
+        }
+    ) => {
+        setSearchTerm('');
+        setProposalSearch('');
+        setFilterBatch(preset?.batch ?? 'All');
+        setFilterBranch(preset?.branch ?? 'All');
+        setFilterGroupStatus(preset?.groupStatus ?? 'All');
+        setFilterVerificationStatus(preset?.verification ?? 'All');
+        setFilterParticipationStatus(preset?.participation ?? 'Participating');
+        setFilterFaculty(preset?.faculty ?? 'All');
+        setFilterGroupStage(preset?.groupStage ?? 'All');
+        setProposalStatusFilter(preset?.proposalStatus ?? 'Pending');
+        setSortOption('Default');
+        setViewGroup(null);
+        setActiveTab(tab);
+    };
     const [collapsedPanelsBatches, setCollapsedPanelsBatches] = useState<Record<string, boolean>>({});
     const [configBatchGroup, setConfigBatchGroup] = useState<any>(null); // For configure batch modal
     // Change-mentor modal (Group Directory). `mentorLimit` holds the server's rejection detail
@@ -902,11 +948,6 @@ const AdminDashboard: React.FC = () => {
         }
     }, [activeTab, filterBatch, archiveSession, filterParticipationStatus]);
 
-    // Reset sort when tab changes
-    useEffect(() => {
-        setSortOption('Default');
-    }, [activeTab]);
-
     const fetchProposals = async () => {
         const res = await api.get('/projects/admin/proposals');
         const list = Array.isArray(res.data) ? res.data : [];
@@ -991,6 +1032,47 @@ const AdminDashboard: React.FC = () => {
             return a.name.localeCompare(b.name);
         });
     }, [proposals, proposalStatusFilter, proposalSearch, filterBatch]);
+
+    // Header numbers for each supervisor bucket. Deliberately computed off the full proposal
+    // list, with only the batch filter applied: these summarise the supervisor's whole queue,
+    // so narrowing them by the status filter or the search box would make them meaningless.
+    const facultyProposalStats = useMemo(() => {
+        type Stats = {
+            pending: number; approved: number; rejected: number; draft: number; total: number;
+            students: number;
+            batches: Record<string, { groups: number; students: number }>;
+        };
+        const byFaculty = new Map<string, Stats>();
+
+        proposals.forEach((p: any) => {
+            if (filterBatch !== 'All' && p.group && getGroupBatchYear(p.group) !== filterBatch) return;
+
+            const id = p.faculty?._id || 'unassigned';
+            if (!byFaculty.has(id)) {
+                byFaculty.set(id, { pending: 0, approved: 0, rejected: 0, draft: 0, total: 0, students: 0, batches: {} });
+            }
+            const s = byFaculty.get(id)!;
+            s.total += 1;
+            if (p.status === 'Pending') s.pending += 1;
+            else if (p.status === 'Approved') s.approved += 1;
+            else if (p.status === 'Rejected') s.rejected += 1;
+            else if (p.status === 'Draft') s.draft += 1;
+
+            // Group/student load counts approved projects only — a pending or rejected proposal
+            // has picked this supervisor but does not book any of their capacity yet. Same rule
+            // the server uses when it enforces the mentorship limits.
+            if (p.status === 'Approved' && p.group) {
+                const year = getGroupBatchYear(p.group);
+                const members = p.group.members?.length || 0;
+                if (!s.batches[year]) s.batches[year] = { groups: 0, students: 0 };
+                s.batches[year].groups += 1;
+                s.batches[year].students += members;
+                s.students += members;
+            }
+        });
+
+        return byFaculty;
+    }, [proposals, filterBatch]);
 
     // Fetch admin eval panel groups when batch changes
     useEffect(() => {
@@ -1484,7 +1566,10 @@ const AdminDashboard: React.FC = () => {
 
             const matchesFaculty = filterFaculty === 'All' || g.project?.faculty?._id === filterFaculty || g.project?.faculty === filterFaculty;
 
-            return matchesSearch && matchesBatch && matchesFaculty;
+            // Matches /admin/stats, which counts the Group.status field — not the project's.
+            const matchesStage = filterGroupStage === 'All' || g.status === filterGroupStage;
+
+            return matchesSearch && matchesBatch && matchesFaculty && matchesStage;
         }).sort((a, b) => {
             if (sortOption === 'Name (A-Z)') return (a.name || '').localeCompare(b.name || '', undefined, { numeric: true });
             if (sortOption === 'Name (Z-A)') return (b.name || '').localeCompare(a.name || '', undefined, { numeric: true });
@@ -1771,62 +1856,62 @@ const AdminDashboard: React.FC = () => {
                         icon={<LayoutGrid className="w-5 h-5" />}
                         label="Dashboard Overview"
                         active={activeTab === 'overview'}
-                        onClick={() => setActiveTab('overview')}
+                        onClick={() => selectTab('overview')}
                     />
                     <SidebarItem
                         icon={<Users className="w-5 h-5" />}
                         label="Student Directory"
                         active={activeTab === 'students'}
-                        onClick={() => setActiveTab('students')}
+                        onClick={() => selectTab('students')}
                     />
                     <SidebarItem
                         icon={<LayoutGrid className="w-5 h-5" />}
                         label="Group Directory"
                         active={activeTab === 'groups'}
-                        onClick={() => setActiveTab('groups')}
+                        onClick={() => selectTab('groups')}
                     />
                     <SidebarItem
                         icon={<Users className="w-5 h-5" />}
                         label="Faculty Directory"
                         active={activeTab === 'faculty'}
-                        onClick={() => setActiveTab('faculty')}
+                        onClick={() => selectTab('faculty')}
                     />
                     <SidebarItem
                         icon={<FileText className="w-5 h-5" />}
                         label="Proposals"
                         active={activeTab === 'proposals'}
-                        onClick={() => setActiveTab('proposals')}
+                        onClick={() => selectTab('proposals')}
                         badge={pendingProposalCount}
                     />
                     <SidebarItem
                         icon={<Users className="w-5 h-5" />}
                         label="Evaluation Panels"
                         active={activeTab === 'panels'}
-                        onClick={() => setActiveTab('panels')}
+                        onClick={() => selectTab('panels')}
                     />
                     <SidebarItem
                         icon={<Calendar className="w-5 h-5" />}
                         label="Setup Events"
                         active={activeTab === 'events'}
-                        onClick={() => setActiveTab('events')}
+                        onClick={() => selectTab('events')}
                     />
                     <SidebarItem
                         icon={<Download className="w-5 h-5" />}
                         label="Data"
                         active={activeTab === 'exports'}
-                        onClick={() => setActiveTab('exports')}
+                        onClick={() => selectTab('exports')}
                     />
                     <SidebarItem
                         icon={<FileText className="w-5 h-5" />}
                         label="Evaluations"
                         active={activeTab === 'evaluations'}
-                        onClick={() => setActiveTab('evaluations')}
+                        onClick={() => selectTab('evaluations')}
                     />
                     <SidebarItem
                         icon={<ArchiveIcon className="w-5 h-5" />}
                         label="Archive"
                         active={activeTab === 'archive'}
-                        onClick={() => setActiveTab('archive')}
+                        onClick={() => selectTab('archive')}
                     />
                 </nav>
                 <div className="p-4 border-t border-neutral-100">
@@ -1900,7 +1985,7 @@ const AdminDashboard: React.FC = () => {
                                     />
                                 </div>
 
-                                <div className="flex gap-4">
+                                <div className="flex flex-wrap gap-3">
                                     {(activeTab === 'students' || activeTab === 'groups' || activeTab === 'panels') && (
                                         <select
                                             className="px-3 py-2 bg-white rounded-xl border border-neutral-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer hover:border-indigo-300 transition-colors"
@@ -1965,6 +2050,18 @@ const AdminDashboard: React.FC = () => {
 
                                     {activeTab === 'groups' && (
                                         <>
+                                            {/* Stage filter — the target of the overview tiles' drill-down */}
+                                            <select
+                                                className="px-3 py-2 bg-white rounded-xl border border-neutral-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer hover:border-indigo-300 transition-colors"
+                                                value={filterGroupStage}
+                                                onChange={(e) => setFilterGroupStage(e.target.value as GroupStage)}
+                                            >
+                                                <option value="All">Stage: All</option>
+                                                <option value="Forming">Forming</option>
+                                                <option value="ProposalPending">Proposal Pending</option>
+                                                <option value="Approved">Approved</option>
+                                            </select>
+
                                             {/* Faculty Filter Dropdown */}
                                             <select
                                                 className="px-3 py-2 bg-white rounded-xl border border-neutral-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer hover:border-indigo-300 transition-colors max-w-[200px]"
@@ -2024,32 +2121,34 @@ const AdminDashboard: React.FC = () => {
                             <>
                                 {activeTab === 'overview' && (
                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                                        <div onClick={() => { setActiveTab('students'); setFilterGroupStatus('All'); setFilterVerificationStatus('All'); }} className="bg-white p-6 rounded-3xl border border-neutral-200 shadow-sm relative overflow-hidden group cursor-pointer hover:border-indigo-300 hover:shadow-lg transition-all active:scale-[0.98]">
+                                        <div onClick={() => selectTab('students')} className="bg-white p-6 rounded-3xl border border-neutral-200 shadow-sm relative overflow-hidden group cursor-pointer hover:border-indigo-300 hover:shadow-lg transition-all active:scale-[0.98]">
                                             <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
                                                 <Users className="w-16 h-16" />
                                             </div>
-                                            <h3 className="text-neutral-500 font-bold text-sm tracking-wider uppercase mb-2">Total Students</h3>
+                                            <h3 className="text-neutral-500 font-bold text-sm tracking-wider uppercase mb-1">Total Students</h3>
+                                            <p className="text-xs text-neutral-400 leading-relaxed mb-3 max-w-[90%]">Every student account on the portal, across all batches. Opens the Student Directory.</p>
                                             <div className="flex items-end gap-3">
                                                 <span className="text-4xl font-black text-neutral-900">{stats?.students || 0}</span>
                                             </div>
                                         </div>
 
-                                        <div onClick={() => setActiveTab('faculty')} className="bg-white p-6 rounded-3xl border border-neutral-200 shadow-sm relative overflow-hidden group cursor-pointer hover:border-rose-300 hover:shadow-lg transition-all active:scale-[0.98]">
+                                        <div onClick={() => selectTab('faculty')} className="bg-white p-6 rounded-3xl border border-neutral-200 shadow-sm relative overflow-hidden group cursor-pointer hover:border-rose-300 hover:shadow-lg transition-all active:scale-[0.98]">
                                             <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
                                                 <Users className="w-16 h-16" />
                                             </div>
-                                            <h3 className="text-neutral-500 font-bold text-sm tracking-wider uppercase mb-2">Total Faculty</h3>
+                                            <h3 className="text-neutral-500 font-bold text-sm tracking-wider uppercase mb-1">Total Faculty</h3>
+                                            <p className="text-xs text-neutral-400 leading-relaxed mb-3 max-w-[90%]">Faculty accounts that can supervise projects and sit on evaluation panels.</p>
                                             <div className="flex items-end gap-3">
                                                 <span className="text-4xl font-black text-neutral-900">{stats?.faculty || 0}</span>
                                             </div>
                                         </div>
 
-                                        <div onClick={() => setActiveTab('groups')} className="bg-white p-6 rounded-3xl border border-neutral-200 shadow-sm relative overflow-hidden group cursor-pointer hover:border-emerald-300 hover:shadow-lg transition-all active:scale-[0.98]">
+                                        <div onClick={() => selectTab('groups')} className="bg-white p-6 rounded-3xl border border-neutral-200 shadow-sm relative overflow-hidden group cursor-pointer hover:border-emerald-300 hover:shadow-lg transition-all active:scale-[0.98]">
                                             <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
                                                 <LayoutGrid className="w-16 h-16" />
                                             </div>
-                                            <h3 className="text-neutral-500 font-bold text-sm tracking-wider uppercase mb-2">Total Groups</h3>
-
+                                            <h3 className="text-neutral-500 font-bold text-sm tracking-wider uppercase mb-1">Total Groups</h3>
+                                            <p className="text-xs text-neutral-400 leading-relaxed mb-3 max-w-[90%]">Groups in the running cycle at any stage. Groups archived with a past semester are not counted.</p>
                                             <div className="flex items-end gap-3">
                                                 <span className="text-4xl font-black text-neutral-900">{stats?.groups || 0}</span>
                                                 <span className="text-sm font-bold text-indigo-500 mb-1">In System</span>
@@ -2057,45 +2156,49 @@ const AdminDashboard: React.FC = () => {
 
                                         </div>
 
-                                        <div onClick={() => setActiveTab('groups')} className="bg-white p-6 rounded-3xl border border-neutral-200 shadow-sm relative overflow-hidden group cursor-pointer hover:border-indigo-300 hover:shadow-lg transition-all active:scale-[0.98]">
+                                        <div onClick={() => selectTab('groups')} className="bg-white p-6 rounded-3xl border border-neutral-200 shadow-sm relative overflow-hidden group cursor-pointer hover:border-indigo-300 hover:shadow-lg transition-all active:scale-[0.98]">
                                             <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
                                                 <FileText className="w-16 h-16" />
                                             </div>
-                                            <h3 className="text-neutral-500 font-bold text-sm tracking-wider uppercase mb-2">Total Projects</h3>
+                                            <h3 className="text-neutral-500 font-bold text-sm tracking-wider uppercase mb-1">Total Projects</h3>
+                                            <p className="text-xs text-neutral-400 leading-relaxed mb-3 max-w-[90%]">Every project record this cycle: drafts, proposals under review and approved projects alike.</p>
                                             <div className="flex items-end gap-3">
                                                 <span className="text-4xl font-black text-neutral-900">{stats?.projects || 0}</span>
                                                 <span className="text-sm font-bold text-indigo-500 mb-1">In System</span>
                                             </div>
                                         </div>
 
-                                        <div onClick={() => { setActiveTab('students'); setFilterVerificationStatus('Verified'); setFilterGroupStatus('All'); }} className="bg-white p-6 rounded-3xl border border-neutral-200 shadow-sm relative overflow-hidden group cursor-pointer hover:border-emerald-300 hover:shadow-lg transition-all active:scale-[0.98]">
+                                        <div onClick={() => selectTab('students', { verification: 'Verified' })} className="bg-white p-6 rounded-3xl border border-neutral-200 shadow-sm relative overflow-hidden group cursor-pointer hover:border-emerald-300 hover:shadow-lg transition-all active:scale-[0.98]">
                                             <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
                                                 <CheckCircle className="w-16 h-16" />
                                             </div>
-                                            <h3 className="text-neutral-500 font-bold text-sm tracking-wider uppercase mb-2">Activated Accounts</h3>
+                                            <h3 className="text-neutral-500 font-bold text-sm tracking-wider uppercase mb-1">Activated Accounts</h3>
+                                            <p className="text-xs text-neutral-400 leading-relaxed mb-3 max-w-[90%]">Students who have verified their email and set a password, so they can actually sign in.</p>
                                             <div className="flex items-end gap-3">
                                                 <span className="text-4xl font-black text-emerald-600">{stats?.activatedAccounts || 0}</span>
                                                 <span className="text-sm font-bold text-emerald-500 mb-1">Verified</span>
                                             </div>
                                         </div>
 
-                                        <div onClick={() => { setActiveTab('students'); setFilterVerificationStatus('Unverified'); setFilterGroupStatus('All'); }} className="bg-white p-6 rounded-3xl border border-neutral-200 shadow-sm relative overflow-hidden group cursor-pointer hover:border-rose-300 hover:shadow-lg transition-all active:scale-[0.98]">
+                                        <div onClick={() => selectTab('students', { verification: 'Unverified' })} className="bg-white p-6 rounded-3xl border border-neutral-200 shadow-sm relative overflow-hidden group cursor-pointer hover:border-rose-300 hover:shadow-lg transition-all active:scale-[0.98]">
                                             <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
                                                 <Clock className="w-16 h-16" />
                                             </div>
-                                            <h3 className="text-neutral-500 font-bold text-sm tracking-wider uppercase mb-2">Unactivated Accounts</h3>
+                                            <h3 className="text-neutral-500 font-bold text-sm tracking-wider uppercase mb-1">Unactivated Accounts</h3>
+                                            <p className="text-xs text-neutral-400 leading-relaxed mb-3 max-w-[90%]">Imported students who have never completed sign-up. They cannot join a group until they do.</p>
                                             <div className="flex items-end gap-3">
                                                 <span className="text-4xl font-black text-rose-600">{stats?.unactivatedAccounts || 0}</span>
                                                 <span className="text-sm font-bold text-rose-500 mb-1">Pending</span>
                                             </div>
                                         </div>
 
-                                        <div className="bg-white p-6 rounded-3xl border border-neutral-200 shadow-sm relative col-span-2 overflow-hidden hover:border-amber-300 hover:shadow-lg transition-all">
+                                        <div className="bg-white p-6 rounded-3xl border border-neutral-200 shadow-sm relative md:col-span-2 overflow-hidden hover:border-amber-300 hover:shadow-lg transition-all">
                                             <div className="absolute top-0 right-0 p-4 opacity-5">
                                                 <Users className="w-16 h-16" />
                                             </div>
-                                            <h3 className="text-neutral-500 font-bold text-sm tracking-wider uppercase mb-2">Ungrouped Students</h3>
-                                            <div className="flex items-center justify-between gap-3 mb-4" onClick={() => { setActiveTab('students'); setFilterGroupStatus('Available'); setFilterVerificationStatus('All'); }} style={{ cursor: 'pointer' }}>
+                                            <h3 className="text-neutral-500 font-bold text-sm tracking-wider uppercase mb-1">Ungrouped Students</h3>
+                                            <p className="text-xs text-neutral-400 leading-relaxed mb-3 max-w-[90%]">Students who are not on any group's roster yet. Chase these before group formation closes — use the buttons to mail them.</p>
+                                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4" onClick={() => selectTab('students', { groupStatus: 'Available' })} style={{ cursor: 'pointer' }}>
                                                 <div className="flex items-end gap-3">
                                                     <span className="text-4xl font-black text-amber-600">{stats?.ungroupedStudents || 0}</span>
                                                     <span className="text-sm font-bold text-amber-500 mb-1">Not in any group</span>
@@ -2121,9 +2224,10 @@ const AdminDashboard: React.FC = () => {
                                         {/* Quick Actions */}
                                         <div className="md:col-span-2 lg:col-span-4 mt-6">
                                             <div className="bg-white p-6 rounded-3xl border border-neutral-200 shadow-sm">
-                                                <h3 className="text-lg font-bold text-neutral-900 mb-4 flex items-center gap-2">
+                                                <h3 className="text-lg font-bold text-neutral-900 mb-1 flex items-center gap-2">
                                                     <Settings className="w-5 h-5 text-indigo-600" /> Administrative Actions
                                                 </h3>
+                                                <p className="text-xs text-neutral-400 leading-relaxed mb-4">Create accounts by hand. Bulk student imports, panel uploads and exports all live in the Data tab.</p>
                                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                                     <button
                                                         onClick={() => setShowCreateAdmin(true)}
@@ -2157,19 +2261,52 @@ const AdminDashboard: React.FC = () => {
                                         {stats && (
                                             <div className="md:col-span-2 lg:col-span-4">
                                                 <div className="bg-white p-6 rounded-3xl border border-neutral-200 shadow-sm">
-                                                    <h3 className="text-lg font-bold text-neutral-900 mb-4 flex items-center gap-2">
+                                                    <h3 className="text-lg font-bold text-neutral-900 mb-1 flex items-center gap-2">
                                                         <LayoutGrid className="w-5 h-5 text-emerald-600" /> Group Status Breakdown
                                                     </h3>
-                                                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                                                    <p className="text-xs text-neutral-400 leading-relaxed mb-4">Where every active group currently sits in the pipeline. Click a stage to open the Group Directory filtered to it.</p>
+                                                    {/* Tailwind can't see class names built by string interpolation, so each
+                                                        stage carries its literal classes. */}
+                                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                                                         {[
-                                                            { label: 'Forming', val: stats?.groupsByStatus?.Forming ?? 0, color: 'amber' },
-                                                            { label: 'Proposal Pending', val: stats?.groupsByStatus?.ProposalPending ?? 0, color: 'orange' },
-                                                            { label: 'Approved', val: stats?.groupsByStatus?.Approved ?? 0, color: 'emerald' },
-                                                        ].map(({ label, val, color }) => (
-                                                            <div key={label} onClick={() => setActiveTab('groups')} className={`cursor-pointer p-4 rounded-2xl bg-${color}-50 border border-${color}-100 hover:shadow-md transition-all`}>
-                                                                <p className={`text-xs font-bold uppercase tracking-wider text-${color}-600 mb-1`}>{label}</p>
-                                                                <p className={`text-3xl font-black text-${color}-700`}>{val}</p>
-                                                            </div>
+                                                            {
+                                                                stage: 'Forming' as const,
+                                                                val: stats?.groupsByStatus?.Forming ?? 0,
+                                                                blurb: 'Roster still open. No proposal has been submitted yet.',
+                                                                cls: 'bg-amber-50 border-amber-100 hover:border-amber-300',
+                                                                labelCls: 'text-amber-600',
+                                                                valCls: 'text-amber-700',
+                                                                blurbCls: 'text-amber-600/70',
+                                                            },
+                                                            {
+                                                                stage: 'ProposalPending' as const,
+                                                                val: stats?.groupsByStatus?.ProposalPending ?? 0,
+                                                                blurb: 'Proposal submitted and waiting on the supervisor to decide.',
+                                                                cls: 'bg-orange-50 border-orange-100 hover:border-orange-300',
+                                                                labelCls: 'text-orange-600',
+                                                                valCls: 'text-orange-700',
+                                                                blurbCls: 'text-orange-600/70',
+                                                            },
+                                                            {
+                                                                stage: 'Approved' as const,
+                                                                val: stats?.groupsByStatus?.Approved ?? 0,
+                                                                blurb: 'Proposal accepted. The group is running its project.',
+                                                                cls: 'bg-emerald-50 border-emerald-100 hover:border-emerald-300',
+                                                                labelCls: 'text-emerald-600',
+                                                                valCls: 'text-emerald-700',
+                                                                blurbCls: 'text-emerald-600/70',
+                                                            },
+                                                        ].map(({ stage, val, blurb, cls, labelCls, valCls, blurbCls }) => (
+                                                            <button
+                                                                key={stage}
+                                                                type="button"
+                                                                onClick={() => selectTab('groups', { groupStage: stage })}
+                                                                className={`text-left cursor-pointer p-4 rounded-2xl border hover:shadow-md active:scale-[0.98] transition-all ${cls}`}
+                                                            >
+                                                                <p className={`text-xs font-bold uppercase tracking-wider mb-1 ${labelCls}`}>{GROUP_STAGE_LABELS[stage]}</p>
+                                                                <p className={`text-3xl font-black ${valCls}`}>{val}</p>
+                                                                <p className={`text-[11px] leading-snug mt-1.5 ${blurbCls}`}>{blurb}</p>
+                                                            </button>
                                                         ))}
                                                     </div>
                                                 </div>
@@ -2364,10 +2501,20 @@ const AdminDashboard: React.FC = () => {
                                                                         </div>
                                                                     </div>
                                                                 </td>
+                                                                {/* Load is the supervisor's semester-wide mentee count, straight off
+                                                                    /users/faculty: approved, non-archived projects only. Both halves of
+                                                                    the cap (groups and students) are enforced on approval, so both
+                                                                    belong here — a supervisor can be under their group cap and still be
+                                                                    full on students. */}
                                                                 <td className="px-6 py-4">
-                                                                    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold border ${(f.currentGroups || 0) > 0 ? 'bg-indigo-50 text-indigo-700 border-indigo-100' : 'bg-neutral-100 text-neutral-500 border-neutral-200'}`}>
-                                                                        {f.currentGroups || 0} Groups
-                                                                    </span>
+                                                                    <div className="flex flex-wrap items-center gap-1.5">
+                                                                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold border ${(f.currentGroups || 0) > 0 ? 'bg-indigo-50 text-indigo-700 border-indigo-100' : 'bg-neutral-100 text-neutral-500 border-neutral-200'}`}>
+                                                                            {f.currentGroups || 0} / {f.maxGroups ?? 7} Groups
+                                                                        </span>
+                                                                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold border ${(f.currentStudents || 0) > 0 ? 'bg-violet-50 text-violet-700 border-violet-100' : 'bg-neutral-100 text-neutral-500 border-neutral-200'}`}>
+                                                                            {f.currentStudents || 0} / {f.maxStudents ?? 21} Students
+                                                                        </span>
+                                                                    </div>
                                                                 </td>
                                                                 <td className="px-6 py-4">
                                                                     {f.isVerified ? (
@@ -2582,7 +2729,7 @@ const AdminDashboard: React.FC = () => {
                                                 </div>
                                                 <div>
                                                     <h3 className="text-lg font-bold text-neutral-900">Proposals by Supervisor</h3>
-                                                    <p className="text-xs text-neutral-500">Review and decide on any active proposal on the supervisor's behalf.</p>
+                                                    <p className="text-xs text-neutral-500">Review and decide on any active proposal on the supervisor's behalf. The counts on each supervisor cover their whole queue; the status filter below only narrows the list you see.</p>
                                                 </div>
                                             </div>
                                             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
@@ -2620,32 +2767,63 @@ const AdminDashboard: React.FC = () => {
                                         ) : (
                                             proposalsByFaculty.map(bucket => {
                                                 const collapsed = collapsedProposalFaculty.includes(bucket.id);
-                                                const pendingHere = bucket.items.filter((p: any) => p.status === 'Pending').length;
+                                                const s = facultyProposalStats.get(bucket.id);
+                                                const batchRows = Object.entries(s?.batches || {}).sort(([a], [b]) => Number(b) - Number(a));
                                                 return (
                                                     <div key={bucket.id} className="bg-white rounded-2xl border border-neutral-200 shadow-sm overflow-hidden">
                                                         <button
                                                             onClick={() => setCollapsedProposalFaculty(prev => collapsed ? prev.filter(id => id !== bucket.id) : [...prev, bucket.id])}
-                                                            className="w-full flex items-center gap-4 p-5 hover:bg-neutral-50 transition-colors text-left"
+                                                            className="w-full p-5 hover:bg-neutral-50 transition-colors text-left"
                                                         >
-                                                            <Avatar
-                                                                name={bucket.name}
-                                                                photoUrl={bucket.photoUrl}
-                                                                className="h-11 w-11 rounded-xl object-cover border border-neutral-200 shrink-0"
-                                                                fallbackClassName="h-11 w-11 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold shrink-0"
-                                                            />
-                                                            <div className="flex-1 min-w-0">
-                                                                <p className="font-bold text-neutral-900 truncate">{bucket.name}</p>
-                                                                <p className="text-xs text-neutral-500 truncate">{bucket.department || 'No department on record'}</p>
-                                                            </div>
-                                                            {pendingHere > 0 && (
-                                                                <span className="shrink-0 px-2.5 py-1 rounded-lg bg-amber-50 text-amber-700 text-[10px] font-bold uppercase tracking-wider">
-                                                                    {pendingHere} pending
+                                                            <div className="flex items-center gap-4">
+                                                                <Avatar
+                                                                    name={bucket.name}
+                                                                    photoUrl={bucket.photoUrl}
+                                                                    className="h-11 w-11 rounded-xl object-cover border border-neutral-200 shrink-0"
+                                                                    fallbackClassName="h-11 w-11 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold shrink-0"
+                                                                />
+                                                                <div className="flex-1 min-w-0">
+                                                                    <p className="font-bold text-neutral-900 truncate">{bucket.name}</p>
+                                                                    <p className="text-xs text-neutral-500 truncate">{bucket.department || 'No department on record'}</p>
+                                                                </div>
+                                                                <span className="shrink-0 px-2.5 py-1 rounded-lg bg-neutral-100 text-neutral-600 text-[10px] font-bold uppercase tracking-wider">
+                                                                    {s?.total ?? bucket.items.length} total
                                                                 </span>
+                                                                {collapsed ? <ChevronDown className="w-5 h-5 text-neutral-400 shrink-0" /> : <ChevronUp className="w-5 h-5 text-neutral-400 shrink-0" />}
+                                                            </div>
+
+                                                            {/* Decision tally + mentorship load for this supervisor. Independent of the
+                                                                status filter and the search box, so the numbers stay comparable. */}
+                                                            <div className="flex flex-wrap items-center gap-1.5 mt-3">
+                                                                <span className="px-2.5 py-1 rounded-lg bg-amber-50 text-amber-700 border border-amber-100 text-[10px] font-bold uppercase tracking-wider">
+                                                                    {s?.pending ?? 0} Pending
+                                                                </span>
+                                                                <span className="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-100 text-[10px] font-bold uppercase tracking-wider">
+                                                                    {s?.approved ?? 0} Accepted
+                                                                </span>
+                                                                <span className="px-2.5 py-1 rounded-lg bg-rose-50 text-rose-700 border border-rose-100 text-[10px] font-bold uppercase tracking-wider">
+                                                                    {s?.rejected ?? 0} Rejected
+                                                                </span>
+                                                                {!!s?.draft && (
+                                                                    <span className="px-2.5 py-1 rounded-lg bg-neutral-100 text-neutral-500 border border-neutral-200 text-[10px] font-bold uppercase tracking-wider">
+                                                                        {s.draft} Draft
+                                                                    </span>
+                                                                )}
+                                                                <span className="px-2.5 py-1 rounded-lg bg-violet-50 text-violet-700 border border-violet-100 text-[10px] font-bold uppercase tracking-wider">
+                                                                    {s?.students ?? 0} Students mentored
+                                                                </span>
+                                                            </div>
+
+                                                            {batchRows.length > 0 && (
+                                                                <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                                                                    <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-400">Approved load by batch</span>
+                                                                    {batchRows.map(([year, b]) => (
+                                                                        <span key={year} className="px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-100 text-[10px] font-bold tracking-wide">
+                                                                            {year}-{parseInt(year) + 4}: {b.groups} {b.groups === 1 ? 'group' : 'groups'} · {b.students} {b.students === 1 ? 'student' : 'students'}
+                                                                        </span>
+                                                                    ))}
+                                                                </div>
                                                             )}
-                                                            <span className="shrink-0 px-2.5 py-1 rounded-lg bg-neutral-100 text-neutral-600 text-[10px] font-bold uppercase tracking-wider">
-                                                                {bucket.items.length} total
-                                                            </span>
-                                                            {collapsed ? <ChevronDown className="w-5 h-5 text-neutral-400 shrink-0" /> : <ChevronUp className="w-5 h-5 text-neutral-400 shrink-0" />}
                                                         </button>
 
                                                         {!collapsed && (
@@ -4230,9 +4408,7 @@ const AdminDashboard: React.FC = () => {
                                                     <div
                                                         key={batch}
                                                         onClick={() => {
-                                                            setFilterBatch(batch);
-                                                            setFilterFaculty(editingFaculty._id);
-                                                            setActiveTab('groups');
+                                                            selectTab('groups', { batch, faculty: editingFaculty._id, groupStage: 'Approved' });
                                                             setEditingFaculty(null);
                                                         }}
                                                         className="flex items-center justify-between bg-white border border-neutral-200 p-4 rounded-xl hover:border-indigo-200 transition-colors cursor-pointer group"
@@ -4585,7 +4761,7 @@ const AdminDashboard: React.FC = () => {
                                                     <p>{mentorError}</p>
                                                     {mentorLimit && (
                                                         <button
-                                                            onClick={() => { closeMentorModal(); setActiveTab('faculty'); }}
+                                                            onClick={() => { closeMentorModal(); selectTab('faculty'); }}
                                                             className="text-xs font-bold underline hover:no-underline"
                                                         >
                                                             Go to the Faculty tab to raise {mentorLimit.facultyName}'s student limit
