@@ -2,10 +2,14 @@
  * Integration tests for PUT /api/groups/:id/mentor — the admin reassigning a group's
  * supervisor from the Group Directory.
  *
- * The mentor lives on the group's project, and the incoming supervisor's semester-wide
- * student cap is a hard limit, so these cover: admin-only access, the project requirement,
- * archived groups read-only, a successful swap, and the cap refusal (which tells the admin
- * to raise that supervisor's limit rather than silently overbooking them).
+ * Two shapes of the same operation. With a project, the supervisor on it is swapped. Without
+ * one, there is nowhere to hold a supervisor, so the office files the group's proposal in full
+ * — title, description, tags, attachments — and the mentor comes with it; `status` decides
+ * whether that goes to the mentor for review or is approved outright.
+ *
+ * These cover both, plus admin-only access, archived groups read-only, the cap refusal (which
+ * tells the admin to raise that supervisor's limit rather than overbooking them), and that a
+ * refusal leaves nothing behind.
  */
 import request from 'supertest';
 import app from '../../app';
@@ -13,9 +17,10 @@ import Group from '../../models/Group';
 import Project from '../../models/Project';
 import User, { UserRole } from '../../models/User';
 import { createTestUser, generateToken, createTestGroup, createTestProject } from '../helpers/factories';
-import { sendMentorChangeEmail } from '../../utils/emailService';
+import { sendMentorChangeEmail, sendProposalSubmissionEmail } from '../../utils/emailService';
 
 const mockMentorEmail = sendMentorChangeEmail as jest.Mock;
+const mockSubmissionEmail = sendProposalSubmissionEmail as jest.Mock;
 
 jest.mock('../../utils/emailService', () => ({
     sendEmail: jest.fn().mockResolvedValue({ ok: true }),
@@ -258,10 +263,10 @@ describe('PUT /api/groups/:id/mentor', () => {
         expect(res.status).toBe(400);
     });
 
-    // A group with no project is the admin-created case: there is nothing for the mentor to
-    // attach to, so this endpoint creates it rather than sending the admin away.
+    // A group with no project is the admin-created case: the mentor lives on the proposal, so the
+    // office files the proposal in full rather than a stub created to hold the mentor.
 
-    it('asks for a title when the group has no project yet', async () => {
+    it('refuses to file a proposal with no title, and creates nothing', async () => {
         const { group } = await createTestGroup(2); // never proposed anything
         const newMentor = await createTestUser({ role: UserRole.FACULTY });
 
@@ -272,47 +277,164 @@ describe('PUT /api/groups/:id/mentor', () => {
 
         expect(res.status).toBe(400);
         expect(res.body.needsProject).toBe(true);
-        expect(res.body.message).toMatch(/no project yet/i);
+        expect(res.body.message).toMatch(/no proposal yet/i);
         expect(await Project.findOne({ group: group._id })).toBeNull();
+
+        // The group is untouched — in particular not silently approved.
+        const stored = await Group.findById(group._id);
+        expect(stored!.project).toBeFalsy();
+        expect(stored!.status).toBe('Forming');
     });
 
-    it('creates an approved project when given a title, and approves the group with it', async () => {
+    it('refuses a title with no description, as the student proposal form does', async () => {
         const { group } = await createTestGroup(2);
-        const newMentor = await createTestUser({ role: UserRole.FACULTY, name: 'Dr. First' });
+        const newMentor = await createTestUser({ role: UserRole.FACULTY });
 
         const res = await request(app)
             .put(`/api/groups/${group._id}/mentor`)
             .set('x-auth-token', await adminToken())
-            .send({ facultyId: String(newMentor._id), title: 'Placed By Office', description: 'Assigned manually.' });
+            .send({ facultyId: String(newMentor._id), title: 'Title Only' });
+
+        expect(res.status).toBe(400);
+        expect(res.body.needsProject).toBe(true);
+        expect(await Project.findOne({ group: group._id })).toBeNull();
+    });
+
+    it('keeps the attachments uploaded with the filing', async () => {
+        const { group } = await createTestGroup(1);
+        const mentor = await createTestUser({ role: UserRole.FACULTY });
+
+        const res = await request(app)
+            .put(`/api/groups/${group._id}/mentor`)
+            .set('x-auth-token', await adminToken())
+            .field('facultyId', String(mentor._id))
+            .field('title', 'With Attachments')
+            .field('description', 'Filed with a file.')
+            .attach('files', Buffer.from('proposal annexure'), 'annexure.txt');
 
         expect(res.status).toBe(200);
-        expect(res.body.message).toMatch(/project created/i);
+        const project = await Project.findOne({ group: group._id });
+        // Stored under the proposals bucket like any other proposal attachment (the uploader
+        // renames files, so the URL carries the extension rather than the original name).
+        expect(project!.attachments).toHaveLength(1);
+        expect(project!.attachments![0]).toMatch(/\/uploads\/proposals\/.+\.txt$/);
+    });
+
+    it('files the proposal for review by default, leaving the decision to the mentor', async () => {
+        const { group } = await createTestGroup(2);
+        const mentor = await createTestUser({ role: UserRole.FACULTY, name: 'Dr. Reviewer' });
+
+        const res = await request(app)
+            .put(`/api/groups/${group._id}/mentor`)
+            .set('x-auth-token', await adminToken())
+            .send({
+                facultyId: String(mentor._id),
+                title: 'Campus Navigation',
+                description: 'Filed by the office.',
+                tags: 'Web, Maps'
+            });
+
+        expect(res.status).toBe(200);
+        expect(res.body.message).toMatch(/sent to Dr. Reviewer for review/i);
 
         const project = await Project.findOne({ group: group._id });
-        expect(project!.title).toBe('Placed By Office');
-        expect(project!.description).toBe('Assigned manually.');
+        expect(project!.title).toBe('Campus Navigation');
+        expect(project!.description).toBe('Filed by the office.');
+        expect(project!.tags).toEqual(['Web', 'Maps']);
+        expect(project!.status).toBe('Pending');
+        expect(String(project!.faculty)).toBe(String(mentor._id));
+
+        // The group is waiting on a decision, not approved behind the mentor's back.
+        const stored = await Group.findById(group._id);
+        expect(stored!.status).toBe('ProposalPending');
+        expect(String(stored!.project)).toBe(String(project!._id));
+    });
+
+    it('approves outright when the admin asks for it', async () => {
+        const { group } = await createTestGroup(2);
+        const mentor = await createTestUser({ role: UserRole.FACULTY, name: 'Dr. Final' });
+
+        const res = await request(app)
+            .put(`/api/groups/${group._id}/mentor`)
+            .set('x-auth-token', await adminToken())
+            .send({ facultyId: String(mentor._id), title: 'Placed By Office', description: 'Filed by the office.', status: 'Approved' });
+
+        expect(res.status).toBe(200);
+        expect(res.body.message).toMatch(/approved with Dr. Final/i);
+
+        const project = await Project.findOne({ group: group._id });
         expect(project!.status).toBe('Approved');
-        expect(String(project!.faculty)).toBe(String(newMentor._id));
 
         const stored = await Group.findById(group._id);
         expect(stored!.status).toBe('Approved');
         expect(String(stored!.project)).toBe(String(project!._id));
     });
 
-    it('still enforces the student limit when creating the first project', async () => {
-        const { group } = await createTestGroup(3);
-        const newMentor = await createTestUser({ role: UserRole.FACULTY, name: 'Dr. Booked' });
-        await User.findByIdAndUpdate(newMentor._id, { maxStudents: 2 });
+    it('rejects a filing status that is neither Pending nor Approved', async () => {
+        const { group } = await createTestGroup(1);
+        const mentor = await createTestUser({ role: UserRole.FACULTY });
 
         const res = await request(app)
             .put(`/api/groups/${group._id}/mentor`)
             .set('x-auth-token', await adminToken())
-            .send({ facultyId: String(newMentor._id), title: 'Too Many' });
+            .send({ facultyId: String(mentor._id), title: 'Draft Sneak', description: 'Desc', status: 'Draft' });
+
+        expect(res.status).toBe(400);
+        expect(await Project.findOne({ group: group._id })).toBeNull();
+    });
+
+    it('numbers an unnumbered group when the office files its proposal', async () => {
+        // A student-formed group only earns its number when a proposal lands, so filing one for
+        // them has to do the same.
+        const { group } = await createTestGroup(2);
+        await Group.findByIdAndUpdate(group._id, { name: undefined, targetBatch: '2024' });
+        const mentor = await createTestUser({ role: UserRole.FACULTY });
+
+        const res = await request(app)
+            .put(`/api/groups/${group._id}/mentor`)
+            .set('x-auth-token', await adminToken())
+            .send({ facultyId: String(mentor._id), title: 'Needs A Number', description: 'Desc' });
+
+        expect(res.status).toBe(200);
+        const stored = await Group.findById(group._id);
+        expect(Number.isNaN(parseInt(stored!.name || ''))).toBe(false);
+    });
+
+    it('still enforces the student limit when filing a proposal', async () => {
+        const { group } = await createTestGroup(3);
+        const mentor = await createTestUser({ role: UserRole.FACULTY, name: 'Dr. Booked' });
+        await User.findByIdAndUpdate(mentor._id, { maxStudents: 2 });
+
+        const res = await request(app)
+            .put(`/api/groups/${group._id}/mentor`)
+            .set('x-auth-token', await adminToken())
+            .send({ facultyId: String(mentor._id), title: 'Too Many', description: 'Desc' });
 
         expect(res.status).toBe(400);
         expect(res.body.limitExceeded).toBe(true);
         // Nothing was created on the way to the refusal.
         expect(await Project.findOne({ group: group._id })).toBeNull();
+        expect((await Group.findById(group._id))!.status).toBe('Forming');
+    });
+
+    it('reaches the mentor as a submission, not a mentor change, when filed for review', async () => {
+        mockMentorEmail.mockClear();
+        mockSubmissionEmail.mockClear();
+        const { group } = await createTestGroup(2);
+        const mentor = await createTestUser({ role: UserRole.FACULTY, email: 'reviewer@t.ac.in' });
+
+        const res = await request(app)
+            .put(`/api/groups/${group._id}/mentor`)
+            .set('x-auth-token', await adminToken())
+            .send({ facultyId: String(mentor._id), title: 'For Review', description: 'Desc' });
+        expect(res.status).toBe(200);
+
+        expect(mockSubmissionEmail).toHaveBeenCalledTimes(1);
+        expect(mockSubmissionEmail.mock.calls[0][0]).toEqual(['reviewer@t.ac.in']);
+
+        // The mentor is not also told their mentorship "changed" — only the group is written to.
+        const audiences = mockMentorEmail.mock.calls.map(([, audience]: any) => audience);
+        expect(audiences).toEqual(['members']);
     });
 
     it('reassigns a Pending proposal even when the group pointer is unset', async () => {

@@ -4,7 +4,9 @@ import Group from '../models/Group';
 import User from '../models/User';
 import Project from '../models/Project';
 import Event, { EventType } from '../models/Event';
-import { sendGroupCompleteEmail, sendGroupInviteEmail, sendGroupInviteResponseEmail, sendMentorChangeEmail } from '../utils/emailService';
+import { sendGroupCompleteEmail, sendGroupInviteEmail, sendGroupInviteResponseEmail, sendMentorChangeEmail, sendProposalSubmissionEmail } from '../utils/emailService';
+import { publicUrlFor } from '../middleware/uploadMiddleware';
+import { applyProjectStatus } from './projectController';
 import { nextActiveGroupNumber } from '../utils/groupNumbering';
 import { midTermEvaluationOpened, projectDetailsFrozen } from '../utils/evaluationLock';
 import { supervisorCapacity } from '../utils/supervisorCapacity';
@@ -675,8 +677,9 @@ const populatedGroup = (id: any) =>
  * around. What it keeps are the invariants that would corrupt data if broken — students only,
  * one active group per student, and the three-member cap.
  *
- * No project is created here, so the group has no mentor yet. Supervisors live on the project;
- * adminSetGroupMentor creates one when a group reaches it without any.
+ * No project is created here, and none is created for the group anywhere else on the admin's
+ * behalf: the proposal is the students' to write and submit. The mentor lives on that proposal,
+ * so the group has no supervisor until it arrives — adminSetGroupMentor can change it afterwards.
  */
 export const adminCreateGroup = async (req: Request, res: Response) => {
     try {
@@ -857,12 +860,17 @@ export const adminRemoveGroupMember = async (req: Request, res: Response) => {
 
 /**
  * Set or reassign a group's faculty mentor from the Group Directory.
- * PUT /api/groups/:id/mentor  { facultyId, title?, description? }
+ * PUT /api/groups/:id/mentor  (multipart) { facultyId, title?, description?, tags?, status?, files[] }
  *
- * The mentor lives on the group's project. A group that has never submitted a proposal has no
- * project, and therefore nowhere to put a mentor — which used to make an admin-created group a
- * dead end. So when there is no project, this creates one from the supplied title and approves
- * it, rather than refusing. `title` is required in that case and ignored otherwise.
+ * The mentor lives on the group's project, so a group that has never proposed anything has
+ * nowhere to hold one. Rather than inventing a stub project to hang the mentor off, this files
+ * the whole proposal the way a student would — title, description, tags, attachments, mentor —
+ * so what the group ends up with is a real proposal somebody actually wrote, not a placeholder.
+ * Those fields are required in that case and ignored once a project exists.
+ *
+ * `status` decides what filing it means: 'Pending' sends it to the named mentor's review queue
+ * exactly like a student submission (the default), 'Approved' records the office's decision as
+ * final. Both routes through applyProjectStatus so the group's own status can't drift from it.
  *
  * The incoming supervisor's semester-wide student cap is a hard limit either way: an assignment
  * that would push them past it is refused, and the response names the shortfall so the admin can
@@ -871,7 +879,7 @@ export const adminRemoveGroupMember = async (req: Request, res: Response) => {
 export const adminSetGroupMentor = async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
-        const { facultyId, title, description } = req.body;
+        const { facultyId, title, description, tags, status } = req.body;
         if (!facultyId) return res.status(400).json({ message: 'Select a faculty mentor.' });
 
         const group = await Group.findById(id);
@@ -895,19 +903,25 @@ export const adminSetGroupMentor = async (req: Request, res: Response) => {
         if (!faculty || faculty.role !== 'Faculty') {
             return res.status(400).json({ message: 'Invalid faculty selected.' });
         }
-        if (project?.faculty && String(project.faculty) === String(faculty._id)) {
-            return res.status(400).json({ message: `${faculty.name} already mentors this group.` });
-        }
 
-        // No project yet — this is an admin-created group getting its first supervisor. Ask for a
-        // title rather than sending the admin away to make the group submit a proposal they were
-        // never going to submit.
-        const creatingProject = !project;
-        if (creatingProject && !String(title || '').trim()) {
-            return res.status(400).json({
-                message: 'This group has no project yet. Give the project a title and it will be created with this mentor.',
-                needsProject: true
-            });
+        // No project yet: the office is filing the group's proposal for them, so it needs the
+        // same substance a student's would carry — the proposal form requires a title and a
+        // description, and so does this. Tags and attachments may legitimately be empty.
+        const filingProposal = !project;
+        const filedStatus: 'Pending' | 'Approved' = status === 'Approved' ? 'Approved' : 'Pending';
+
+        if (filingProposal) {
+            if (!String(title || '').trim() || !String(description || '').trim()) {
+                return res.status(400).json({
+                    message: 'This group has no proposal yet. Give the project a title and a description to file one for them.',
+                    needsProject: true
+                });
+            }
+            if (status && !['Pending', 'Approved'].includes(status)) {
+                return res.status(400).json({ message: "File the proposal as either 'Pending' or 'Approved'." });
+            }
+        } else if (project!.faculty && String(project!.faculty) === String(faculty._id)) {
+            return res.status(400).json({ message: `${faculty.name} already mentors this group.` });
         }
 
         const load = await supervisorCapacity(faculty, group.members.length, project?._id);
@@ -925,22 +939,39 @@ export const adminSetGroupMentor = async (req: Request, res: Response) => {
             ? await User.findById(project.faculty).select('name email').lean() as any
             : null;
 
-        if (creatingProject) {
-            // Approved outright. The admin placing a mentor on a group they built by hand IS the
-            // decision — there is no proposal for the mentor to review, and leaving it Pending
-            // would leave the group's own status stuck at ProposalPending waiting on nobody.
+        const parsedTags = Array.isArray(tags)
+            ? tags.map(String).map(t => t.trim()).filter(Boolean)
+            : String(tags || '').split(',').map(t => t.trim()).filter(Boolean);
+
+        if (filingProposal) {
+            const files = (req as any).files || [];
             project = new Project({
                 title: String(title).trim(),
-                description: String(description || '').trim() || 'Created by the project office.',
+                description: String(description).trim(),
+                tags: parsedTags,
+                attachments: files.map((f: any) => publicUrlFor(req, f)),
                 group: group._id,
                 faculty: faculty._id,
-                status: 'Approved',
+                status: filedStatus,
             });
             await project.save();
 
-            group.project = project._id as any;
-            group.status = 'Approved';
-            await group.save();
+            // A group only earns its number when a proposal lands, so filing one on their behalf
+            // has to do the same — otherwise a student-formed group stays unnumbered. Mirrors
+            // createProject, and shares nextActiveGroupNumber so the two cannot drift.
+            if (!group.name || isNaN(parseInt(group.name)) || group.name.startsWith('Group-')) {
+                let batchYear = group.targetBatch;
+                if (!batchYear && group.members.length > 0) {
+                    const first = await User.findById(group.members[0]).select('rollNumber targetBatch').lean() as any;
+                    if (first) batchYear = batchOf(first);
+                }
+                group.name = String(await nextActiveGroupNumber(batchYear));
+                await group.save();
+            }
+
+            // The group's own status follows the project's, by the same mapping every other
+            // status write uses.
+            await applyProjectStatus(project, filedStatus);
         } else {
             project!.faculty = faculty._id as any;
             await project!.save();
@@ -950,6 +981,7 @@ export const adminSetGroupMentor = async (req: Request, res: Response) => {
         // Each gets the same facts framed for their side (see sendMentorChangeEmail).
         try {
             const memberUsers = await User.find({ _id: { $in: group.members } }).select('name email').lean();
+            const memberNames = memberUsers.map((m: any) => m.name).filter(Boolean);
             const context = {
                 projectTitle: project!.title,
                 newMentorName: faculty.name,
@@ -957,17 +989,29 @@ export const adminSetGroupMentor = async (req: Request, res: Response) => {
                 groupName: group.name,
                 groupId: String(group._id),
                 batch: group.targetBatch ? String(group.targetBatch) : undefined,
-                memberNames: memberUsers.map((m: any) => m.name).filter(Boolean),
+                memberNames,
             };
             const failed = (err: any) => console.error('Mentor change email failed:', err);
+            const memberEmails = memberUsers.map((m: any) => m.email).filter((e: string) => !!e);
 
+            // A proposal filed for review reaches its mentor as a proposal, not as a mentor
+            // change — it is sitting in their queue waiting on a decision, and that is what the
+            // submission email says. Any other case is a mentor change and reads as one.
             if (faculty.email) {
-                sendMentorChangeEmail([faculty.email], 'new-mentor', context).catch(failed);
+                if (filingProposal && filedStatus === 'Pending') {
+                    sendProposalSubmissionEmail([faculty.email], project!.title, group.name || 'Unnamed Group', {
+                        batch: group.targetBatch,
+                        memberNames,
+                        description: project!.description,
+                        tags: parsedTags.length > 0 ? parsedTags : undefined
+                    }).catch(failed);
+                } else {
+                    sendMentorChangeEmail([faculty.email], 'new-mentor', context).catch(failed);
+                }
             }
             if (previousMentor?.email) {
                 sendMentorChangeEmail([previousMentor.email], 'previous-mentor', context).catch(failed);
             }
-            const memberEmails = memberUsers.map((m: any) => m.email).filter((e: string) => !!e);
             if (memberEmails.length > 0) {
                 sendMentorChangeEmail(memberEmails, 'members', context).catch(failed);
             }
@@ -977,8 +1021,10 @@ export const adminSetGroupMentor = async (req: Request, res: Response) => {
         }
 
         res.json({
-            message: creatingProject
-                ? `Project created and assigned to ${faculty.name}.`
+            message: filingProposal
+                ? (filedStatus === 'Approved'
+                    ? `Proposal filed and approved with ${faculty.name} as mentor.`
+                    : `Proposal filed and sent to ${faculty.name} for review.`)
                 : `Mentor changed to ${faculty.name}.`,
             group: await populatedGroup(group._id)
         });

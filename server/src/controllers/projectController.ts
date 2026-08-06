@@ -249,9 +249,10 @@ export const updateProjectStatus = async (req: Request, res: Response) => {
  *
  * Group.status and Project.status are separate fields that must agree, and getting them out of
  * step is how a group ends up stuck — showing "proposal pending" against a project nobody is
- * reviewing, or holding a pointer to a proposal that no longer exists. Both the faculty decision
- * path (updateProjectStatus, Approved/Rejected only) and the admin override (adminSetProjectStatus,
- * all four) route through here so the mapping cannot drift between them.
+ * reviewing, or holding a pointer to a proposal that no longer exists. The faculty decision path
+ * (updateProjectStatus, Approved/Rejected only), the admin override (adminSetProjectStatus, all
+ * four) and the office filing a proposal for a group (adminSetGroupMentor) all route through here
+ * so the mapping cannot drift between them.
  *
  *   Approved  → group Approved, pointed at this project, competing proposals destroyed
  *   Pending   → group ProposalPending, pointed at this project
@@ -261,7 +262,7 @@ export const updateProjectStatus = async (req: Request, res: Response) => {
  * Students are emailed for the two decisions they are waiting on. An admin walking a status
  * backwards is a correction, not a decision, so it sends nothing — the admin tells them.
  */
-const applyProjectStatus = async (
+export const applyProjectStatus = async (
     project: any,
     status: 'Draft' | 'Pending' | 'Approved' | 'Rejected',
     feedback?: string

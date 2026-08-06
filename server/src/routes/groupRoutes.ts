@@ -1,6 +1,7 @@
 import express from 'express';
 import { createGroup, getMyGroup, leaveGroup, getMyMentees, getAllGroups, updateGroup, getNextGroupNumber, acceptInvite, rejectInvite, getMyPendingInvites, cancelInvite, inviteMembers, adminCreateGroup, adminAddGroupMembers, adminRemoveGroupMember, adminSetGroupMentor } from '../controllers/groupController';
 import { auth } from '../middleware/authMiddleware';
+import { upload } from '../middleware/uploadMiddleware';
 import { UserRole } from '../models/User';
 
 const router = express.Router();
@@ -33,6 +34,8 @@ router.post('/:id/cancel-invite', cancelInvite);
 router.post('/admin', adminAuth, adminCreateGroup);
 router.post('/:id/members', adminAuth, adminAddGroupMembers);
 router.delete('/:id/members/:memberId', adminAuth, adminRemoveGroupMember);
-router.put('/:id/mentor', adminAuth, adminSetGroupMentor);
+// Multipart: filing a proposal for a group that has none carries attachments, the same way the
+// project routes take them. A plain JSON body still parses — multer leaves it alone.
+router.put('/:id/mentor', adminAuth, upload.array('files', 5), adminSetGroupMentor);
 
 export default router;

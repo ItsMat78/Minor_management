@@ -362,14 +362,19 @@ const AdminDashboard: React.FC = () => {
     const [mentorSaving, setMentorSaving] = useState(false);
     const [mentorError, setMentorError] = useState('');
     const [mentorLimit, setMentorLimit] = useState<any>(null);
-    // Title/description collected when the group being given a mentor has no project yet — the
-    // supervisor lives on the project, so one has to exist before it can be assigned.
-    const [mentorProjectTitle, setMentorProjectTitle] = useState('');
-    const [mentorProjectDescription, setMentorProjectDescription] = useState('');
+    // The proposal the office files when the group has none — same substance a student's carries,
+    // so the group ends up with a real proposal rather than a placeholder holding a mentor.
+    // `mentorFileAs` decides whether it goes to the mentor for review or is approved outright.
+    const [mentorProposal, setMentorProposal] = useState({ title: '', description: '', tags: '' });
+    const [mentorFiles, setMentorFiles] = useState<FileList | null>(null);
+    const [mentorFileAs, setMentorFileAs] = useState<'Pending' | 'Approved'>('Pending');
 
     // Create-group modal (Group Directory). Students only get to form groups while a Group
     // Formation window is open, so this is the office's manual path.
     const [createGroupOpen, setCreateGroupOpen] = useState(false);
+    // Second step of the modal: the same review-then-confirm the student flow uses, so the office
+    // sees the group number, batch and members it is about to commit to before it exists.
+    const [createGroupConfirming, setCreateGroupConfirming] = useState(false);
     const [createGroupBatch, setCreateGroupBatch] = useState('');
     const [createGroupSearch, setCreateGroupSearch] = useState('');
     const [createGroupCandidates, setCreateGroupCandidates] = useState<any[]>([]);
@@ -1609,8 +1614,9 @@ const AdminDashboard: React.FC = () => {
         setMentorFacultyId(group.project?.faculty?._id || group.project?.faculty || '');
         setMentorError('');
         setMentorLimit(null);
-        setMentorProjectTitle('');
-        setMentorProjectDescription('');
+        setMentorProposal({ title: '', description: '', tags: '' });
+        setMentorFiles(null);
+        setMentorFileAs('Pending');
         // Load per-supervisor load so the picker can show how full each one is before committing.
         try {
             const res = await api.get('/users/faculty');
@@ -1625,8 +1631,8 @@ const AdminDashboard: React.FC = () => {
         setMentorFacultyId('');
         setMentorError('');
         setMentorLimit(null);
-        setMentorProjectTitle('');
-        setMentorProjectDescription('');
+        setMentorProposal({ title: '', description: '', tags: '' });
+        setMentorFiles(null);
     };
 
     const handleChangeMentor = async () => {
@@ -1635,13 +1641,24 @@ const AdminDashboard: React.FC = () => {
         setMentorError('');
         setMentorLimit(null);
         try {
-            // A group with no project has nowhere to hold a mentor, so the server creates one from
-            // this title. Sent unconditionally; it is ignored when a project already exists.
-            await api.put(`/groups/${mentorGroup._id}/mentor`, {
-                facultyId: mentorFacultyId,
-                title: mentorProjectTitle,
-                description: mentorProjectDescription,
-            });
+            // No project means the office is filing the group's proposal, attachments and all —
+            // which has to go up as multipart. A plain reassignment stays a JSON body.
+            if (!mentorGroup.project) {
+                const data = new FormData();
+                data.append('facultyId', mentorFacultyId);
+                data.append('title', mentorProposal.title.trim());
+                data.append('description', mentorProposal.description.trim());
+                data.append('tags', mentorProposal.tags);
+                data.append('status', mentorFileAs);
+                if (mentorFiles) {
+                    for (let i = 0; i < mentorFiles.length; i++) data.append('files', mentorFiles[i]);
+                }
+                await api.put(`/groups/${mentorGroup._id}/mentor`, data, {
+                    headers: { 'Content-Type': 'multipart/form-data' }
+                });
+            } else {
+                await api.put(`/groups/${mentorGroup._id}/mentor`, { facultyId: mentorFacultyId });
+            }
             await refreshGroups();
             // The supervisor loads shown in the picker just shifted — refresh them too.
             try {
@@ -1651,7 +1668,7 @@ const AdminDashboard: React.FC = () => {
             closeMentorModal();
         } catch (err: any) {
             const data = err.response?.data;
-            setMentorError(data?.message || 'Failed to change the mentor.');
+            setMentorError(data?.message || 'Failed to save the mentor.');
             if (data?.limitExceeded) setMentorLimit(data.limit || null);
         } finally {
             setMentorSaving(false);
@@ -1668,6 +1685,7 @@ const AdminDashboard: React.FC = () => {
         setCreateGroupCandidates([]);
         setCreateGroupError('');
         setCreateGroupNextNumber(null);
+        setCreateGroupConfirming(false);
     };
 
     const closeCreateGroup = () => {
@@ -1675,6 +1693,7 @@ const AdminDashboard: React.FC = () => {
         setCreateGroupSelected([]);
         setCreateGroupSearch('');
         setCreateGroupError('');
+        setCreateGroupConfirming(false);
     };
 
     const handleCreateGroup = async () => {
@@ -2854,9 +2873,10 @@ const AdminDashboard: React.FC = () => {
                                                                                                                 >
                                                                                                                     <Settings className="w-4 h-4" /> Configure Batch
                                                                                                                 </button>
-                                                                                                                {/* Offered with or without a project: a group that has never
-                                                                                                                    proposed gets its project created as part of assigning the
-                                                                                                                    mentor, which is the only way an admin-built group ever gets one. */}
+                                                                                                                {/* Offered with or without a project. Without one the modal
+                                                                                                                    files the group's proposal in full — title, description,
+                                                                                                                    tags, attachments — rather than inventing a placeholder
+                                                                                                                    to hang the mentor off. */}
                                                                                                                 <button
                                                                                                                     onClick={() => {
                                                                                                                         openMentorModal(item);
@@ -4901,17 +4921,67 @@ const AdminDashboard: React.FC = () => {
                     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm">
                         <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
                             <div className="px-6 py-4 border-b border-neutral-100 flex items-center justify-between">
-                                <h3 className="text-lg font-bold text-neutral-900">Create Group</h3>
+                                <h3 className="text-lg font-bold text-neutral-900">
+                                    {createGroupConfirming ? 'Confirm New Group' : 'Create Group'}
+                                </h3>
                                 <button onClick={closeCreateGroup} className="text-neutral-400 hover:text-neutral-600">
                                     <X className="w-5 h-5" />
                                 </button>
                             </div>
 
+                            {/* Review step — mirrors what a student sees before their group is formed:
+                                the number it will take, the batch, and exactly who is in it. */}
+                            {createGroupConfirming ? (
+                                <div className="p-6 space-y-5 overflow-y-auto">
+                                    <div className="bg-indigo-50/50 p-6 rounded-2xl border-2 border-dashed border-indigo-200 text-center">
+                                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-400 mb-2 block">Proposed Group Identity</span>
+                                        <div className="text-5xl font-black text-indigo-600 tracking-tighter mb-2">
+                                            G-{createGroupNextNumber ?? '??'}
+                                        </div>
+                                        <p className="text-xs font-bold text-indigo-400 uppercase tracking-widest">
+                                            Batch {createGroupBatch || '—'}
+                                        </p>
+                                    </div>
+
+                                    <div className="flex items-center justify-between p-3 bg-neutral-50 rounded-xl border border-neutral-100">
+                                        <span className="text-xs font-bold text-neutral-400 uppercase">Team Size</span>
+                                        <span className="text-sm font-black text-neutral-900">
+                                            {createGroupSelected.length} Student{createGroupSelected.length === 1 ? '' : 's'}
+                                        </span>
+                                    </div>
+
+                                    <div className="p-4 bg-neutral-900 rounded-2xl text-white">
+                                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-500 mb-3 block">Confirmed Members</span>
+                                        <div className="space-y-2">
+                                            {createGroupSelected.map(s => (
+                                                <div key={s._id} className="flex items-center gap-2">
+                                                    <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 shrink-0" />
+                                                    <span className="text-sm font-bold truncate">{s.name}</span>
+                                                    <span className="text-xs text-neutral-400 truncate">{s.rollNumber}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <p className="text-xs text-neutral-500 leading-relaxed">
+                                        These students are added straight in — no invites to accept, and no Group Formation
+                                        window needed. Branch rules are not applied. No project is created: the proposal is
+                                        the group's to write, or yours to file for them with <strong>Assign Mentor</strong>.
+                                    </p>
+
+                                    {createGroupError && (
+                                        <div className="p-3 rounded-lg text-sm border bg-red-50 border-red-100 text-red-600 flex items-start gap-2">
+                                            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                                            <p>{createGroupError}</p>
+                                        </div>
+                                    )}
+                                </div>
+                            ) : (
                             <div className="p-6 space-y-4 overflow-y-auto">
                                 <p className="text-xs text-neutral-500 leading-relaxed">
                                     Students are added straight in — no invites to accept, and no Group Formation window
-                                    needed. Branch rules are not applied here. The group starts with no project, so give it
-                                    a mentor afterwards with <strong>Assign Mentor</strong>.
+                                    needed. Branch rules are not applied here. No project is created: the proposal is the
+                                    group's to write and submit, and their mentor comes from it.
                                 </p>
 
                                 <div className="flex gap-3">
@@ -5025,16 +5095,37 @@ const AdminDashboard: React.FC = () => {
                                     </div>
                                 )}
                             </div>
+                            )}
 
                             <div className="px-6 py-4 bg-neutral-50 border-t border-neutral-100 flex justify-end gap-3">
-                                <button onClick={closeCreateGroup} className="px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-100 rounded-lg transition">Cancel</button>
-                                <button
-                                    onClick={handleCreateGroup}
-                                    disabled={createGroupSaving || createGroupSelected.length === 0}
-                                    className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                    {createGroupSaving ? 'Creating…' : 'Create Group'}
-                                </button>
+                                {createGroupConfirming ? (
+                                    <>
+                                        <button
+                                            onClick={() => { setCreateGroupConfirming(false); setCreateGroupError(''); }}
+                                            className="px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-100 rounded-lg transition"
+                                        >
+                                            Back
+                                        </button>
+                                        <button
+                                            onClick={handleCreateGroup}
+                                            disabled={createGroupSaving}
+                                            className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                        >
+                                            {createGroupSaving ? 'Creating…' : 'Confirm & Create'}
+                                        </button>
+                                    </>
+                                ) : (
+                                    <>
+                                        <button onClick={closeCreateGroup} className="px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-100 rounded-lg transition">Cancel</button>
+                                        <button
+                                            onClick={() => { setCreateGroupError(''); setCreateGroupConfirming(true); }}
+                                            disabled={createGroupSelected.length === 0}
+                                            className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                        >
+                                            Review &amp; Create
+                                        </button>
+                                    </>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -5140,18 +5231,19 @@ const AdminDashboard: React.FC = () => {
                     );
                 })()}
 
-                {/* Change mentor modal — reassigns the supervisor on the group's project */}
+                {/* Change mentor modal — reassigns the supervisor on the group's project, or, when the
+                    group has none, files their proposal in full and assigns it a mentor */}
                 {mentorGroup && (() => {
                     const currentMentorId = mentorGroup.project?.faculty?._id || mentorGroup.project?.faculty || '';
                     const groupSize = mentorGroup.members?.length || 0;
-                    // No project means no mentor slot. The supervisor lives on the project, so one
-                    // has to be created before it can be assigned — the admin supplies the title.
-                    const needsProject = !mentorGroup.project;
+                    // No project to hold a mentor. Rather than invent one, collect the proposal the
+                    // group never submitted — the same fields a student fills in.
+                    const filingProposal = !mentorGroup.project;
                     return (
                         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm">
                             <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
                                 <div className="px-6 py-4 border-b border-neutral-100 flex items-center justify-between">
-                                    <h3 className="text-lg font-bold text-neutral-900">{needsProject ? 'Assign Mentor' : 'Change Mentor'}</h3>
+                                    <h3 className="text-lg font-bold text-neutral-900">{filingProposal ? 'Assign Mentor' : 'Change Mentor'}</h3>
                                     <button onClick={closeMentorModal} className="text-neutral-400 hover:text-neutral-600">
                                         <X className="w-5 h-5" />
                                     </button>
@@ -5159,43 +5251,99 @@ const AdminDashboard: React.FC = () => {
                                 <div className="p-6 space-y-4 overflow-y-auto">
                                     <div className="text-sm text-neutral-600 bg-neutral-50 p-3 rounded-lg border border-neutral-200 space-y-1">
                                         <p><strong>Group:</strong> {mentorGroup.name ? `Group ${mentorGroup.name}` : '(unnamed)'} · {groupSize} student{groupSize === 1 ? '' : 's'}</p>
-                                        <p><strong>Project:</strong> {mentorGroup.project?.title || 'No project'}</p>
+                                        <p><strong>Project:</strong> {mentorGroup.project?.title || 'No proposal yet'}</p>
                                         <p><strong>Current mentor:</strong> {mentorGroup.project?.faculty?.name || 'Unassigned'}</p>
                                     </div>
 
-                                    {needsProject && (
+                                    {filingProposal && (
                                         <div className="space-y-3 p-4 rounded-lg border border-indigo-100 bg-indigo-50/50">
                                             <p className="text-xs text-indigo-800 leading-relaxed">
-                                                This group has never submitted a proposal, so it has no project — and a mentor is
-                                                stored on the project. Give the project a title and it will be created with this
-                                                mentor, approved, ready for submissions and evaluation.
+                                                This group has no proposal, and a mentor is recorded on the proposal — so this
+                                                files one for them. Fill it in as the group would; what you enter is what they
+                                                and their mentor will work from, and they can still edit it afterwards.
                                             </p>
                                             <div>
                                                 <label className="block text-sm font-medium text-neutral-700 mb-1">Project title</label>
                                                 <input
-                                                    value={mentorProjectTitle}
-                                                    onChange={(e) => { setMentorProjectTitle(e.target.value); setMentorError(''); }}
+                                                    value={mentorProposal.title}
+                                                    onChange={(e) => { setMentorProposal(p => ({ ...p, title: e.target.value })); setMentorError(''); }}
                                                     placeholder="e.g. Campus Navigation System"
                                                     className="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                                                 />
                                             </div>
                                             <div>
-                                                <label className="block text-sm font-medium text-neutral-700 mb-1">
-                                                    Description <span className="font-normal text-neutral-400">(optional)</span>
-                                                </label>
+                                                <label className="block text-sm font-medium text-neutral-700 mb-1">Description</label>
                                                 <textarea
-                                                    value={mentorProjectDescription}
-                                                    onChange={(e) => setMentorProjectDescription(e.target.value)}
+                                                    value={mentorProposal.description}
+                                                    onChange={(e) => { setMentorProposal(p => ({ ...p, description: e.target.value })); setMentorError(''); }}
                                                     rows={3}
-                                                    placeholder="The group and their mentor can refine this later."
+                                                    placeholder="What the group intends to build."
                                                     className="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 resize-none"
                                                 />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-neutral-700 mb-1">
+                                                    Tags <span className="font-normal text-neutral-400">(comma separated)</span>
+                                                </label>
+                                                <input
+                                                    value={mentorProposal.tags}
+                                                    onChange={(e) => setMentorProposal(p => ({ ...p, tags: e.target.value }))}
+                                                    placeholder="e.g. Web, Machine Learning"
+                                                    className="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-neutral-700 mb-1">
+                                                    Attachments <span className="font-normal text-neutral-400">(up to 5)</span>
+                                                </label>
+                                                <input
+                                                    type="file"
+                                                    multiple
+                                                    onChange={(e) => setMentorFiles(e.target.files)}
+                                                    className="w-full text-sm text-neutral-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
+                                                />
+                                                {mentorFiles && mentorFiles.length > 5 && (
+                                                    <p className="mt-1 text-xs text-red-600">Only the first 5 files are kept — remove some.</p>
+                                                )}
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-neutral-700 mb-1">File it as</label>
+                                                <div className="space-y-1.5">
+                                                    <label className="flex items-start gap-2 text-sm text-neutral-700 cursor-pointer">
+                                                        <input
+                                                            type="radio"
+                                                            checked={mentorFileAs === 'Pending'}
+                                                            onChange={() => setMentorFileAs('Pending')}
+                                                            className="mt-1 h-3.5 w-3.5 text-indigo-600"
+                                                        />
+                                                        <span>
+                                                            Send to the mentor for review
+                                                            <span className="block text-xs text-neutral-500">
+                                                                Lands in their queue like a student submission; they approve or reject it.
+                                                            </span>
+                                                        </span>
+                                                    </label>
+                                                    <label className="flex items-start gap-2 text-sm text-neutral-700 cursor-pointer">
+                                                        <input
+                                                            type="radio"
+                                                            checked={mentorFileAs === 'Approved'}
+                                                            onChange={() => setMentorFileAs('Approved')}
+                                                            className="mt-1 h-3.5 w-3.5 text-indigo-600"
+                                                        />
+                                                        <span>
+                                                            Approve outright
+                                                            <span className="block text-xs text-neutral-500">
+                                                                No review step — the group is supervised and ready for evaluation immediately.
+                                                            </span>
+                                                        </span>
+                                                    </label>
+                                                </div>
                                             </div>
                                         </div>
                                     )}
 
                                     <div>
-                                        <label className="block text-sm font-medium text-neutral-700 mb-1">{needsProject ? 'Mentor' : 'New mentor'}</label>
+                                        <label className="block text-sm font-medium text-neutral-700 mb-1">{filingProposal ? 'Mentor' : 'New mentor'}</label>
                                         <select
                                             value={mentorFacultyId}
                                             onChange={(e) => { setMentorFacultyId(e.target.value); setMentorError(''); setMentorLimit(null); }}
@@ -5219,9 +5367,11 @@ const AdminDashboard: React.FC = () => {
                                                 })}
                                         </select>
                                         <p className="mt-2 text-xs text-neutral-500">
-                                            The mentor is stored on the group's project, so this also moves the group out of the
-                                            previous supervisor's mentee list. A supervisor's student limit is a semester-wide total
-                                            across every batch, and it is enforced here.
+                                            {filingProposal
+                                                ? 'The mentor is stored on the proposal this creates.'
+                                                : "The mentor is stored on the group's project, so this also moves the group out of the previous supervisor's mentee list."}
+                                            {' '}A supervisor's student limit is a semester-wide total across every batch, and it is
+                                            enforced here.
                                         </p>
                                     </div>
 
@@ -5251,12 +5401,17 @@ const AdminDashboard: React.FC = () => {
                                         disabled={
                                             mentorSaving
                                             || !mentorFacultyId
-                                            || (!needsProject && mentorFacultyId === currentMentorId)
-                                            || (needsProject && !mentorProjectTitle.trim())
+                                            || (filingProposal
+                                                ? (!mentorProposal.title.trim() || !mentorProposal.description.trim())
+                                                : mentorFacultyId === currentMentorId)
                                         }
                                         className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
-                                        {mentorSaving ? 'Saving…' : needsProject ? 'Create Project & Assign' : 'Change Mentor'}
+                                        {mentorSaving
+                                            ? 'Saving…'
+                                            : filingProposal
+                                                ? (mentorFileAs === 'Approved' ? 'File & Approve' : 'File Proposal')
+                                                : 'Change Mentor'}
                                     </button>
                                 </div>
                             </div>

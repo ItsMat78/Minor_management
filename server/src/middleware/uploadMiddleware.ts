@@ -32,7 +32,9 @@ const bucketFor = (req: Request) => {
     if (p.includes('/submissions')) return 'submissions';
     if (p.includes('/updates')) return 'updates';
     if (p.includes('/profile-photo')) return 'avatars';
-    if (p.includes('/proposals') || p.includes('/projects')) return 'proposals';
+    // '/mentor' is the office filing a group's proposal for them (PUT /groups/:id/mentor) — the
+    // files it carries are proposal attachments and belong with the rest of them, not in misc.
+    if (p.includes('/proposals') || p.includes('/projects') || p.includes('/mentor')) return 'proposals';
     if (p.includes('/import')) return 'imports';
     return 'misc';
 };
