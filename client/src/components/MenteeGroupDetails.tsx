@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { Clock, Users, MessageSquare, Plus, Link as LinkIcon, ArrowLeft, X, FileText, Download, Search, UserMinus, Loader2 } from 'lucide-react';
 import FilePreview from './FilePreview';
 import Avatar from './Avatar';
+import ProjectDetailsHeader from './ProjectDetailsHeader';
 import { resolveUploadUrl } from '../utils/uploadUrl';
 import api from '../utils/api';
 
@@ -138,6 +139,10 @@ const MenteeGroupDetails: React.FC<MenteeGroupDetailsProps> = ({ group: groupPro
     const submissions = project?.submissions || {};
     const faculty = project?.faculty;
 
+    // The mentor of record and the admin may correct the project's text. The server re-checks
+    // this, so a stale `user` here only ever hides the control — it can never grant the write.
+    const canEditDetails = !!project && (isAdmin || String(faculty?._id || faculty || '') === String(user?._id || ''));
+
     const hasMidTerm = !!(submissions.midTermReport || submissions.midTermPPT || submissions.midTermPlagiarism);
     const hasEndTerm = !!(submissions.endTermReport || submissions.endTermPPT || submissions.endTermPlagiarism);
 
@@ -224,22 +229,12 @@ const MenteeGroupDetails: React.FC<MenteeGroupDetailsProps> = ({ group: groupPro
                             )}
                         </div>
 
-                        <h1 className="text-3xl font-bold text-gray-900 mb-4 capitalize leading-tight">
-                            {project?.title || 'Untitled Project'}
-                        </h1>
-                        <p className="text-gray-500 leading-relaxed text-sm mb-6">
-                            {project?.description || "No description provided."}
-                        </p>
-
-                        {project?.tags && project.tags.length > 0 && (
-                            <div className="flex flex-wrap gap-2 mb-6">
-                                {project.tags.map((tag: string, i: number) => (
-                                    <span key={i} className="px-3 py-1 bg-neutral-50 text-neutral-600 rounded-md text-xs font-semibold border border-neutral-100">
-                                        {tag}
-                                    </span>
-                                ))}
-                            </div>
-                        )}
+                        <ProjectDetailsHeader
+                            project={project}
+                            canEdit={canEditDetails}
+                            onSaved={details => setGroup({ ...group, project: { ...project, ...details } })}
+                            tagClassName="px-3 py-1 bg-neutral-50 text-neutral-600 rounded-md text-xs font-semibold border border-neutral-100"
+                        />
 
                         {project?.attachments && project.attachments.length > 0 && (
                             <div className="mb-6">
@@ -318,16 +313,30 @@ const MenteeGroupDetails: React.FC<MenteeGroupDetailsProps> = ({ group: groupPro
                                         <div className="absolute -left-[41px] top-1 h-5 w-5 rounded-full border-4 border-white bg-indigo-600 shadow-sm"></div>
                                         <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
                                             <div className="flex justify-between items-start mb-3">
-                                                <div>
-                                                    {update.title && <h4 className="font-bold text-gray-900 text-sm mb-1">{update.title}</h4>}
-                                                    <span className="text-xs font-medium text-gray-500">
-                                                        {new Date(update.date).toLocaleDateString()} at {new Date(update.date).toLocaleTimeString()}
-                                                    </span>
-                                                    {update.createdBy && (
-                                                        <span className={`ml-2 text-xs font-bold px-2 py-0.5 rounded-full ${update.createdBy.role === 'Faculty' ? 'bg-orange-50 text-orange-700' : 'bg-indigo-50 text-indigo-700'}`}>
-                                                            {update.createdBy.name} · {update.createdBy.role}
-                                                        </span>
+                                                <div className="flex items-start gap-3 min-w-0">
+                                                    {/* `.name` rather than the object: an unpopulated createdBy is still a
+                                                        truthy id string, which used to render an empty "· " badge. */}
+                                                    {update.createdBy?.name && (
+                                                        <Avatar
+                                                            name={update.createdBy.name}
+                                                            photoUrl={update.createdBy.photoUrl}
+                                                            className="h-9 w-9 rounded-full object-cover shrink-0 border border-gray-200 mt-0.5"
+                                                            fallbackClassName={`h-9 w-9 rounded-full flex items-center justify-center text-sm font-bold shrink-0 mt-0.5 ${update.createdBy.role === 'Faculty' ? 'bg-orange-100 text-orange-700' : 'bg-indigo-100 text-indigo-700'}`}
+                                                        />
                                                     )}
+                                                    <div className="min-w-0">
+                                                        {update.title && <h4 className="font-bold text-gray-900 text-sm mb-1">{update.title}</h4>}
+                                                        {update.createdBy?.name && (
+                                                            <div className="mb-1">
+                                                                <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${update.createdBy.role === 'Faculty' ? 'bg-orange-50 text-orange-700' : 'bg-indigo-50 text-indigo-700'}`}>
+                                                                    {update.createdBy.name} · {update.createdBy.role}
+                                                                </span>
+                                                            </div>
+                                                        )}
+                                                        <span className="text-xs font-medium text-gray-500">
+                                                            {new Date(update.date).toLocaleDateString()} at {new Date(update.date).toLocaleTimeString()}
+                                                        </span>
+                                                    </div>
                                                 </div>
                                             </div>
                                             <div className="text-gray-600 text-sm whitespace-pre-wrap leading-relaxed mb-4">

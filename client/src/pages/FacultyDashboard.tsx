@@ -2,13 +2,13 @@ import React, { useState, useEffect } from 'react';
 import Avatar from '../components/Avatar';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../utils/api';
-import { errorMessage } from '../utils/apiError';
 import { useAuth } from '../context/AuthContext';
 import { GlobalEventBanner } from '../components/GlobalEventBanner';
 import { Search, ChevronDown, ChevronUp, Users, Clock, CheckCircle, XCircle, FileText, LayoutGrid, LayoutList, X, LogOut, ChevronRight, Layout, Settings, Menu, GraduationCap, Medal, Archive, Download, Upload, AlertCircle } from 'lucide-react';
 import { motion } from 'framer-motion';
 import * as Dialog from '@radix-ui/react-dialog';
 import MenteeGroupDetails from '../components/MenteeGroupDetails';
+import ProfilePhotoUpload from '../components/ProfilePhotoUpload';
 import AttachmentGallery from '../components/AttachmentGallery';
 import CustomBatchDropdown from '../components/CustomBatchDropdown';
 import { useParticipatingBatches } from '../hooks/useParticipatingBatches';
@@ -199,7 +199,13 @@ const MenteeCard = ({ item, activeTab, navigate, setSelectedProject }: any) => {
                     ) : (
                         <div className="flex flex-wrap gap-1 max-w-[75%]">
                             {(item.members || item.group?.members || []).map((m: any, idx: number) => (
-                                <span key={idx} className="text-[10px] font-bold text-neutral-500 bg-neutral-100 px-1.5 py-0.5 rounded border border-neutral-200">
+                                <span key={idx} className="inline-flex items-center gap-1 text-[10px] font-bold text-neutral-500 bg-neutral-100 pl-0.5 pr-1.5 py-0.5 rounded border border-neutral-200">
+                                    <Avatar
+                                        name={m.name}
+                                        photoUrl={m.photoUrl}
+                                        className="h-4 w-4 rounded-full object-cover shrink-0"
+                                        fallbackClassName="h-4 w-4 rounded-full bg-neutral-300 flex items-center justify-center text-[8px] text-neutral-700 shrink-0"
+                                    />
                                     {m.name}
                                 </span>
                             ))}
@@ -1140,31 +1146,11 @@ const FacultyDashboard: React.FC = () => {
                         /* Profile View */
                         <div className="max-w-2xl mx-auto">
                             <div className="bg-white p-6 sm:p-10 rounded-3xl border border-neutral-200 shadow-sm text-center">
-                                <div className="relative inline-block mb-6">
-                                    <Avatar
-                                        name={user?.name}
-                                        photoUrl={user?.photoUrl}
+                                <div className="mb-6">
+                                    <ProfilePhotoUpload
                                         className="h-24 w-24 rounded-full object-cover border-4 border-indigo-100 shadow-md mx-auto"
                                         fallbackClassName="h-24 w-24 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-600 font-bold text-3xl mx-auto"
                                     />
-                                    <label className="absolute bottom-0 right-0 bg-indigo-600 text-white rounded-full p-1.5 cursor-pointer hover:bg-indigo-700 shadow-md" title="Upload photo">
-                                        <Settings className="w-3.5 h-3.5" />
-                                        <input
-                                            type="file"
-                                            accept="image/*"
-                                            className="hidden"
-                                            onChange={async (e) => {
-                                                const file = e.target.files?.[0];
-                                                if (!file) return;
-                                                const fd = new FormData();
-                                                fd.append('photo', file);
-                                                try {
-                                                    await api.post('/users/profile-photo', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
-                                                    window.location.reload();
-                                                } catch (err) { alert(errorMessage(err, 'Photo upload failed.')); }
-                                            }}
-                                        />
-                                    </label>
                                 </div>
                                 <h2 className="text-3xl font-bold text-neutral-900">{user?.name}</h2>
                                 <p className="text-lg text-neutral-500 mt-2">{user?.email}</p>
@@ -1459,7 +1445,17 @@ const FacultyDashboard: React.FC = () => {
                                             }).map(student => (
                                                 <tr key={student._id} className="hover:bg-neutral-50 transition-colors">
                                                     <td className="px-6 py-4 font-mono text-neutral-600">{student.rollNumber || '-'}</td>
-                                                    <td className="px-6 py-4 font-medium text-neutral-900">{student.name}</td>
+                                                    <td className="px-6 py-4 font-medium text-neutral-900">
+                                                        <span className="flex items-center gap-2.5">
+                                                            <Avatar
+                                                                name={student.name}
+                                                                photoUrl={student.photoUrl}
+                                                                className="h-8 w-8 rounded-full object-cover shrink-0 border border-neutral-200"
+                                                                fallbackClassName="h-8 w-8 rounded-full bg-neutral-100 flex items-center justify-center text-xs text-neutral-600 font-bold shrink-0"
+                                                            />
+                                                            <span className="truncate">{student.name}</span>
+                                                        </span>
+                                                    </td>
                                                     <td className="px-6 py-4 text-neutral-500">{student.email}</td>
                                                     <td className="px-6 py-4 text-neutral-500">{student.branch || '-'}</td>
                                                     <td className="px-6 py-4 text-center">

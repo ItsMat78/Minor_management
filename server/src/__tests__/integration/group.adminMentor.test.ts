@@ -258,7 +258,10 @@ describe('PUT /api/groups/:id/mentor', () => {
         expect(res.status).toBe(400);
     });
 
-    it('400s for a group with no active project', async () => {
+    // A group with no project is the admin-created case: there is nothing for the mentor to
+    // attach to, so this endpoint creates it rather than sending the admin away.
+
+    it('asks for a title when the group has no project yet', async () => {
         const { group } = await createTestGroup(2); // never proposed anything
         const newMentor = await createTestUser({ role: UserRole.FACULTY });
 
@@ -268,7 +271,48 @@ describe('PUT /api/groups/:id/mentor', () => {
             .send({ facultyId: String(newMentor._id) });
 
         expect(res.status).toBe(400);
-        expect(res.body.message).toMatch(/no active project/i);
+        expect(res.body.needsProject).toBe(true);
+        expect(res.body.message).toMatch(/no project yet/i);
+        expect(await Project.findOne({ group: group._id })).toBeNull();
+    });
+
+    it('creates an approved project when given a title, and approves the group with it', async () => {
+        const { group } = await createTestGroup(2);
+        const newMentor = await createTestUser({ role: UserRole.FACULTY, name: 'Dr. First' });
+
+        const res = await request(app)
+            .put(`/api/groups/${group._id}/mentor`)
+            .set('x-auth-token', await adminToken())
+            .send({ facultyId: String(newMentor._id), title: 'Placed By Office', description: 'Assigned manually.' });
+
+        expect(res.status).toBe(200);
+        expect(res.body.message).toMatch(/project created/i);
+
+        const project = await Project.findOne({ group: group._id });
+        expect(project!.title).toBe('Placed By Office');
+        expect(project!.description).toBe('Assigned manually.');
+        expect(project!.status).toBe('Approved');
+        expect(String(project!.faculty)).toBe(String(newMentor._id));
+
+        const stored = await Group.findById(group._id);
+        expect(stored!.status).toBe('Approved');
+        expect(String(stored!.project)).toBe(String(project!._id));
+    });
+
+    it('still enforces the student limit when creating the first project', async () => {
+        const { group } = await createTestGroup(3);
+        const newMentor = await createTestUser({ role: UserRole.FACULTY, name: 'Dr. Booked' });
+        await User.findByIdAndUpdate(newMentor._id, { maxStudents: 2 });
+
+        const res = await request(app)
+            .put(`/api/groups/${group._id}/mentor`)
+            .set('x-auth-token', await adminToken())
+            .send({ facultyId: String(newMentor._id), title: 'Too Many' });
+
+        expect(res.status).toBe(400);
+        expect(res.body.limitExceeded).toBe(true);
+        // Nothing was created on the way to the refusal.
+        expect(await Project.findOne({ group: group._id })).toBeNull();
     });
 
     it('reassigns a Pending proposal even when the group pointer is unset', async () => {

@@ -3,8 +3,10 @@ import Avatar from '../components/Avatar';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../utils/api';
-import { Layout, Users, CheckSquare, MessageSquare, Menu, Clock, Calendar, X, ChevronRight, Plus, Archive, FileText, Search, Square, AlertCircle, Trash2, AlertTriangle, Trophy, Star, Pencil } from 'lucide-react';
+import { errorMessage } from '../utils/apiError';
+import { Layout, Users, CheckSquare, MessageSquare, Menu, Clock, Calendar, X, ChevronRight, Plus, Archive, FileText, Search, Square, AlertCircle, Trash2, AlertTriangle, Trophy, Star, Pencil, UserCircle } from 'lucide-react';
 import FilePreview from '../components/FilePreview';
+import ProfilePhotoUpload from '../components/ProfilePhotoUpload';
 import AttachmentGallery from '../components/AttachmentGallery';
 import AdminDashboard from './AdminDashboard';
 import FacultyDashboard from './FacultyDashboard';
@@ -35,13 +37,16 @@ interface Student {
     semester: number;
     isGrouped: boolean;
     targetBatch?: string;
+    photoUrl?: string;
 }
+
+type StudentTab = 'directory' | 'project' | 'group' | 'archive' | 'results' | 'profile';
 
 const Dashboard: React.FC = () => {
     const { user, logout, activeEvents, refreshUser } = useAuth();
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
-    const initialStudentTab = searchParams.get('tab') as 'directory' | 'project' | 'group' | 'archive' | 'results' | null;
+    const initialStudentTab = searchParams.get('tab') as StudentTab | null;
     const [group, setGroup] = useState<Group | null>(null);
     const [loading, setLoading] = useState(true);
     const [students, setStudents] = useState<Student[]>([]);
@@ -53,11 +58,37 @@ const Dashboard: React.FC = () => {
     const [isSidebarOpen, setIsSidebarOpen] = useState(() =>
         typeof window !== 'undefined' ? window.innerWidth >= 1024 : true
     );
-    const [activeTab, setActiveTab] = useState<'directory' | 'project' | 'group' | 'archive' | 'results'>(initialStudentTab || 'directory');
+    const [activeTab, setActiveTab] = useState<StudentTab>(initialStudentTab as StudentTab || 'directory');
+
+    // Profile tab. Name is the only field a student may change on themselves — roll number,
+    // branch and batch decide which cohort they belong to, so they stay admin-controlled
+    // (SELF_EDITABLE_FIELDS in server/src/controllers/userController.ts).
+    const [editingProfile, setEditingProfile] = useState(false);
+    const [profileName, setProfileName] = useState('');
+    const [savingProfile, setSavingProfile] = useState(false);
+    const [profileError, setProfileError] = useState('');
+
+    const handleSaveProfile = async () => {
+        if (!profileName.trim()) {
+            setProfileError('Your name cannot be empty.');
+            return;
+        }
+        setSavingProfile(true);
+        setProfileError('');
+        try {
+            await api.put('/users/me', { name: profileName.trim() });
+            await refreshUser();
+            setEditingProfile(false);
+        } catch (err) {
+            setProfileError(errorMessage(err, 'Could not save your profile.'));
+        } finally {
+            setSavingProfile(false);
+        }
+    };
 
     // Switch tab and, on mobile where the sidebar is an overlay, close it so the
     // selected view is visible.
-    const selectTab = (tab: 'directory' | 'project' | 'group' | 'archive' | 'results') => {
+    const selectTab = (tab: StudentTab) => {
         setActiveTab(tab);
         if (typeof window !== 'undefined' && window.innerWidth < 1024) {
             setIsSidebarOpen(false);
@@ -560,9 +591,20 @@ const Dashboard: React.FC = () => {
                             onClick={() => selectTab('results')}
                         />
                     )}
+                    <SidebarItem
+                        icon={<UserCircle className="w-5 h-5" />}
+                        label="My Profile"
+                        active={activeTab === 'profile'}
+                        onClick={() => selectTab('profile')}
+                    />
                 </nav>
                 <div className="p-4 border-t border-neutral-100">
-                    <div className="flex items-center gap-3 mb-4">
+                    {/* Doubles as the way into the Profile tab — the avatar is where people look
+                        for their own settings, and it is the only spot on every screen. */}
+                    <button
+                        onClick={() => selectTab('profile')}
+                        className="w-full flex items-center gap-3 mb-4 text-left rounded-lg p-1 -m-1 hover:bg-neutral-50 transition-colors"
+                    >
                         <Avatar
                             name={user?.name}
                             photoUrl={user?.photoUrl}
@@ -578,7 +620,7 @@ const Dashboard: React.FC = () => {
                             </p>
                             <p className="text-xs text-neutral-500 truncate">{user?.email}</p>
                         </div>
-                    </div>
+                    </button>
                     <a
                         href="/userManual.pdf"
                         target="_blank"
@@ -612,7 +654,8 @@ const Dashboard: React.FC = () => {
                                 <span>
                                     {activeTab === 'directory' ? 'Directory' :
                                      activeTab === 'results' ? 'Results' :
-                                     activeTab === 'archive' ? 'Archive' : 'My Project'}
+                                     activeTab === 'archive' ? 'Archive' :
+                                     activeTab === 'profile' ? 'Profile' : 'My Project'}
                                 </span>
                             </div>
                             {/* The live countdown pill shares this row and never shrinks, so the
@@ -620,7 +663,8 @@ const Dashboard: React.FC = () => {
                             <h1 className="text-base sm:text-xl font-bold text-neutral-800 truncate">
                                 {activeTab === 'directory' ? 'Student Directory' :
                                  activeTab === 'results' ? 'My Results' :
-                                 activeTab === 'archive' ? 'Project Archive' : 'Project Workspace'}
+                                 activeTab === 'archive' ? 'Project Archive' :
+                                 activeTab === 'profile' ? 'My Profile' : 'Project Workspace'}
                             </h1>
                         </div>
                     </div>
@@ -664,6 +708,91 @@ const Dashboard: React.FC = () => {
                             </div>
                         )}
                     </div>
+
+                    {activeTab === 'profile' && (
+                        <div className="max-w-2xl mx-auto">
+                            <div className="bg-white p-6 sm:p-10 rounded-3xl border border-neutral-200 shadow-sm text-center">
+                                <div className="mb-6">
+                                    <ProfilePhotoUpload
+                                        className="h-24 w-24 rounded-full object-cover border-4 border-indigo-100 shadow-md mx-auto"
+                                        fallbackClassName="h-24 w-24 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-600 font-bold text-3xl mx-auto"
+                                    />
+                                </div>
+
+                                <h2 className="text-3xl font-bold text-neutral-900">{user?.name}</h2>
+                                <p className="text-lg text-neutral-500 mt-2">{user?.email}</p>
+                                <p className="text-xs text-neutral-400 mt-3">
+                                    Your photo appears next to your name across the portal — to your group, your mentor
+                                    and the project office.
+                                </p>
+
+                                {!editingProfile ? (
+                                    <>
+                                        <div className="mt-8 flex flex-wrap justify-center gap-4">
+                                            <div className="px-6 py-3 bg-neutral-50 rounded-2xl border border-neutral-100">
+                                                <p className="text-xs text-neutral-500 uppercase tracking-wider font-bold">Roll Number</p>
+                                                <p className="font-semibold text-neutral-900">{user?.rollNumber || 'N/A'}</p>
+                                            </div>
+                                            <div className="px-6 py-3 bg-neutral-50 rounded-2xl border border-neutral-100">
+                                                <p className="text-xs text-neutral-500 uppercase tracking-wider font-bold">Branch</p>
+                                                <p className="font-semibold text-neutral-900">{user?.branch || 'N/A'}</p>
+                                            </div>
+                                            <div className="px-6 py-3 bg-neutral-50 rounded-2xl border border-neutral-100">
+                                                <p className="text-xs text-neutral-500 uppercase tracking-wider font-bold">Batch</p>
+                                                <p className="font-semibold text-neutral-900 flex items-center justify-center gap-1.5">
+                                                    {user?.targetBatch || getBatch(user?.rollNumber)}
+                                                    {user?.targetBatch && user?.targetBatch !== getBatch(user?.rollNumber) && (
+                                                        <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 text-[9px] font-black uppercase rounded border border-amber-200">Dropper</span>
+                                                    )}
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        <button
+                                            onClick={() => { setProfileName(user?.name || ''); setProfileError(''); setEditingProfile(true); }}
+                                            className="mt-8 inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold transition-colors"
+                                        >
+                                            <Pencil className="w-4 h-4" /> Edit Profile
+                                        </button>
+                                        {/* Roll number, branch and batch are admin-controlled — a student
+                                            changing their own would move them between cohorts. */}
+                                        <p className="mt-3 text-xs text-neutral-400">
+                                            Roll number, branch and batch are set by the project office.
+                                        </p>
+                                    </>
+                                ) : (
+                                    <div className="mt-8 text-left flex flex-col gap-4">
+                                        <div className="flex flex-col gap-1">
+                                            <label className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Name</label>
+                                            <input
+                                                className="border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                                                value={profileName}
+                                                onChange={e => setProfileName(e.target.value)}
+                                            />
+                                        </div>
+                                        {profileError && <p className="text-sm text-red-600">{profileError}</p>}
+                                        <div className="flex justify-end gap-3 mt-2">
+                                            <button
+                                                onClick={() => { setEditingProfile(false); setProfileError(''); }}
+                                                disabled={savingProfile}
+                                                className="px-4 py-2 rounded-lg border border-neutral-200 text-sm font-medium text-neutral-600 hover:bg-neutral-50 disabled:opacity-50"
+                                            >
+                                                Cancel
+                                            </button>
+                                            <button
+                                                onClick={handleSaveProfile}
+                                                disabled={savingProfile}
+                                                className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold disabled:opacity-50"
+                                            >
+                                                {savingProfile ? 'Saving…' : 'Save changes'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
                     {activeTab === 'directory' && (
                         /* Directory View */
                         <div className="max-w-5xl mx-auto space-y-6">
@@ -990,7 +1119,17 @@ const Dashboard: React.FC = () => {
                                                             )}
                                                         </td>
                                                         <td className={`px-4 sm:px-6 py-4 font-medium ${student.targetBatch && student.targetBatch !== getBatch(student.rollNumber) ? 'text-red-700' : 'text-neutral-900'}`}>
-                                                            {student.name} {isMe && <span className="ml-2 text-xs text-neutral-400">(You)</span>}
+                                                            <span className="flex items-center gap-2.5">
+                                                                <Avatar
+                                                                    name={student.name}
+                                                                    photoUrl={student.photoUrl}
+                                                                    className="h-7 w-7 rounded-full object-cover shrink-0 border border-neutral-200"
+                                                                    fallbackClassName="h-7 w-7 rounded-full bg-neutral-100 flex items-center justify-center text-xs text-neutral-600 font-bold shrink-0"
+                                                                />
+                                                                <span className="truncate">
+                                                                    {student.name} {isMe && <span className="ml-1 text-xs text-neutral-400">(You)</span>}
+                                                                </span>
+                                                            </span>
                                                         </td>
                                                         <td className="px-4 sm:px-6 py-4 text-neutral-500">{student.branch || '-'}</td>
                                                         <td className="px-4 sm:px-6 py-4 text-center">
@@ -1235,24 +1374,34 @@ const Dashboard: React.FC = () => {
                                                                         <div className="absolute left-[8px] sm:left-[20px] top-6 w-3 h-3 rounded-full bg-white border-2 border-indigo-600 ring-4 ring-neutral-50 z-10" />
                                                                         <div className="bg-white p-4 sm:p-5 rounded-xl border border-neutral-200 shadow-sm hover:shadow-md transition-shadow">
                                                                             <div className="flex justify-between items-start mb-2">
-                                                                                <div>
-                                                                                    {update.title && (
-                                                                                        <h4 className="font-bold text-neutral-900 text-base mb-1">{update.title}</h4>
-                                                                                    )}
+                                                                                <div className="flex items-start gap-3 min-w-0">
                                                                                     {update.createdBy?.name && (
-                                                                                        <h4 className="font-bold text-neutral-900">
-                                                                                            {update.createdBy.name}
-                                                                                            {update.createdBy.role && (
-                                                                                                <span className="ml-2 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
-                                                                                                    {update.createdBy.role}
-                                                                                                </span>
-                                                                                            )}
-                                                                                        </h4>
+                                                                                        <Avatar
+                                                                                            name={update.createdBy.name}
+                                                                                            photoUrl={update.createdBy.photoUrl}
+                                                                                            className="h-9 w-9 rounded-full object-cover shrink-0 border border-neutral-200 mt-0.5"
+                                                                                            fallbackClassName="h-9 w-9 rounded-full bg-indigo-100 flex items-center justify-center text-sm text-indigo-700 font-bold shrink-0 mt-0.5"
+                                                                                        />
                                                                                     )}
-                                                                                    <span className="text-xs text-neutral-400 flex items-center gap-1 mt-1">
-                                                                                        <Calendar className="w-3 h-3" />
-                                                                                        {new Date(update.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
-                                                                                    </span>
+                                                                                    <div className="min-w-0">
+                                                                                        {update.title && (
+                                                                                            <h4 className="font-bold text-neutral-900 text-base mb-1">{update.title}</h4>
+                                                                                        )}
+                                                                                        {update.createdBy?.name && (
+                                                                                            <h4 className="font-bold text-neutral-900">
+                                                                                                {update.createdBy.name}
+                                                                                                {update.createdBy.role && (
+                                                                                                    <span className="ml-2 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
+                                                                                                        {update.createdBy.role}
+                                                                                                    </span>
+                                                                                                )}
+                                                                                            </h4>
+                                                                                        )}
+                                                                                        <span className="text-xs text-neutral-400 flex items-center gap-1 mt-1">
+                                                                                            <Calendar className="w-3 h-3" />
+                                                                                            {new Date(update.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                                                                                        </span>
+                                                                                    </div>
                                                                                 </div>
                                                                             </div>
                                                                             <p className="text-sm text-neutral-600 mb-4 whitespace-pre-wrap leading-relaxed">
@@ -2405,6 +2554,12 @@ const Dashboard: React.FC = () => {
                                             className={`w-full flex items-center gap-3 p-3 rounded-2xl border text-left transition-all ${selected ? 'border-indigo-500 bg-indigo-50' : atCap ? 'border-neutral-100 bg-neutral-50 opacity-50 cursor-not-allowed' : 'border-neutral-200 hover:border-indigo-300'}`}
                                         >
                                             {selected ? <CheckSquare className="w-5 h-5 text-indigo-600 shrink-0" /> : <Square className="w-5 h-5 text-neutral-300 shrink-0" />}
+                                            <Avatar
+                                                name={s.name}
+                                                photoUrl={s.photoUrl}
+                                                className="h-9 w-9 rounded-full object-cover shrink-0 border border-neutral-200"
+                                                fallbackClassName="h-9 w-9 rounded-full bg-neutral-100 flex items-center justify-center text-xs text-neutral-600 font-bold shrink-0"
+                                            />
                                             <div className="flex-1 min-w-0">
                                                 <div className="flex items-center gap-2">
                                                     <p className="font-bold text-neutral-800 truncate text-sm">{s.name}</p>

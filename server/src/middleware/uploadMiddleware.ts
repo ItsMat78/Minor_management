@@ -93,8 +93,8 @@ const ALLOWED_DESCRIPTION =
 
 /** Thrown by the file filter so the error handler can answer 400 with a usable reason. */
 export class UnsupportedFileTypeError extends Error {
-    constructor(fileName: string) {
-        super(`"${fileName}" is not a supported file type. ${ALLOWED_DESCRIPTION}`);
+    constructor(fileName: string, reason: string = ALLOWED_DESCRIPTION) {
+        super(`"${fileName}" is not a supported file type. ${reason}`);
         this.name = 'UnsupportedFileTypeError';
     }
 }
@@ -114,6 +114,34 @@ export const upload = multer({
     storage: storage,
     limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
     fileFilter: fileFilter
+});
+
+// Profile photos, which the general filter above is too permissive for.
+//
+// `image/*` accepts HEIC — the default camera format on every recent iPhone. It uploads happily,
+// stores happily, and then renders in no browser but Safari, so the person appears to have no
+// photo and nothing anywhere says why (Avatar falls back to their initial, which is exactly what
+// a missing photo looks like). Restricting the format at the door is the only point in the chain
+// where the uploader can still be told. The size cap comes down too: 10MB is sized for reports,
+// and an avatar rendered at 96px never needs it.
+const AVATAR_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
+
+const avatarFilter = (req: any, file: any, cb: any) => {
+    if (AVATAR_MIME_TYPES.has(String(file.mimetype || ''))) {
+        cb(null, true);
+    } else {
+        cb(new UnsupportedFileTypeError(
+            file.originalname || 'That file',
+            'Profile photos must be JPEG, PNG, WebP or GIF. If this came from an iPhone, ' +
+            'turn on Settings → Camera → Formats → Most Compatible, or share the photo to Files first.'
+        ), false);
+    }
+};
+
+export const avatarUpload = multer({
+    storage: storage,
+    limits: { fileSize: 2 * 1024 * 1024 }, // 2MB — plenty for a photo shown at 96px
+    fileFilter: avatarFilter
 });
 
 /**

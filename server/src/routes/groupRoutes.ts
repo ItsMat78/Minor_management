@@ -1,5 +1,5 @@
 import express from 'express';
-import { createGroup, getMyGroup, leaveGroup, getMyMentees, getAllGroups, updateGroup, getNextGroupNumber, acceptInvite, rejectInvite, getMyPendingInvites, cancelInvite, inviteMembers, adminAddGroupMembers, adminRemoveGroupMember, adminSetGroupMentor } from '../controllers/groupController';
+import { createGroup, getMyGroup, leaveGroup, getMyMentees, getAllGroups, updateGroup, getNextGroupNumber, acceptInvite, rejectInvite, getMyPendingInvites, cancelInvite, inviteMembers, adminCreateGroup, adminAddGroupMembers, adminRemoveGroupMember, adminSetGroupMentor } from '../controllers/groupController';
 import { auth } from '../middleware/authMiddleware';
 import { UserRole } from '../models/User';
 
@@ -30,6 +30,7 @@ router.post('/:id/invite', inviteMembers);
 router.post('/:id/cancel-invite', cancelInvite);
 
 // Admin roster management from the Group Directory
+router.post('/admin', adminAuth, adminCreateGroup);
 router.post('/:id/members', adminAuth, adminAddGroupMembers);
 router.delete('/:id/members/:memberId', adminAuth, adminRemoveGroupMember);
 router.put('/:id/mentor', adminAuth, adminSetGroupMentor);

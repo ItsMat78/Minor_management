@@ -49,13 +49,19 @@ app.get('/', (_req, res) => {
 // never gets to the controller's try/catch. Without this they fall through to Express's default
 // handler and come back as a 500 HTML page, leaving the client to say "upload failed" while the
 // user never learns their file was the wrong type or over the size limit.
-app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
+app.use((err: any, req: Request, res: Response, next: NextFunction) => {
     if (err instanceof UnsupportedFileTypeError) {
         return res.status(400).json({ message: err.message });
     }
     if (err instanceof multer.MulterError) {
+        // Profile photos run through a tighter multer instance, so quoting the general 10MB
+        // limit at someone whose 3MB photo was just refused would send them looking for a
+        // problem that isn't there.
+        const sizeLimit = (req.originalUrl || '').includes('/profile-photo')
+            ? 'That photo is larger than the 2MB limit for profile pictures.'
+            : 'That file is larger than the 10MB upload limit.';
         const reasons: Record<string, string> = {
-            LIMIT_FILE_SIZE: 'That file is larger than the 10MB upload limit.',
+            LIMIT_FILE_SIZE: sizeLimit,
             LIMIT_FILE_COUNT: 'Too many files in one upload.',
             LIMIT_UNEXPECTED_FILE: 'Too many files for this form, or a file arrived in an unexpected field.',
         };

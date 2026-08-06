@@ -19,6 +19,10 @@ interface Faculty {
     maxStudents: number;
     currentGroups: number;
     maxGroups: number;
+    // Proposals already queued on this mentor and still undecided, excluding our own group's.
+    // These do not count towards currentStudents — see the oversubscription note below.
+    pendingProposals?: number;
+    pendingStudents?: number;
     email: string;
     expertise?: string[];
     photoUrl?: string;
@@ -224,6 +228,20 @@ const ProjectProposal: React.FC = () => {
     const selectedFaculty = visibleFaculty.find(f => f._id === formData.facultyId) || null;
     // An approved project keeps its mentor regardless of load, so no warning applies there.
     const selectedMentorIsFull = !isApprovedEdit && !!selectedFaculty && !facultyHasRoom(selectedFaculty);
+
+    // A mentor showing free places can still be over-subscribed. Capacity counts APPROVED load only
+    // (server/src/utils/supervisorCapacity.ts) because a mentor may still reject a pending proposal,
+    // so the groups already queued on them are invisible to facultyHasRoom above. This is what their
+    // load would be if everything already waiting were approved — the case the "no room" pill cannot
+    // see, and the reason a group can be rejected by a mentor who looked half-empty when they picked
+    // them. It is a warning, never a block: those proposals may yet be rejected.
+    const queuedAhead = (f: Faculty) => f.pendingProposals ?? 0;
+    const facultyIsOversubscribed = (f: Faculty): boolean =>
+        queuedAhead(f) > 0
+        && facultyHasRoom(f)
+        && f.currentStudents + (f.pendingStudents ?? 0) + placesNeeded > f.maxStudents;
+    const selectedMentorOversubscribed =
+        !isApprovedEdit && !!selectedFaculty && facultyIsOversubscribed(selectedFaculty);
 
     const handleSubmit = async (e: React.FormEvent, isDraft = false) => {
         e.preventDefault();
@@ -567,6 +585,17 @@ const ProjectProposal: React.FC = () => {
                                                                             <span key={b} className="text-xs px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded shrink-0 font-medium">{b}</span>
                                                                         ));
                                                                     })()}
+                                                                    {/* How many groups are already waiting on this mentor. Sits with the
+                                                                        branch chips rather than in the capacity pill because it is not a
+                                                                        capacity figure — these proposals count for nothing until approved. */}
+                                                                    {queuedAhead(faculty) > 0 && (
+                                                                        <span
+                                                                            title={`${queuedAhead(faculty)} proposal${queuedAhead(faculty) === 1 ? '' : 's'} (${faculty.pendingStudents ?? 0} student${(faculty.pendingStudents ?? 0) === 1 ? '' : 's'}) are waiting on ${faculty.name} and have not been decided yet. They do not count towards the limit until approved, so if all of them are approved this mentor would be at ${faculty.currentStudents + (faculty.pendingStudents ?? 0)} of ${faculty.maxStudents} students.`}
+                                                                            className={`text-xs px-2 py-0.5 rounded shrink-0 font-medium ${facultyIsOversubscribed(faculty) ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 text-gray-600'}`}
+                                                                        >
+                                                                            {queuedAhead(faculty)} waiting
+                                                                        </span>
+                                                                    )}
                                                                 </div>
                                                                 </div>
                                                             </div>
@@ -612,6 +641,23 @@ const ProjectProposal: React.FC = () => {
                                                     {lockedFacultyId === selectedFaculty._id
                                                         ? ' Your mentor is locked to your live proposal, so ask the admin to raise their student limit.'
                                                         : ' Pick a different mentor, or save this as a draft and submit it if a place frees up.'}
+                                                </span>
+                                            </div>
+                                        )}
+
+                                        {/* The mentor has room right now but is over-subscribed. Submitting is still
+                                            allowed and may well succeed — those proposals can be rejected — so this
+                                            informs rather than blocks, unlike the red block above. */}
+                                        {selectedMentorOversubscribed && selectedFaculty && (
+                                            <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800 flex items-start gap-2">
+                                                <Info className="w-4 h-4 shrink-0 mt-0.5" />
+                                                <span>
+                                                    <strong>{selectedFaculty.name}</strong> has {selectedFaculty.maxStudents - selectedFaculty.currentStudents} place
+                                                    {selectedFaculty.maxStudents - selectedFaculty.currentStudents === 1 ? '' : 's'} left, but{' '}
+                                                    {selectedFaculty.pendingProposals} other proposal{selectedFaculty.pendingProposals === 1 ? ' is' : 's are'} already
+                                                    waiting on them ({selectedFaculty.pendingStudents} student{selectedFaculty.pendingStudents === 1 ? '' : 's'}).
+                                                    If those are approved first, there may be no room left for your group.
+                                                    You can still submit — they may be rejected — but a less busy mentor is the safer choice.
                                                 </span>
                                             </div>
                                         )}

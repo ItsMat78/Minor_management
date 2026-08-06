@@ -514,6 +514,53 @@ export const sendMentorChangeEmail = async (
     await sendEmail(emails, copy.subject, text, html);
 };
 
+/**
+ * The group's project details were edited by someone outside the group — their mentor or the
+ * admin. Groups own their proposal text, so a change arriving from elsewhere has to be visible
+ * rather than silent; the old title is named so they can tell what moved.
+ */
+export const sendProjectDetailsChangedEmail = async (
+    emails: string[],
+    opts: {
+        previousTitle: string;
+        newTitle: string;
+        editorName: string;
+        editorRole: string;
+        changedFields: string[];
+    }
+) => {
+    if (emails.length === 0) return;
+
+    const titleChanged = opts.previousTitle !== opts.newTitle;
+    const url = portalLink('/dashboard?tab=project');
+    const lead = `Your project details were updated by <strong>${opts.editorName}</strong> (${opts.editorRole}).`;
+    const note = 'If this does not look right, reply to your mentor or contact the project office. Your uploaded files, submissions and marks are unchanged.';
+
+    const text =
+        `${lead.replace(/<[^>]+>/g, '')}\n\n` +
+        (titleChanged ? `Previous title: ${opts.previousTitle}\n` : '') +
+        `Project: ${opts.newTitle}\n` +
+        `Updated: ${opts.changedFields.join(', ')}\n` +
+        `\n${note}\n` +
+        `\nOpen the portal: ${url}` + textFooter();
+
+    const html = renderHtml({
+        title: 'Project Details Updated',
+        accent: '#4f46e5',
+        lead,
+        details: [
+            ['Project', opts.newTitle],
+            ['Previous title', titleChanged ? opts.previousTitle : undefined],
+            ['Updated', opts.changedFields.join(', ')],
+            ['Updated by', `${opts.editorName} (${opts.editorRole})`],
+        ],
+        body: `<p style="margin:0;color:#6b7280;font-size:13px;line-height:1.6;">${note}</p>`,
+        cta: { label: 'Open Your Project', url },
+    });
+
+    await sendEmail(emails, `Your project details were updated by ${opts.editorName}`, text, html);
+};
+
 export const sendPanelAssignmentEmail = async (
     emails: string[],
     eventTitle: string,

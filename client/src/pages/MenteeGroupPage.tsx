@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import Avatar from '../components/Avatar';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../utils/api';
-import { errorMessage } from '../utils/apiError';
 import { useAuth } from '../context/AuthContext';
 import { motion } from 'framer-motion';
 
@@ -12,6 +11,8 @@ import {
 } from 'lucide-react';
 import { Navigate } from 'react-router-dom';
 import FilePreview from '../components/FilePreview';
+import ProfilePhotoUpload from '../components/ProfilePhotoUpload';
+import ProjectDetailsHeader from '../components/ProjectDetailsHeader';
 import { GlobalEventBanner } from '../components/GlobalEventBanner';
 
 const MenteeGroupPage: React.FC = () => {
@@ -140,6 +141,13 @@ const MenteeGroupPage: React.FC = () => {
     if (user && user.role !== 'Faculty' && user.role !== 'Admin') {
         return <Navigate to="/dashboard" replace />;
     }
+
+    // This page only ever shows a faculty their own mentees (or an admin anyone's), so the mentor
+    // check is a formality — but keep it explicit rather than assuming the route did it.
+    const projectFaculty = group?.project?.faculty;
+    const canEditDetails = !!group?.project && (
+        user?.role === 'Admin' || String(projectFaculty?._id || projectFaculty || '') === String(user?._id || '')
+    );
 
     if (loading) return (
         <div className="flex h-screen items-center justify-center bg-gray-50">
@@ -315,23 +323,11 @@ const MenteeGroupPage: React.FC = () => {
                                     </span>
                                 </div>
 
-                                <h1 className="text-3xl font-bold text-gray-900 mb-4 capitalize leading-tight">
-                                    {group.project?.title || 'Untitled Project'}
-                                </h1>
-                                <p className="text-gray-500 leading-relaxed text-sm mb-6">
-                                    {group.project?.description || "No description provided."}
-                                </p>
-
-                                {/* Tags */}
-                                {group.project?.tags && group.project.tags.length > 0 && (
-                                    <div className="flex flex-wrap gap-2 mb-6">
-                                        {group.project.tags.map((tag: string, i: number) => (
-                                            <span key={i} className="px-3 py-1.5 bg-gray-50 text-gray-600 rounded-lg text-xs font-semibold border border-gray-100">
-                                                {tag}
-                                            </span>
-                                        ))}
-                                    </div>
-                                )}
+                                <ProjectDetailsHeader
+                                    project={group.project}
+                                    canEdit={canEditDetails}
+                                    onSaved={details => setGroup({ ...group, project: { ...group.project, ...details } })}
+                                />
 
                                 {/* Attachments */}
                                 {group.project?.attachments && group.project.attachments.length > 0 && (
@@ -455,21 +451,31 @@ const MenteeGroupPage: React.FC = () => {
                                                 <div className="absolute -left-[41px] top-1 h-5 w-5 rounded-full border-4 border-white bg-indigo-600 shadow-sm"></div>
                                                 <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
                                                     <div className="flex justify-between items-start mb-3">
-                                                        <div>
-                                                            {update.title && <h4 className="font-bold text-gray-900 text-base mb-1">{update.title}</h4>}
+                                                        <div className="flex items-start gap-3 min-w-0">
                                                             {update.createdBy?.name && (
-                                                                <h4 className="font-bold text-gray-900 text-sm mb-1">
-                                                                    {update.createdBy.name}
-                                                                    {update.createdBy.role && (
-                                                                        <span className="ml-2 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
-                                                                            {update.createdBy.role}
-                                                                        </span>
-                                                                    )}
-                                                                </h4>
+                                                                <Avatar
+                                                                    name={update.createdBy.name}
+                                                                    photoUrl={update.createdBy.photoUrl}
+                                                                    className="h-9 w-9 rounded-full object-cover shrink-0 border border-gray-200 mt-0.5"
+                                                                    fallbackClassName="h-9 w-9 rounded-full bg-indigo-100 flex items-center justify-center text-sm text-indigo-700 font-bold shrink-0 mt-0.5"
+                                                                />
                                                             )}
-                                                            <span className="text-xs font-medium text-gray-500">
-                                                                {new Date(update.date).toLocaleDateString()} at {new Date(update.date).toLocaleTimeString()}
-                                                            </span>
+                                                            <div className="min-w-0">
+                                                                {update.title && <h4 className="font-bold text-gray-900 text-base mb-1">{update.title}</h4>}
+                                                                {update.createdBy?.name && (
+                                                                    <h4 className="font-bold text-gray-900 text-sm mb-1">
+                                                                        {update.createdBy.name}
+                                                                        {update.createdBy.role && (
+                                                                            <span className="ml-2 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+                                                                                {update.createdBy.role}
+                                                                            </span>
+                                                                        )}
+                                                                    </h4>
+                                                                )}
+                                                                <span className="text-xs font-medium text-gray-500">
+                                                                    {new Date(update.date).toLocaleDateString()} at {new Date(update.date).toLocaleTimeString()}
+                                                                </span>
+                                                            </div>
                                                         </div>
                                                     </div>
                                                     <div className="text-gray-600 text-sm whitespace-pre-wrap leading-relaxed mb-4">
@@ -512,9 +518,12 @@ const MenteeGroupPage: React.FC = () => {
                                 <div className="space-y-5">
                                     {group.members.map((member: any) => (
                                         <div key={member._id} className="flex items-center gap-4">
-                                            <div className="h-10 w-10 rounded-full bg-indigo-600 flex items-center justify-center font-bold text-white shadow-md shadow-indigo-200 shrink-0">
-                                                {member.name.charAt(0)}
-                                            </div>
+                                            <Avatar
+                                                name={member.name}
+                                                photoUrl={member.photoUrl}
+                                                className="h-10 w-10 rounded-full object-cover shadow-md shadow-indigo-200 shrink-0"
+                                                fallbackClassName="h-10 w-10 rounded-full bg-indigo-600 flex items-center justify-center font-bold text-white shadow-md shadow-indigo-200 shrink-0"
+                                            />
                                             <div className="flex-1 min-w-0">
                                                 <p className="font-bold text-gray-900 text-sm truncate">{member.name}</p>
                                                 <p className="text-xs text-gray-500 truncate">{member.email}</p>
@@ -530,33 +539,13 @@ const MenteeGroupPage: React.FC = () => {
                                     <Users className="w-5 h-5 text-orange-600" /> Faculty Mentor
                                 </h3>
                                 <div className="p-4 bg-orange-50 rounded-2xl border border-orange-100 flex items-center gap-4">
-                                    <Avatar
-                                        name={user?.name}
-                                        photoUrl={user?.photoUrl}
-                                        className="h-12 w-12 rounded-full border-2 border-orange-200 shadow-sm shrink-0 text-lg"
+                                    <ProfilePhotoUpload
+                                        className="h-12 w-12 rounded-full border-2 border-orange-200 shadow-sm shrink-0 text-lg object-cover"
                                         fallbackClassName="h-12 w-12 rounded-full border-2 border-orange-200 shadow-sm shrink-0 text-lg flex items-center justify-center font-bold bg-orange-100 text-orange-600"
                                     />
                                     <div className="overflow-hidden flex-1">
                                         <p className="font-bold text-gray-900 text-sm truncate">{user?.name}</p>
                                         <p className="text-xs text-gray-500 truncate">{user?.department || 'Faculty'}</p>
-                                        <label className="mt-1 inline-flex items-center gap-1 text-[10px] font-bold text-orange-600 cursor-pointer hover:text-orange-800">
-                                            <Settings className="w-3 h-3" /> Change Photo
-                                            <input
-                                                type="file"
-                                                accept="image/*"
-                                                className="hidden"
-                                                onChange={async (e) => {
-                                                    const file = e.target.files?.[0];
-                                                    if (!file) return;
-                                                    const fd = new FormData();
-                                                    fd.append('photo', file);
-                                                    try {
-                                                        await api.post('/users/profile-photo', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
-                                                        window.location.reload();
-                                                    } catch (err) { alert(errorMessage(err, 'Photo upload failed.')); }
-                                                }}
-                                            />
-                                        </label>
                                     </div>
                                 </div>
                             </div>
@@ -577,9 +566,12 @@ const MenteeGroupPage: React.FC = () => {
                                                 <div key={member._id} className="p-4 bg-gray-50 rounded-2xl border border-gray-100">
                                                     <div className="flex items-center justify-between mb-2">
                                                         <div className="flex items-center gap-2">
-                                                            <div className="h-7 w-7 rounded-full bg-indigo-600 flex items-center justify-center font-bold text-white text-xs shadow-sm shrink-0">
-                                                                {member.name.charAt(0)}
-                                                            </div>
+                                                            <Avatar
+                                                                name={member.name}
+                                                                photoUrl={member.photoUrl}
+                                                                className="h-7 w-7 rounded-full object-cover shadow-sm shrink-0"
+                                                                fallbackClassName="h-7 w-7 rounded-full bg-indigo-600 flex items-center justify-center font-bold text-white text-xs shadow-sm shrink-0"
+                                                            />
                                                             <span className="text-sm font-bold text-gray-900">{member.name}</span>
                                                         </div>
                                                         {(user?.role === 'Admin' || String(user?._id) === String(group.project?.faculty?._id) || String(user?._id) === String(group.project?.faculty)) && (

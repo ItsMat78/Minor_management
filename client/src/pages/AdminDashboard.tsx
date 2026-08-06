@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import Avatar from '../components/Avatar';
 import { useSearchParams } from 'react-router-dom';
 import api from '../utils/api';
+import { errorMessage } from '../utils/apiError';
 import { useAuth } from '../context/AuthContext';
 import { Search, Users, Clock, CheckCircle, XCircle, FileText, X, LogOut, ChevronDown, ChevronUp, ChevronRight, Settings, Menu, Calendar, Download, AlertCircle, AlertTriangle, Save, Pencil, LayoutGrid, MoreVertical, Plus, Edit3, Power, Info, Trash2, Upload, Mail, Copy, Check, UserCheck, UserX, ShieldCheck, ShieldOff, Archive as ArchiveIcon } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -286,6 +287,8 @@ const AdminDashboard: React.FC = () => {
     const [selectedProposal, setSelectedProposal] = useState<any | null>(null);
     const [proposalFeedback, setProposalFeedback] = useState('');
     const [proposalActionLoading, setProposalActionLoading] = useState<string | null>(null);
+    // Which status the override is currently writing, so only that button shows a spinner.
+    const [statusOverrideLoading, setStatusOverrideLoading] = useState<string | null>(null);
     const [pendingProposalCount, setPendingProposalCount] = useState(0);
 
     const [showAutoCreateModal, setShowAutoCreateModal] = useState(false);
@@ -355,6 +358,22 @@ const AdminDashboard: React.FC = () => {
     const [mentorSaving, setMentorSaving] = useState(false);
     const [mentorError, setMentorError] = useState('');
     const [mentorLimit, setMentorLimit] = useState<any>(null);
+    // Title/description collected when the group being given a mentor has no project yet — the
+    // supervisor lives on the project, so one has to exist before it can be assigned.
+    const [mentorProjectTitle, setMentorProjectTitle] = useState('');
+    const [mentorProjectDescription, setMentorProjectDescription] = useState('');
+
+    // Create-group modal (Group Directory). Students only get to form groups while a Group
+    // Formation window is open, so this is the office's manual path.
+    const [createGroupOpen, setCreateGroupOpen] = useState(false);
+    const [createGroupBatch, setCreateGroupBatch] = useState('');
+    const [createGroupSearch, setCreateGroupSearch] = useState('');
+    const [createGroupCandidates, setCreateGroupCandidates] = useState<any[]>([]);
+    const [createGroupLoadingCandidates, setCreateGroupLoadingCandidates] = useState(false);
+    const [createGroupSelected, setCreateGroupSelected] = useState<any[]>([]);
+    const [createGroupNextNumber, setCreateGroupNextNumber] = useState<number | null>(null);
+    const [createGroupSaving, setCreateGroupSaving] = useState(false);
+    const [createGroupError, setCreateGroupError] = useState('');
     const [configStudentBatch, setConfigStudentBatch] = useState<any>(null); // For student batch override modal
     const [studentParticipationOverride, setStudentParticipationOverride] = useState<boolean>(true);
     const [configBatchMenuOpen, setConfigBatchMenuOpen] = useState<string | null>(null); // To toggle menu per row
@@ -957,6 +976,45 @@ const AdminDashboard: React.FC = () => {
         setPendingProposalCount(list.filter((p: any) => p.status === 'Pending').length);
     };
 
+    // Students the new group can be built from: same 'available' filter the roster picker uses,
+    // so anyone already in an active group never appears as a choice.
+    useEffect(() => {
+        if (!createGroupOpen) return;
+        let cancelled = false;
+        setCreateGroupLoadingCandidates(true);
+        const t = setTimeout(async () => {
+            try {
+                const res = await api.get('/users/students', {
+                    params: {
+                        status: 'available',
+                        search: createGroupSearch.trim() || undefined,
+                        batch: createGroupBatch || undefined,
+                        page: 1,
+                        limit: 25,
+                    },
+                });
+                if (cancelled) return;
+                setCreateGroupCandidates(Array.isArray(res.data) ? res.data : (res.data?.data || []));
+            } catch {
+                if (!cancelled) setCreateGroupCandidates([]);
+            } finally {
+                if (!cancelled) setCreateGroupLoadingCandidates(false);
+            }
+        }, 300);
+        return () => { cancelled = true; clearTimeout(t); };
+    }, [createGroupOpen, createGroupSearch, createGroupBatch]);
+
+    // Preview the number the group will be given. Same endpoint the student flow uses, so the
+    // two cannot disagree about what comes next in this batch.
+    useEffect(() => {
+        if (!createGroupOpen || !createGroupBatch) { setCreateGroupNextNumber(null); return; }
+        let cancelled = false;
+        api.get('/groups/next-number', { params: { batch: createGroupBatch } })
+            .then(res => { if (!cancelled) setCreateGroupNextNumber(res.data?.nextNumber ?? null); })
+            .catch(() => { if (!cancelled) setCreateGroupNextNumber(null); });
+        return () => { cancelled = true; };
+    }, [createGroupOpen, createGroupBatch]);
+
     // Eagerly load the pending count on mount so the sidebar badge is visible
     // before the admin ever opens the Proposals tab.
     useEffect(() => {
@@ -983,6 +1041,40 @@ const AdminDashboard: React.FC = () => {
             alert(error.response?.data?.message || `Failed to ${status} proposal`);
         } finally {
             setProposalActionLoading(null);
+        }
+    };
+
+    // Move a project to any status, in either direction. Distinct from handleProposalAction above:
+    // that decides a submitted proposal (forwards only, and faculty can do it too), this is the
+    // admin-only correction path behind PUT /projects/:id/admin-status.
+    //
+    // A 409 means the project already carries evaluation work that un-approving would strand. The
+    // server names what would be affected; re-send with confirm once the admin has seen it.
+    const handleStatusOverride = async (
+        id: string,
+        status: 'Draft' | 'Pending' | 'Approved' | 'Rejected',
+        confirm = false
+    ) => {
+        setStatusOverrideLoading(status);
+        try {
+            await api.put(`/projects/${id}/admin-status`, { status, feedback: proposalFeedback, confirm });
+            setProposalFeedback('');
+            setSelectedProposal(null);
+            // Refetch rather than patch: moving a project to Approved deletes the group's competing
+            // proposals server-side, so local state would go stale.
+            await fetchProposals();
+        } catch (error: any) {
+            const data = error.response?.data;
+            if (data?.requiresConfirmation && !confirm) {
+                if (window.confirm(`${data.message}\n\nChange the status anyway?`)) {
+                    setStatusOverrideLoading(null);
+                    return handleStatusOverride(id, status, true);
+                }
+            } else {
+                alert(errorMessage(error, `Could not change the status to ${status}.`));
+            }
+        } finally {
+            setStatusOverrideLoading(null);
         }
     };
 
@@ -1493,6 +1585,8 @@ const AdminDashboard: React.FC = () => {
         setMentorFacultyId(group.project?.faculty?._id || group.project?.faculty || '');
         setMentorError('');
         setMentorLimit(null);
+        setMentorProjectTitle('');
+        setMentorProjectDescription('');
         // Load per-supervisor load so the picker can show how full each one is before committing.
         try {
             const res = await api.get('/users/faculty');
@@ -1507,6 +1601,8 @@ const AdminDashboard: React.FC = () => {
         setMentorFacultyId('');
         setMentorError('');
         setMentorLimit(null);
+        setMentorProjectTitle('');
+        setMentorProjectDescription('');
     };
 
     const handleChangeMentor = async () => {
@@ -1515,7 +1611,13 @@ const AdminDashboard: React.FC = () => {
         setMentorError('');
         setMentorLimit(null);
         try {
-            await api.put(`/groups/${mentorGroup._id}/mentor`, { facultyId: mentorFacultyId });
+            // A group with no project has nowhere to hold a mentor, so the server creates one from
+            // this title. Sent unconditionally; it is ignored when a project already exists.
+            await api.put(`/groups/${mentorGroup._id}/mentor`, {
+                facultyId: mentorFacultyId,
+                title: mentorProjectTitle,
+                description: mentorProjectDescription,
+            });
             await refreshGroups();
             // The supervisor loads shown in the picker just shifted — refresh them too.
             try {
@@ -1529,6 +1631,43 @@ const AdminDashboard: React.FC = () => {
             if (data?.limitExceeded) setMentorLimit(data.limit || null);
         } finally {
             setMentorSaving(false);
+        }
+    };
+
+    const openCreateGroup = () => {
+        setCreateGroupOpen(true);
+        // Start on whatever batch the directory is already filtered to, so the common case
+        // (working through one cohort) needs no extra choice.
+        setCreateGroupBatch(filterBatch && filterBatch !== 'All' ? String(filterBatch) : (participatingBatchYears[0] || ''));
+        setCreateGroupSearch('');
+        setCreateGroupSelected([]);
+        setCreateGroupCandidates([]);
+        setCreateGroupError('');
+        setCreateGroupNextNumber(null);
+    };
+
+    const closeCreateGroup = () => {
+        setCreateGroupOpen(false);
+        setCreateGroupSelected([]);
+        setCreateGroupSearch('');
+        setCreateGroupError('');
+    };
+
+    const handleCreateGroup = async () => {
+        if (createGroupSelected.length === 0) return;
+        setCreateGroupSaving(true);
+        setCreateGroupError('');
+        try {
+            await api.post('/groups/admin', {
+                members: createGroupSelected.map(s => s._id),
+                targetBatch: createGroupBatch || undefined,
+            });
+            await refreshGroups();
+            closeCreateGroup();
+        } catch (err: any) {
+            setCreateGroupError(errorMessage(err, 'Could not create the group.'));
+        } finally {
+            setCreateGroupSaving(false);
         }
     };
 
@@ -2075,6 +2214,16 @@ const AdminDashboard: React.FC = () => {
                                                     </option>
                                                 ))}
                                             </select>
+
+                                            {/* Manual group formation. Students can only form groups while a Group
+                                                Formation window is open; this is the office's way in when someone is
+                                                left over, a formation went wrong, or the window has closed. */}
+                                            <button
+                                                onClick={openCreateGroup}
+                                                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-semibold flex items-center gap-2 transition-colors shadow-sm"
+                                            >
+                                                <Plus className="w-4 h-4" /> Create Group
+                                            </button>
                                         </>
                                     )}
                                     {/* Sort Dropdown */}
@@ -2332,19 +2481,27 @@ const AdminDashboard: React.FC = () => {
                                                     {getFilteredStudents().map((student) => (
                                                         <tr key={student._id} className="hover:bg-neutral-50">
                                                             <td className="px-6 py-4">
-                                                                <div className="flex flex-col gap-0.5">
-                                                                    <div className="flex items-center gap-2">
-                                                                        <span className={`font-semibold ${getBatch(student.rollNumber) !== student.targetBatch && student.targetBatch ? 'text-red-700' : 'text-neutral-900'}`}>
-                                                                            {student.name}
-                                                                        </span>
-                                                                        {student.targetBatch && getBatch(student.rollNumber) !== student.targetBatch && (
-                                                                            <span className="text-[10px] text-red-600 font-bold uppercase bg-red-50 px-1.5 py-0.5 rounded border border-red-100">
-                                                                                Dropper → {student.targetBatch}
+                                                                <div className="flex items-center gap-3">
+                                                                    <Avatar
+                                                                        name={student.name}
+                                                                        photoUrl={student.photoUrl}
+                                                                        className="h-9 w-9 rounded-full object-cover shrink-0 border border-neutral-200"
+                                                                        fallbackClassName="h-9 w-9 rounded-full bg-neutral-100 flex items-center justify-center text-xs text-neutral-600 font-bold shrink-0"
+                                                                    />
+                                                                    <div className="flex flex-col gap-0.5 min-w-0">
+                                                                        <div className="flex items-center gap-2">
+                                                                            <span className={`font-semibold ${getBatch(student.rollNumber) !== student.targetBatch && student.targetBatch ? 'text-red-700' : 'text-neutral-900'}`}>
+                                                                                {student.name}
                                                                             </span>
-                                                                        )}
+                                                                            {student.targetBatch && getBatch(student.rollNumber) !== student.targetBatch && (
+                                                                                <span className="text-[10px] text-red-600 font-bold uppercase bg-red-50 px-1.5 py-0.5 rounded border border-red-100">
+                                                                                    Dropper → {student.targetBatch}
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
+                                                                        <span className="font-mono text-xs text-neutral-500">{student.rollNumber || '—'}</span>
+                                                                        <span className="text-xs text-neutral-400 truncate max-w-[220px]">{student.email}</span>
                                                                     </div>
-                                                                    <span className="font-mono text-xs text-neutral-500">{student.rollNumber || '—'}</span>
-                                                                    <span className="text-xs text-neutral-400 truncate max-w-[220px]">{student.email}</span>
                                                                 </div>
                                                             </td>
                                                             <td className="px-6 py-4">
@@ -2673,17 +2830,18 @@ const AdminDashboard: React.FC = () => {
                                                                                                                 >
                                                                                                                     <Settings className="w-4 h-4" /> Configure Batch
                                                                                                                 </button>
-                                                                                                                {item.project && (
-                                                                                                                    <button
-                                                                                                                        onClick={() => {
-                                                                                                                            openMentorModal(item);
-                                                                                                                            setConfigBatchMenuOpen(null);
-                                                                                                                        }}
-                                                                                                                        className="w-full text-left px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-50 flex items-center gap-2"
-                                                                                                                    >
-                                                                                                                        <Users className="w-4 h-4" /> Change Mentor
-                                                                                                                    </button>
-                                                                                                                )}
+                                                                                                                {/* Offered with or without a project: a group that has never
+                                                                                                                    proposed gets its project created as part of assigning the
+                                                                                                                    mentor, which is the only way an admin-built group ever gets one. */}
+                                                                                                                <button
+                                                                                                                    onClick={() => {
+                                                                                                                        openMentorModal(item);
+                                                                                                                        setConfigBatchMenuOpen(null);
+                                                                                                                    }}
+                                                                                                                    className="w-full text-left px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-50 flex items-center gap-2"
+                                                                                                                >
+                                                                                                                    <Users className="w-4 h-4" /> {item.project ? 'Change Mentor' : 'Assign Mentor'}
+                                                                                                                </button>
                                                                                                                 {item.project && item.status === 'Approved' && (
                                                                                                                     <>
                                                                                                                         <div className="h-px bg-neutral-100 my-1" />
@@ -4200,6 +4358,54 @@ const AdminDashboard: React.FC = () => {
                                             </div>
                                         )}
                                     </div>
+
+                                    {/* Status override. The decision buttons above only ever move a
+                                        proposal forwards; this is the way back from a wrong call. */}
+                                    {selectedProposal && !selectedProposal.isArchived && (
+                                        <div className="pt-6 border-t border-neutral-200">
+                                            <h4 className="flex items-center gap-2 text-xs font-black text-neutral-400 uppercase tracking-widest mb-4">
+                                                Override Status
+                                            </h4>
+
+                                            <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl mb-4 text-[11px] text-amber-800 leading-relaxed">
+                                                <p className="font-bold mb-1">Read before changing.</p>
+                                                <p>
+                                                    The group's own status moves with the project — an approved project
+                                                    returned to Pending puts them back to "proposal pending", and Draft or
+                                                    Rejected returns them to "forming".
+                                                </p>
+                                                {selectedProposal.status === 'Approved' && (
+                                                    <p className="mt-2">
+                                                        Approving this proposal <strong>permanently deleted</strong> the group's
+                                                        other proposals. Undoing the approval will not bring them back.
+                                                    </p>
+                                                )}
+                                            </div>
+
+                                            <div className="grid grid-cols-2 gap-2">
+                                                {(['Draft', 'Pending', 'Approved', 'Rejected'] as const).map(s => (
+                                                    <button
+                                                        key={s}
+                                                        onClick={() => handleStatusOverride(selectedProposal._id, s)}
+                                                        disabled={selectedProposal.status === s || !!statusOverrideLoading}
+                                                        className={`px-4 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed ${selectedProposal.status === s
+                                                            ? 'bg-neutral-200 text-neutral-500'
+                                                            : 'bg-white border-2 border-neutral-200 text-neutral-600 hover:border-indigo-200 hover:text-indigo-600 hover:bg-indigo-50'
+                                                            }`}
+                                                    >
+                                                        {statusOverrideLoading === s
+                                                            ? <span className="inline-block animate-spin rounded-full h-3 w-3 border-2 border-indigo-500/30 border-t-indigo-500" />
+                                                            : selectedProposal.status === s ? `${s} (current)` : s}
+                                                    </button>
+                                                ))}
+                                            </div>
+
+                                            <p className="mt-3 text-[10px] text-neutral-400 leading-relaxed">
+                                                Any remarks typed above are saved with the change. Supervisor limits are still
+                                                enforced when moving a project to Approved.
+                                            </p>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         </Dialog.Content>
@@ -4702,28 +4908,200 @@ const AdminDashboard: React.FC = () => {
                     </div>
                 )}
 
+                {/* Create group modal — manual group formation, outside the student flow */}
+                {createGroupOpen && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm">
+                        <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
+                            <div className="px-6 py-4 border-b border-neutral-100 flex items-center justify-between">
+                                <h3 className="text-lg font-bold text-neutral-900">Create Group</h3>
+                                <button onClick={closeCreateGroup} className="text-neutral-400 hover:text-neutral-600">
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+
+                            <div className="p-6 space-y-4 overflow-y-auto">
+                                <p className="text-xs text-neutral-500 leading-relaxed">
+                                    Students are added straight in — no invites to accept, and no Group Formation window
+                                    needed. Branch rules are not applied here. The group starts with no project, so give it
+                                    a mentor afterwards with <strong>Assign Mentor</strong>.
+                                </p>
+
+                                <div className="flex gap-3">
+                                    <div className="flex-1">
+                                        <label className="block text-sm font-medium text-neutral-700 mb-1">Batch</label>
+                                        <select
+                                            value={createGroupBatch}
+                                            onChange={(e) => { setCreateGroupBatch(e.target.value); setCreateGroupSelected([]); }}
+                                            className="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                                        >
+                                            <option value="">All batches</option>
+                                            {participatingBatchYears.map(year => (
+                                                <option key={year} value={year}>{year}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div className="w-32">
+                                        <label className="block text-sm font-medium text-neutral-700 mb-1">Group no.</label>
+                                        <div className="px-3 py-2 border border-neutral-200 rounded-lg text-sm bg-neutral-50 text-neutral-600 font-semibold">
+                                            {createGroupNextNumber ?? '—'}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-neutral-700 mb-1">
+                                        Students <span className="font-normal text-neutral-400">({createGroupSelected.length}/3 selected)</span>
+                                    </label>
+
+                                    {createGroupSelected.length > 0 && (
+                                        <div className="flex flex-wrap gap-2 mb-2">
+                                            {createGroupSelected.map(s => (
+                                                <span key={s._id} className="inline-flex items-center gap-1.5 pl-1 pr-2 py-1 bg-indigo-50 text-indigo-700 rounded-lg text-xs font-semibold border border-indigo-100">
+                                                    <Avatar
+                                                        name={s.name}
+                                                        photoUrl={s.photoUrl}
+                                                        className="h-5 w-5 rounded-full object-cover"
+                                                        fallbackClassName="h-5 w-5 rounded-full bg-indigo-200 flex items-center justify-center text-[10px] text-indigo-800 font-bold"
+                                                    />
+                                                    {s.name}
+                                                    <button
+                                                        onClick={() => setCreateGroupSelected(prev => prev.filter(p => p._id !== s._id))}
+                                                        className="text-indigo-400 hover:text-indigo-700"
+                                                    >
+                                                        <X className="w-3 h-3" />
+                                                    </button>
+                                                </span>
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    <div className="relative">
+                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
+                                        <input
+                                            value={createGroupSearch}
+                                            onChange={(e) => setCreateGroupSearch(e.target.value)}
+                                            placeholder="Search by name or roll number"
+                                            className="w-full pl-9 pr-3 py-2 border border-neutral-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                                        />
+                                    </div>
+
+                                    <div className="mt-2 max-h-56 overflow-y-auto border border-neutral-200 rounded-lg divide-y divide-neutral-100">
+                                        {createGroupLoadingCandidates ? (
+                                            <p className="p-4 text-sm text-neutral-400 text-center">Searching…</p>
+                                        ) : createGroupCandidates.length === 0 ? (
+                                            <p className="p-4 text-sm text-neutral-400 text-center">
+                                                No students without a group{createGroupBatch ? ` in ${createGroupBatch}` : ''}.
+                                            </p>
+                                        ) : (
+                                            createGroupCandidates.map((s: any) => {
+                                                const picked = createGroupSelected.some(p => p._id === s._id);
+                                                const full = createGroupSelected.length >= 3 && !picked;
+                                                return (
+                                                    <button
+                                                        key={s._id}
+                                                        disabled={full}
+                                                        onClick={() => setCreateGroupSelected(prev =>
+                                                            picked ? prev.filter(p => p._id !== s._id) : [...prev, s]
+                                                        )}
+                                                        className={`w-full flex items-center gap-3 px-3 py-2 text-left transition-colors ${picked ? 'bg-indigo-50' : full ? 'opacity-40 cursor-not-allowed' : 'hover:bg-neutral-50'
+                                                            }`}
+                                                    >
+                                                        <Avatar
+                                                            name={s.name}
+                                                            photoUrl={s.photoUrl}
+                                                            className="h-8 w-8 rounded-full object-cover shrink-0"
+                                                            fallbackClassName="h-8 w-8 rounded-full bg-neutral-100 flex items-center justify-center text-xs text-neutral-600 font-bold shrink-0"
+                                                        />
+                                                        <span className="min-w-0 flex-1">
+                                                            <span className="block text-sm font-medium text-neutral-800 truncate">{s.name}</span>
+                                                            <span className="block text-xs text-neutral-400">{s.rollNumber} · {s.branch || '—'}</span>
+                                                        </span>
+                                                        {picked && <Check className="w-4 h-4 text-indigo-600 shrink-0" />}
+                                                    </button>
+                                                );
+                                            })
+                                        )}
+                                    </div>
+                                </div>
+
+                                {createGroupError && (
+                                    <div className="p-3 rounded-lg text-sm border bg-red-50 border-red-100 text-red-600 flex items-start gap-2">
+                                        <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                                        <p>{createGroupError}</p>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="px-6 py-4 bg-neutral-50 border-t border-neutral-100 flex justify-end gap-3">
+                                <button onClick={closeCreateGroup} className="px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-100 rounded-lg transition">Cancel</button>
+                                <button
+                                    onClick={handleCreateGroup}
+                                    disabled={createGroupSaving || createGroupSelected.length === 0}
+                                    className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    {createGroupSaving ? 'Creating…' : 'Create Group'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 {/* Change mentor modal — reassigns the supervisor on the group's project */}
                 {mentorGroup && (() => {
                     const currentMentorId = mentorGroup.project?.faculty?._id || mentorGroup.project?.faculty || '';
                     const groupSize = mentorGroup.members?.length || 0;
+                    // No project means no mentor slot. The supervisor lives on the project, so one
+                    // has to be created before it can be assigned — the admin supplies the title.
+                    const needsProject = !mentorGroup.project;
                     return (
                         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm">
-                            <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col">
+                            <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
                                 <div className="px-6 py-4 border-b border-neutral-100 flex items-center justify-between">
-                                    <h3 className="text-lg font-bold text-neutral-900">Change Mentor</h3>
+                                    <h3 className="text-lg font-bold text-neutral-900">{needsProject ? 'Assign Mentor' : 'Change Mentor'}</h3>
                                     <button onClick={closeMentorModal} className="text-neutral-400 hover:text-neutral-600">
                                         <X className="w-5 h-5" />
                                     </button>
                                 </div>
-                                <div className="p-6 space-y-4">
+                                <div className="p-6 space-y-4 overflow-y-auto">
                                     <div className="text-sm text-neutral-600 bg-neutral-50 p-3 rounded-lg border border-neutral-200 space-y-1">
                                         <p><strong>Group:</strong> {mentorGroup.name ? `Group ${mentorGroup.name}` : '(unnamed)'} · {groupSize} student{groupSize === 1 ? '' : 's'}</p>
                                         <p><strong>Project:</strong> {mentorGroup.project?.title || 'No project'}</p>
                                         <p><strong>Current mentor:</strong> {mentorGroup.project?.faculty?.name || 'Unassigned'}</p>
                                     </div>
 
+                                    {needsProject && (
+                                        <div className="space-y-3 p-4 rounded-lg border border-indigo-100 bg-indigo-50/50">
+                                            <p className="text-xs text-indigo-800 leading-relaxed">
+                                                This group has never submitted a proposal, so it has no project — and a mentor is
+                                                stored on the project. Give the project a title and it will be created with this
+                                                mentor, approved, ready for submissions and evaluation.
+                                            </p>
+                                            <div>
+                                                <label className="block text-sm font-medium text-neutral-700 mb-1">Project title</label>
+                                                <input
+                                                    value={mentorProjectTitle}
+                                                    onChange={(e) => { setMentorProjectTitle(e.target.value); setMentorError(''); }}
+                                                    placeholder="e.g. Campus Navigation System"
+                                                    className="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-neutral-700 mb-1">
+                                                    Description <span className="font-normal text-neutral-400">(optional)</span>
+                                                </label>
+                                                <textarea
+                                                    value={mentorProjectDescription}
+                                                    onChange={(e) => setMentorProjectDescription(e.target.value)}
+                                                    rows={3}
+                                                    placeholder="The group and their mentor can refine this later."
+                                                    className="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 resize-none"
+                                                />
+                                            </div>
+                                        </div>
+                                    )}
+
                                     <div>
-                                        <label className="block text-sm font-medium text-neutral-700 mb-1">New mentor</label>
+                                        <label className="block text-sm font-medium text-neutral-700 mb-1">{needsProject ? 'Mentor' : 'New mentor'}</label>
                                         <select
                                             value={mentorFacultyId}
                                             onChange={(e) => { setMentorFacultyId(e.target.value); setMentorError(''); setMentorLimit(null); }}
@@ -4776,10 +5154,15 @@ const AdminDashboard: React.FC = () => {
                                     <button onClick={closeMentorModal} className="px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-100 rounded-lg transition">Cancel</button>
                                     <button
                                         onClick={handleChangeMentor}
-                                        disabled={mentorSaving || !mentorFacultyId || mentorFacultyId === currentMentorId}
+                                        disabled={
+                                            mentorSaving
+                                            || !mentorFacultyId
+                                            || (!needsProject && mentorFacultyId === currentMentorId)
+                                            || (needsProject && !mentorProjectTitle.trim())
+                                        }
                                         className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
-                                        {mentorSaving ? 'Saving…' : 'Change Mentor'}
+                                        {mentorSaving ? 'Saving…' : needsProject ? 'Create Project & Assign' : 'Change Mentor'}
                                     </button>
                                 </div>
                             </div>

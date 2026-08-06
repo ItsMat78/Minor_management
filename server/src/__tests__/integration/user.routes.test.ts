@@ -7,7 +7,7 @@ import request from 'supertest';
 import * as XLSX from 'xlsx';
 import app from '../../app';
 import User from '../../models/User';
-import { createTestUser, generateToken, createTestGroup } from '../helpers/factories';
+import { createTestUser, generateToken, createTestGroup, createTestProject } from '../helpers/factories';
 import { UserRole } from '../../models/User';
 
 // Build an in-memory .xlsx buffer from an array-of-objects (header row inferred from keys).
@@ -76,6 +76,147 @@ describe('GET /api/users/faculty', () => {
         for (const f of res.body) {
             expect(f.password).toBeUndefined();
         }
+    });
+});
+
+// ── GET /api/users/faculty — pending proposal queue ───────────────────────────
+//
+// Capacity counts approved load only, so a mentor with places free can already be
+// over-subscribed. These cover the queue figures the proposal page warns with.
+
+describe('GET /api/users/faculty — pending proposals', () => {
+    const facultyEntry = (res: any, id: any) =>
+        res.body.find((f: any) => String(f._id) === String(id));
+
+    it('counts pending proposals and the students behind them', async () => {
+        const faculty = await createTestUser({ role: UserRole.FACULTY, email: 'queue1@t.ac.in' });
+
+        const { group: g1 } = await createTestGroup(2);
+        await createTestProject(g1._id as any, { status: 'Pending', faculty: faculty._id as any });
+        const { group: g2 } = await createTestGroup(3);
+        await createTestProject(g2._id as any, { status: 'Pending', faculty: faculty._id as any });
+
+        const viewer = await createTestUser({ role: UserRole.STUDENT, rollNumber: '23IT900' });
+        const res = await request(app)
+            .get('/api/users/faculty')
+            .set('x-auth-token', generateToken(viewer));
+
+        expect(res.status).toBe(200);
+        const entry = facultyEntry(res, faculty._id);
+        expect(entry.pendingProposals).toBe(2);
+        expect(entry.pendingStudents).toBe(5);
+        // Pending load must NOT leak into the enforced capacity figure.
+        expect(entry.currentStudents).toBe(0);
+    });
+
+    it('excludes drafts, decided proposals and archived projects', async () => {
+        const faculty = await createTestUser({ role: UserRole.FACULTY, email: 'queue2@t.ac.in' });
+
+        const { group: draft } = await createTestGroup(1);
+        await createTestProject(draft._id as any, { status: 'Draft', faculty: faculty._id as any });
+        const { group: rejected } = await createTestGroup(1);
+        await createTestProject(rejected._id as any, { status: 'Rejected', faculty: faculty._id as any });
+        const { group: archived } = await createTestGroup(1);
+        const old = await createTestProject(archived._id as any, { status: 'Pending', faculty: faculty._id as any });
+        old.isArchived = true;
+        await old.save();
+
+        const viewer = await createTestUser({ role: UserRole.STUDENT, rollNumber: '23IT901' });
+        const res = await request(app)
+            .get('/api/users/faculty')
+            .set('x-auth-token', generateToken(viewer));
+
+        const entry = facultyEntry(res, faculty._id);
+        expect(entry.pendingProposals).toBe(0);
+        expect(entry.pendingStudents).toBe(0);
+    });
+
+    it("does not count the caller's own group as competition", async () => {
+        const faculty = await createTestUser({ role: UserRole.FACULTY, email: 'queue3@t.ac.in' });
+
+        const { group: mine, members } = await createTestGroup(2);
+        await createTestProject(mine._id as any, { status: 'Pending', faculty: faculty._id as any });
+        const { group: theirs } = await createTestGroup(1);
+        await createTestProject(theirs._id as any, { status: 'Pending', faculty: faculty._id as any });
+
+        const res = await request(app)
+            .get('/api/users/faculty')
+            .set('x-auth-token', generateToken(members[0]));
+
+        // Two pending proposals exist, but only the other group is ahead of this caller.
+        const entry = facultyEntry(res, faculty._id);
+        expect(entry.pendingProposals).toBe(1);
+        expect(entry.pendingStudents).toBe(1);
+    });
+
+    it('reports zero for a faculty with nothing queued', async () => {
+        const faculty = await createTestUser({ role: UserRole.FACULTY, email: 'queue4@t.ac.in' });
+        const viewer = await createTestUser({ role: UserRole.STUDENT, rollNumber: '23IT902' });
+
+        const res = await request(app)
+            .get('/api/users/faculty')
+            .set('x-auth-token', generateToken(viewer));
+
+        const entry = facultyEntry(res, faculty._id);
+        expect(entry.pendingProposals).toBe(0);
+        expect(entry.pendingStudents).toBe(0);
+    });
+});
+
+// ── POST /api/users/profile-photo ─────────────────────────────────────────────
+//
+// The route has never been role-gated, but until now only faculty had UI for it. With
+// students uploading from phones, the format filter is what stops an HEIC being stored
+// and then rendering nowhere — so it needs to hold.
+
+describe('POST /api/users/profile-photo', () => {
+    it('accepts a JPEG from a student and stores the URL', async () => {
+        const student = await createTestUser({ role: UserRole.STUDENT, rollNumber: '23IT700' });
+
+        const res = await request(app)
+            .post('/api/users/profile-photo')
+            .set('x-auth-token', generateToken(student))
+            .attach('photo', Buffer.from('fake-jpeg-bytes'), { filename: 'me.jpg', contentType: 'image/jpeg' });
+
+        expect(res.status).toBe(200);
+        expect(res.body.photoUrl).toMatch(/\/uploads\/avatars\//);
+        expect((await User.findById(student._id))!.photoUrl).toBe(res.body.photoUrl);
+    });
+
+    it('refuses an HEIC with a reason the uploader can act on', async () => {
+        const student = await createTestUser({ role: UserRole.STUDENT, rollNumber: '23IT701' });
+
+        const res = await request(app)
+            .post('/api/users/profile-photo')
+            .set('x-auth-token', generateToken(student))
+            .attach('photo', Buffer.from('fake-heic-bytes'), { filename: 'IMG_0001.HEIC', contentType: 'image/heic' });
+
+        expect(res.status).toBe(400);
+        expect(res.body.message).toMatch(/JPEG, PNG, WebP or GIF/i);
+        expect((await User.findById(student._id))!.photoUrl).toBeUndefined();
+    });
+
+    it('refuses a PDF', async () => {
+        const student = await createTestUser({ role: UserRole.STUDENT, rollNumber: '23IT702' });
+
+        const res = await request(app)
+            .post('/api/users/profile-photo')
+            .set('x-auth-token', generateToken(student))
+            .attach('photo', Buffer.from('%PDF-1.4'), { filename: 'report.pdf', contentType: 'application/pdf' });
+
+        expect(res.status).toBe(400);
+    });
+
+    it('refuses a photo over the 2MB limit, naming that limit rather than the 10MB one', async () => {
+        const student = await createTestUser({ role: UserRole.STUDENT, rollNumber: '23IT703' });
+
+        const res = await request(app)
+            .post('/api/users/profile-photo')
+            .set('x-auth-token', generateToken(student))
+            .attach('photo', Buffer.alloc(3 * 1024 * 1024), { filename: 'huge.png', contentType: 'image/png' });
+
+        expect(res.status).toBe(400);
+        expect(res.body.message).toMatch(/2MB limit for profile pictures/i);
     });
 });
 

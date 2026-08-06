@@ -3,7 +3,7 @@ import Project from '../models/Project';
 import Group from '../models/Group';
 import User, { UserRole } from '../models/User';
 import mongoose from 'mongoose';
-import { sendProposalStatusEmail, sendProposalSubmissionEmail, sendProjectUpdateEmail } from '../utils/emailService';
+import { sendProposalStatusEmail, sendProposalSubmissionEmail, sendProjectUpdateEmail, sendProjectDetailsChangedEmail } from '../utils/emailService';
 import { publicUrlFor, deleteFileByUrl } from '../middleware/uploadMiddleware';
 import Panel from '../models/Panel';
 import Event, { EventType } from '../models/Event';
@@ -139,7 +139,7 @@ export const getFacultyProjects = async (req: Request, res: Response) => {
                 path: 'group',
                 populate: { path: 'members', select: 'name email rollNumber branch photoUrl' }
             })
-            .populate('updates.createdBy', 'name role')
+            .populate('updates.createdBy', 'name role photoUrl')
             .sort({ hasNewUpdate: -1, createdAt: -1 });
         res.json(projects);
     } catch (error) {
@@ -236,67 +236,185 @@ export const updateProjectStatus = async (req: Request, res: Response) => {
             }
         }
 
-        project.status = status;
-        if (feedback) project.feedback = feedback;
-        await project.save();
-
-        // Send email notification to students
-        try {
-            const groupForEmail = await Group.findById(project.group);
-            if (groupForEmail && groupForEmail.members.length > 0) {
-                const memberUsers = await User.find({ _id: { $in: groupForEmail.members } }).select('email');
-                const emails = memberUsers.map(u => u.email).filter(e => e);
-                if (emails.length > 0 && (status === 'Approved' || status === 'Rejected')) {
-                    const facultyDoc = project.faculty ? await User.findById(project.faculty).select('name') : null;
-                    sendProposalStatusEmail(emails, project.title, status as any, feedback, {
-                        facultyName: facultyDoc?.name,
-                        projectId: String(project._id)
-                    }).catch(err => console.error("Email failed:", err));
-                }
-            }
-        } catch (emailErr) {
-            console.error("Failed to prepare proposal status email", emailErr);
-        }
-
-        // Update Group status
-        const group = await Group.findById(project.group);
-        if (group) {
-            if (status === 'Approved') {
-                group.status = 'Approved';
-                group.project = project._id; // Ensure group points to the approved project
-
-                // Delete files for competing proposals before removing them
-                const competing = await Project.find({
-                    group: project.group,
-                    _id: { $ne: project._id },
-                    status: { $in: ['Draft', 'Pending', 'Rejected'] }
-                }).select('attachments');
-                competing.forEach(p => (p.attachments || []).forEach(url => deleteFileByUrl(url)));
-
-                // Permanently delete all other proposals for this group
-                await Project.deleteMany(
-                    {
-                        group: project.group,
-                        _id: { $ne: project._id },
-                        status: { $in: ['Draft', 'Pending', 'Rejected'] }
-                    }
-                );
-
-            } else if (status === 'Rejected') {
-                // Reset to Forming so the group can resubmit or edit. Also drop the pointer to the
-                // rejected proposal if the group still references it — otherwise stale UI would treat
-                // the dead proposal (and its old faculty) as the group's current project.
-                group.status = 'Forming';
-                if (group.project && group.project.toString() === project._id.toString()) {
-                    group.project = undefined;
-                }
-            }
-            await group.save();
-        }
+        await applyProjectStatus(project, status, feedback);
 
         res.json(project);
     } catch (error) {
         res.status(500).json({ message: 'Server error', error });
+    }
+};
+
+/**
+ * Write a project's status and bring its group into line with it.
+ *
+ * Group.status and Project.status are separate fields that must agree, and getting them out of
+ * step is how a group ends up stuck — showing "proposal pending" against a project nobody is
+ * reviewing, or holding a pointer to a proposal that no longer exists. Both the faculty decision
+ * path (updateProjectStatus, Approved/Rejected only) and the admin override (adminSetProjectStatus,
+ * all four) route through here so the mapping cannot drift between them.
+ *
+ *   Approved  → group Approved, pointed at this project, competing proposals destroyed
+ *   Pending   → group ProposalPending, pointed at this project
+ *   Rejected  → group Forming, pointer dropped if it named this project
+ *   Draft     → group Forming, pointer dropped if it named this project
+ *
+ * Students are emailed for the two decisions they are waiting on. An admin walking a status
+ * backwards is a correction, not a decision, so it sends nothing — the admin tells them.
+ */
+const applyProjectStatus = async (
+    project: any,
+    status: 'Draft' | 'Pending' | 'Approved' | 'Rejected',
+    feedback?: string
+) => {
+    project.status = status;
+    if (feedback) project.feedback = feedback;
+    await project.save();
+
+    // Send email notification to students
+    try {
+        const groupForEmail = await Group.findById(project.group);
+        if (groupForEmail && groupForEmail.members.length > 0) {
+            const memberUsers = await User.find({ _id: { $in: groupForEmail.members } }).select('email');
+            const emails = memberUsers.map(u => u.email).filter(e => e);
+            if (emails.length > 0 && (status === 'Approved' || status === 'Rejected')) {
+                const facultyDoc = project.faculty ? await User.findById(project.faculty).select('name') : null;
+                sendProposalStatusEmail(emails, project.title, status as any, feedback, {
+                    facultyName: facultyDoc?.name,
+                    projectId: String(project._id)
+                }).catch(err => console.error("Email failed:", err));
+            }
+        }
+    } catch (emailErr) {
+        console.error("Failed to prepare proposal status email", emailErr);
+    }
+
+    // Update Group status
+    const group = await Group.findById(project.group);
+    if (group) {
+        if (status === 'Approved') {
+            group.status = 'Approved';
+            group.project = project._id; // Ensure group points to the approved project
+
+            // Delete files for competing proposals before removing them
+            const competing = await Project.find({
+                group: project.group,
+                _id: { $ne: project._id },
+                status: { $in: ['Draft', 'Pending', 'Rejected'] }
+            }).select('attachments');
+            competing.forEach(p => (p.attachments || []).forEach(url => deleteFileByUrl(url)));
+
+            // Permanently delete all other proposals for this group
+            await Project.deleteMany(
+                {
+                    group: project.group,
+                    _id: { $ne: project._id },
+                    status: { $in: ['Draft', 'Pending', 'Rejected'] }
+                }
+            );
+
+        } else if (status === 'Pending') {
+            // Back under review: the group is waiting on a decision again, and the project they
+            // are waiting on is this one.
+            group.status = 'ProposalPending';
+            group.project = project._id;
+        } else {
+            // Rejected or returned to Draft. Reset to Forming so the group can resubmit or edit.
+            // Also drop the pointer to the dead proposal if the group still references it —
+            // otherwise stale UI would treat it (and its old faculty) as the group's current project.
+            group.status = 'Forming';
+            if (group.project && group.project.toString() === project._id.toString()) {
+                group.project = undefined;
+            }
+        }
+        await group.save();
+    }
+};
+
+/** Evaluation work that would be stranded by moving a project out of Approved. */
+const gradedArtefacts = (project: any): string[] => {
+    const graded: string[] = [];
+    if (project.midTermEvaluation) graded.push('a mid-term evaluation');
+    if (project.endTermEvaluation) graded.push('an end-term evaluation');
+    if (project.finalReportEvaluation) graded.push('a final report evaluation');
+    if (project.studentEvaluations?.length) graded.push(`${project.studentEvaluations.length} per-student evaluation(s)`);
+    return graded;
+};
+
+/**
+ * The admin walking a project's status anywhere, forwards or backwards.
+ * PUT /api/projects/:id/admin-status  { status, feedback?, confirm? }
+ *
+ * updateProjectStatus deliberately accepts only Approved and Rejected — it decides a submitted
+ * proposal, and anything else there would be a crafted payload. But an approval made in error, or
+ * a group that has to go back and re-propose, had no way back short of editing the database. This
+ * is that way back, and it is admin-only.
+ *
+ * Two things it does NOT soften:
+ *  - Promoting to Approved still runs the authoritative capacity check, so the override cannot be
+ *    used to overbook a supervisor.
+ *  - Moving a graded project out of Approved needs `confirm: true`, because the evaluations do not
+ *    come back with it.
+ *
+ * Note for callers: approval destroys the group's competing proposals (see applyProjectStatus).
+ * Reverting an approval cannot restore them — they are gone. The client says so before sending.
+ */
+export const adminSetProjectStatus = async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const { status, feedback, confirm } = req.body;
+
+        if ((req as any).user.role !== UserRole.ADMIN) {
+            return res.status(403).json({ message: 'Access denied. Admin only.' });
+        }
+        if (!['Draft', 'Pending', 'Approved', 'Rejected'].includes(status)) {
+            return res.status(400).json({ message: 'Status must be Draft, Pending, Approved or Rejected' });
+        }
+
+        const project = await Project.findById(id);
+        if (!project) return res.status(404).json({ message: 'Project not found' });
+        if (project.isArchived) return res.status(400).json({ message: 'Cannot update status of an archived project' });
+        if (project.status === status) {
+            return res.status(400).json({ message: `This project is already ${status}.` });
+        }
+
+        // Same authoritative ceiling the faculty approval path enforces — an admin override must
+        // not become the way a supervisor ends up over their limit.
+        if (status === 'Approved' && project.faculty) {
+            const facultyUser = await User.findById(project.faculty);
+            const projectGroup = await Group.findById(project.group).populate('members');
+
+            if (facultyUser && projectGroup && projectGroup.members.length > 0) {
+                const load = await supervisorCapacity(facultyUser, projectGroup.members.length, project._id);
+                if (load.exceeded) {
+                    return res.status(400).json({
+                        message: `Supervisor limit reached: ${facultyUser.name} would be mentoring ${load.currentStudents + load.incoming} students this semester, over their limit of ${load.maxStudents}. Raise their student limit in the Faculty tab, or assign this group a different mentor.`,
+                        limitExceeded: true,
+                        limit: { facultyId: String(facultyUser._id), facultyName: facultyUser.name, ...load }
+                    });
+                }
+            }
+        }
+
+        // Un-approving a graded project strands the marks: the panel's and the guide's work stays
+        // on the document but the project leaves the approved set every evaluation view reads from.
+        // Refuse until the admin says they know.
+        if (project.status === 'Approved' && status !== 'Approved') {
+            const graded = gradedArtefacts(project);
+            if (graded.length > 0 && !confirm) {
+                return res.status(409).json({
+                    message: `This project already has ${graded.join(', ')}. Moving it out of Approved does not delete that work, but it will drop out of the evaluation and panel views that only read approved projects. Confirm to proceed.`,
+                    requiresConfirmation: true,
+                    graded
+                });
+            }
+        }
+
+        await applyProjectStatus(project, status, feedback);
+
+        res.json(project);
+    } catch (error) {
+        console.error('Admin set project status error:', error);
+        res.status(500).json({ message: 'Server error' });
     }
 };
 
@@ -325,7 +443,7 @@ export const getProjects = async (req: Request, res: Response) => {
         let projectQuery = Project.find(query)
             .populate('group', 'name members targetBatch')
             .populate('faculty', 'name email department photoUrl')
-            .populate('updates.createdBy', 'name role')
+            .populate('updates.createdBy', 'name role photoUrl')
             .sort({ createdAt: -1 });
 
         if (usePagination) {
@@ -477,6 +595,11 @@ export const addUpdate = async (req: Request, res: Response) => {
             // A notification must never fail the post that triggered it.
             console.error('Failed to prepare project update email', emailErr);
         }
+
+        // Populate the author before answering. `project` here is the document we just saved, so
+        // updates[].createdBy is still a bare id — a caller that renders straight from this
+        // response would show the update it just posted with no author until the next refetch.
+        await project.populate('updates.createdBy', 'name role photoUrl');
 
         res.json(project);
     } catch (error) {
@@ -648,6 +771,135 @@ export const updateProject = async (req: Request, res: Response) => {
     } catch (error) {
         console.error("Update project error:", error);
         res.status(500).json({ message: 'Server error', error });
+    }
+};
+
+/**
+ * A supervisor (or the admin) correcting the project's own details.
+ * PUT /api/projects/:id/details  (multipart) { title?, description?, tags?, existingAttachments?, files[] }
+ *
+ * Deliberately separate from updateProject rather than a role branch inside it. That handler
+ * carries the rest of the student flow — status promotion, mentor assignment, the capacity gate —
+ * none of which applies here, and all of which would have to be defended against a faculty
+ * caller. Here the writable set is the four fields below and nothing else, so the mentor cannot
+ * reassign the project or move its status by any payload.
+ *
+ * Students keep using updateProject; this route gives them nothing they don't already have.
+ */
+export const updateProjectDetails = async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const userId = (req as any).user.id;
+        const role = (req as any).user.role;
+        const { title, description, tags } = req.body;
+        const files = (req as any).files;
+
+        const project = await Project.findById(id);
+        if (!project) return res.status(404).json({ message: 'Project not found' });
+        if (project.isArchived) return res.status(400).json({ message: 'Cannot edit an archived project' });
+
+        // The assigned mentor or an admin. Any other faculty is a stranger to this project.
+        const isAssignedMentor = !!project.faculty && project.faculty.toString() === userId;
+        if (!isAssignedMentor && role !== UserRole.ADMIN) {
+            return res.status(403).json({
+                message: 'Only this project\'s mentor or the admin can edit its details.'
+            });
+        }
+
+        // No projectDetailsFrozen check, deliberately. The mid-term freeze exists to stop the GROUP
+        // moving the goalposts under a grader (see utils/evaluationLock.ts), and the message it
+        // shows them — "Ask your mentor or the admin if something still needs to change" — is only
+        // true if the mentor can still act. Removing the freeze here is what makes that promise good.
+
+        const previousTitle = project.title;
+        const changed: string[] = [];
+
+        if (typeof title === 'string' && title.trim() && title.trim() !== project.title) {
+            project.title = title.trim();
+            changed.push('title');
+        }
+        if (typeof description === 'string' && description.trim() && description.trim() !== project.description) {
+            project.description = description.trim();
+            changed.push('description');
+        }
+        if (tags !== undefined) {
+            const nextTags = (Array.isArray(tags) ? tags : String(tags).split(','))
+                .map((t: string) => String(t).trim())
+                .filter(Boolean);
+            if (nextTags.join(',') !== (project.tags || []).join(',')) {
+                project.tags = nextTags;
+                changed.push('tags');
+            }
+        }
+
+        // Attachments. `existingAttachments` is the list the editor kept — anything missing from it
+        // was removed — and `files` are additions. Same wire shape the student editor uses, so the
+        // client-side handling is identical on both sides.
+        const current = project.attachments || [];
+        if (req.body.existingAttachments !== undefined || (files && files.length > 0)) {
+            let kept: string[] = current;
+            if (req.body.existingAttachments !== undefined) {
+                try {
+                    const parsed = JSON.parse(req.body.existingAttachments);
+                    if (Array.isArray(parsed)) {
+                        // Only ever a subset of what is already there. Without this the field would
+                        // let a caller write arbitrary strings into attachments, which are rendered
+                        // as links and, for /uploads paths, resolved against the uploads directory.
+                        kept = parsed.map(String).filter((url: string) => current.includes(url));
+                    }
+                } catch {
+                    kept = current; // unparseable: change nothing rather than drop everything
+                }
+            }
+
+            const added = (files || []).map((f: any) => publicUrlFor(req, f));
+            const next = [...kept, ...added];
+
+            if (next.join('|') !== current.join('|')) {
+                // Unlike the student editor, drop removed files from disk rather than orphaning
+                // them. Only files this project owned are eligible, and deleteFileByUrl no-ops on
+                // anything outside the uploads directory.
+                current
+                    .filter(url => !next.includes(url))
+                    .forEach(url => deleteFileByUrl(url));
+
+                project.attachments = next;
+                changed.push('attachments');
+            }
+        }
+
+        if (changed.length === 0) {
+            return res.status(400).json({ message: 'Nothing to change.' });
+        }
+
+        await project.save();
+
+        // The group owns this text, so an edit from outside it must not be silent.
+        try {
+            const group = await Group.findById(project.group);
+            const editor = await User.findById(userId).select('name role').lean() as any;
+            if (group && group.members.length > 0) {
+                const memberUsers = await User.find({ _id: { $in: group.members } }).select('email').lean();
+                const emails = memberUsers.map((m: any) => m.email).filter((e: string) => !!e);
+                if (emails.length > 0) {
+                    sendProjectDetailsChangedEmail(emails, {
+                        previousTitle,
+                        newTitle: project.title,
+                        editorName: editor?.name || 'Your mentor',
+                        editorRole: editor?.role || 'Faculty',
+                        changedFields: changed,
+                    }).catch(err => console.error('Project details email failed:', err));
+                }
+            }
+        } catch (emailErr) {
+            // The edit already succeeded; a notification failure must not undo it.
+            console.error('Failed to prepare project details email', emailErr);
+        }
+
+        res.json(project);
+    } catch (error) {
+        console.error('Update project details error:', error);
+        res.status(500).json({ message: 'Server error' });
     }
 };
 

@@ -40,6 +40,47 @@ export const getFaculty = async (req: Request, res: Response) => {
             .select('name email department branch expertise currentStudents currentGroups maxStudents maxGroups isVerified photoUrl')
             .lean();
 
+        // Proposals queued on each supervisor but not yet decided. These deliberately do NOT count
+        // towards capacity (see utils/supervisorCapacity.ts) — a mentor may still reject them — so a
+        // supervisor can look half-empty while already carrying more proposals than they have places
+        // for, and the groups behind them only find out at approval time. Returning the queue lets
+        // the proposal page warn about that before a group commits.
+        //
+        // Fetched in ONE query outside the per-faculty loop below. That loop is already an N+1;
+        // adding a second query per supervisor to it would double the cost of a page every student
+        // loads during the proposal rush.
+        //
+        // Only 'Pending' counts. A Draft was never sent and may never be, so counting it would
+        // overstate the queue — the same rule the admin's pending badge uses (projectController.ts).
+        //
+        // The caller's own group is excluded, so a student re-opening their live proposal sees the
+        // queue AHEAD of them rather than counting themselves as their own competition. This is the
+        // same correction supervisorCapacity() makes with excludeProjectId. Faculty and admin
+        // callers have no group, so nothing is excluded for them.
+        const myGroup = await Group.findOne({
+            members: (req as any).user.id,
+            isArchived: { $ne: true }
+        }).select('_id').lean();
+
+        const pendingProjects = await Project.find({
+            status: 'Pending',
+            isArchived: { $ne: true },
+            faculty: { $ne: null },
+            ...(myGroup ? { group: { $ne: myGroup._id } } : {})
+        })
+            .select('faculty group')
+            .populate({ path: 'group', select: 'members' })
+            .lean();
+
+        const pendingByFaculty = new Map<string, { proposals: number; students: number }>();
+        pendingProjects.forEach((p: any) => {
+            const key = String(p.faculty);
+            const entry = pendingByFaculty.get(key) || { proposals: 0, students: 0 };
+            entry.proposals += 1;
+            entry.students += p.group?.members?.length || 0;
+            pendingByFaculty.set(key, entry);
+        });
+
         // A supervisor's capacity is a SEMESTER-WIDE total, not per batch: their limit covers
         // every group they mentor this semester regardless of which batch each group belongs to.
         const populatedFaculty = await Promise.all(facultyList.map(async (faculty: any) => {
@@ -63,10 +104,14 @@ export const getFaculty = async (req: Request, res: Response) => {
                 }
             });
 
+            const queued = pendingByFaculty.get(String(faculty._id)) || { proposals: 0, students: 0 };
+
             return {
                 ...faculty,
                 currentStudents,
                 currentGroups,
+                pendingProposals: queued.proposals,
+                pendingStudents: queued.students,
                 maxStudents: faculty.maxStudents ?? 21,
                 maxGroups: faculty.maxGroups ?? 7
             };

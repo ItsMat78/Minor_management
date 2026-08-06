@@ -210,7 +210,7 @@ export const getMyGroup = async (req: Request, res: Response) => {
         // Fetch all projects for this group to support multiple proposals
         const allProjects = await Project.find({ group: group._id })
             .populate('faculty', 'name department email photoUrl')
-            .populate('updates.createdBy', 'name role')
+            .populate('updates.createdBy', 'name role photoUrl')
             .sort({ createdAt: -1 });
 
         // detailsLocked tells the dashboard and the proposal editor whether the group may still
@@ -524,7 +524,7 @@ export const getMyMentees = async (req: Request, res: Response) => {
         // Find groups where the project has been APPROVED by this faculty
         const projects = await Project.find({ faculty: userId, status: 'Approved', isArchived: { $ne: true } })
             .populate('faculty', 'name department email photoUrl')
-            .populate('updates.createdBy', 'name role')
+            .populate('updates.createdBy', 'name role photoUrl')
             .populate({
                 path: 'group',
                 populate: { path: 'members', select: 'name email rollNumber photoUrl branch' }
@@ -603,7 +603,10 @@ export const getAllGroups = async (req: Request, res: Response) => {
             .populate('pendingMembers', 'name email rollNumber photoUrl branch')
             .populate({
                 path: 'project',
-                populate: { path: 'faculty', select: 'name email department photoUrl' },
+                populate: [
+                    { path: 'faculty', select: 'name email department photoUrl' },
+                    { path: 'updates.createdBy', select: 'name role photoUrl' }
+                ],
                 select: 'title description status isArchived tags semester attachments feedback hasNewUpdate updates faculty midTermEvaluation endTermEvaluation finalReportEvaluation studentFeedback studentEvaluations'
             })
             .sort({ createdAt: -1 });
@@ -648,9 +651,111 @@ const populatedGroup = (id: any) =>
         .populate('pendingMembers', 'name email rollNumber photoUrl branch')
         .populate({
             path: 'project',
-            populate: { path: 'faculty', select: 'name email department photoUrl' },
+            // updates.createdBy was selected but never populated, so the admin's copy of the
+            // project timeline had a bare id where the author should be — every update showed
+            // an empty "· " badge instead of who wrote it. Both admin group queries populate it.
+            populate: [
+                { path: 'faculty', select: 'name email department photoUrl' },
+                { path: 'updates.createdBy', select: 'name role photoUrl' }
+            ],
             select: 'title description status isArchived tags semester attachments feedback hasNewUpdate updates faculty midTermEvaluation endTermEvaluation finalReportEvaluation studentFeedback studentEvaluations'
         });
+
+/**
+ * Create a group directly, without the student flow.
+ * POST /api/groups/admin  { members, targetBatch?, name? }
+ *
+ * Every group otherwise has to start with a student pressing "Create Group" inside an open
+ * Group Formation window. That leaves the office with nowhere to go when a student is left over,
+ * a formation went wrong, or the window has already closed — the only alternative was the
+ * all-or-nothing Excel import.
+ *
+ * Like the roster endpoints below, this deliberately skips the Group Formation window, the invite
+ * round-trip and the branch restriction: those are the rules an admin is stepping in to work
+ * around. What it keeps are the invariants that would corrupt data if broken — students only,
+ * one active group per student, and the three-member cap.
+ *
+ * No project is created here, so the group has no mentor yet. Supervisors live on the project;
+ * adminSetGroupMentor creates one when a group reaches it without any.
+ */
+export const adminCreateGroup = async (req: Request, res: Response) => {
+    try {
+        const { members, targetBatch, name } = req.body;
+
+        if (!Array.isArray(members) || members.length === 0) {
+            return res.status(400).json({ message: 'Select at least one student.' });
+        }
+        const memberIds = [...new Set(members.map(String))];
+        if (memberIds.length > MAX_GROUP_SIZE) {
+            return res.status(400).json({
+                message: `A group cannot exceed ${MAX_GROUP_SIZE} members. You selected ${memberIds.length}.`
+            });
+        }
+
+        const users: any[] = [];
+        for (const memberId of memberIds) {
+            const user = await User.findById(memberId).select('name role rollNumber targetBatch branch');
+            if (!user) return res.status(404).json({ message: `User ${memberId} not found` });
+            if (user.role !== 'Student') {
+                return res.status(400).json({ message: `${user.name} is not a student.` });
+            }
+
+            const otherGroup = await Group.findOne({
+                $or: [{ members: memberId }, { pendingMembers: memberId }],
+                isArchived: { $ne: true }
+            }).select('name');
+            if (otherGroup) {
+                return res.status(400).json({
+                    message: `${user.name} is already in group ${otherGroup.name || '(unnamed)'}. Remove them from it first.`
+                });
+            }
+
+            users.push(user);
+        }
+
+        // The batch decides the group's number, so it has to be unambiguous. batchOf resolves a
+        // dropper's targetBatch override ahead of their roll number, which is the whole reason a
+        // mixed selection can look correct in the directory and still be wrong here.
+        const batches = [...new Set(users.map(u => batchOf(u)).filter(Boolean))] as string[];
+        const resolvedBatch = targetBatch ? String(targetBatch) : batches[0];
+
+        if (!targetBatch && batches.length > 1) {
+            return res.status(400).json({
+                message: `Those students are in different batches (${batches.join(', ')}). Pick students from one batch, or set the batch explicitly.`
+            });
+        }
+        if (!resolvedBatch) {
+            return res.status(400).json({
+                message: 'Could not work out which batch this group belongs to. Set the batch explicitly.'
+            });
+        }
+
+        const assignedName = name ? String(name) : (await nextActiveGroupNumber(resolvedBatch)).toString();
+
+        const newGroup = new Group({
+            name: assignedName,
+            members: memberIds,      // admin-added students are accepted outright
+            pendingMembers: [],      // no invite round-trip
+            // Points at a real member so the batch/branch context other reads derive from the
+            // creator stays meaningful, and so the schema's member cap stays armed (it skips
+            // groups with no createdBy, which is the bulk-import case, not this one).
+            createdBy: memberIds[0],
+            status: 'Forming',
+            inviteCode: Math.random().toString(36).substring(7).toUpperCase(),
+            targetBatch: resolvedBatch
+        });
+
+        await newGroup.save();
+
+        res.status(201).json({
+            message: `Group ${assignedName} created with ${memberIds.length} student(s).`,
+            group: await populatedGroup(newGroup._id)
+        });
+    } catch (error: any) {
+        console.error('Error creating group as admin:', error);
+        res.status(500).json({ message: error?.message || 'Server error' });
+    }
+};
 
 export const adminAddGroupMembers = async (req: Request, res: Response) => {
     try {
@@ -751,18 +856,22 @@ export const adminRemoveGroupMember = async (req: Request, res: Response) => {
 };
 
 /**
- * Reassign a group's faculty mentor from the Group Directory.
- * PUT /api/groups/:id/mentor  { facultyId }
+ * Set or reassign a group's faculty mentor from the Group Directory.
+ * PUT /api/groups/:id/mentor  { facultyId, title?, description? }
  *
- * The mentor lives on the group's project, so the group must have one. The incoming
- * supervisor's semester-wide student cap is a hard limit: a reassignment that would push
- * them past it is refused, and the response names the shortfall so the admin can raise
- * that supervisor's student limit (Faculty tab) or pick someone else.
+ * The mentor lives on the group's project. A group that has never submitted a proposal has no
+ * project, and therefore nowhere to put a mentor — which used to make an admin-created group a
+ * dead end. So when there is no project, this creates one from the supplied title and approves
+ * it, rather than refusing. `title` is required in that case and ignored otherwise.
+ *
+ * The incoming supervisor's semester-wide student cap is a hard limit either way: an assignment
+ * that would push them past it is refused, and the response names the shortfall so the admin can
+ * raise that supervisor's student limit (Faculty tab) or pick someone else.
  */
 export const adminSetGroupMentor = async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
-        const { facultyId } = req.body;
+        const { facultyId, title, description } = req.body;
         if (!facultyId) return res.status(400).json({ message: 'Select a faculty mentor.' });
 
         const group = await Group.findById(id);
@@ -781,21 +890,27 @@ export const adminSetGroupMentor = async (req: Request, res: Response) => {
                 status: { $in: ['Pending', 'Approved'] }
             }).sort({ createdAt: -1 });
         }
-        if (!project) {
-            return res.status(400).json({
-                message: 'This group has no active project. A mentor is attached to the project, so the group must submit one first.'
-            });
-        }
 
         const faculty = await User.findById(facultyId).select('name email role maxStudents');
         if (!faculty || faculty.role !== 'Faculty') {
             return res.status(400).json({ message: 'Invalid faculty selected.' });
         }
-        if (project.faculty && String(project.faculty) === String(faculty._id)) {
+        if (project?.faculty && String(project.faculty) === String(faculty._id)) {
             return res.status(400).json({ message: `${faculty.name} already mentors this group.` });
         }
 
-        const load = await supervisorCapacity(faculty, group.members.length, project._id);
+        // No project yet — this is an admin-created group getting its first supervisor. Ask for a
+        // title rather than sending the admin away to make the group submit a proposal they were
+        // never going to submit.
+        const creatingProject = !project;
+        if (creatingProject && !String(title || '').trim()) {
+            return res.status(400).json({
+                message: 'This group has no project yet. Give the project a title and it will be created with this mentor.',
+                needsProject: true
+            });
+        }
+
+        const load = await supervisorCapacity(faculty, group.members.length, project?._id);
 
         if (load.exceeded) {
             return res.status(400).json({
@@ -806,19 +921,37 @@ export const adminSetGroupMentor = async (req: Request, res: Response) => {
         }
 
         // Read the outgoing mentor before the overwrite — they need telling too.
-        const previousMentor = project.faculty
+        const previousMentor = project?.faculty
             ? await User.findById(project.faculty).select('name email').lean() as any
             : null;
 
-        project.faculty = faculty._id as any;
-        await project.save();
+        if (creatingProject) {
+            // Approved outright. The admin placing a mentor on a group they built by hand IS the
+            // decision — there is no proposal for the mentor to review, and leaving it Pending
+            // would leave the group's own status stuck at ProposalPending waiting on nobody.
+            project = new Project({
+                title: String(title).trim(),
+                description: String(description || '').trim() || 'Created by the project office.',
+                group: group._id,
+                faculty: faculty._id,
+                status: 'Approved',
+            });
+            await project.save();
+
+            group.project = project._id as any;
+            group.status = 'Approved';
+            await group.save();
+        } else {
+            project!.faculty = faculty._id as any;
+            await project!.save();
+        }
 
         // Everyone affected hears about it: the incoming mentor, the outgoing one, and the group.
         // Each gets the same facts framed for their side (see sendMentorChangeEmail).
         try {
             const memberUsers = await User.find({ _id: { $in: group.members } }).select('name email').lean();
             const context = {
-                projectTitle: project.title,
+                projectTitle: project!.title,
                 newMentorName: faculty.name,
                 previousMentorName: previousMentor?.name,
                 groupName: group.name,
@@ -844,7 +977,9 @@ export const adminSetGroupMentor = async (req: Request, res: Response) => {
         }
 
         res.json({
-            message: `Mentor changed to ${faculty.name}.`,
+            message: creatingProject
+                ? `Project created and assigned to ${faculty.name}.`
+                : `Mentor changed to ${faculty.name}.`,
             group: await populatedGroup(group._id)
         });
     } catch (error: any) {
