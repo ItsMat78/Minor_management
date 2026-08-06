@@ -287,7 +287,11 @@ const AdminDashboard: React.FC = () => {
     const [selectedProposal, setSelectedProposal] = useState<any | null>(null);
     const [proposalFeedback, setProposalFeedback] = useState('');
     const [proposalActionLoading, setProposalActionLoading] = useState<string | null>(null);
-    // Which status the override is currently writing, so only that button shows a spinner.
+    // Status-override modal (Group Directory). Holds the group whose project is being moved;
+    // `statusOverrideLoading` is the status currently being written, so only that button spins.
+    const [statusGroup, setStatusGroup] = useState<any>(null);
+    const [statusRemarks, setStatusRemarks] = useState('');
+    const [statusError, setStatusError] = useState('');
     const [statusOverrideLoading, setStatusOverrideLoading] = useState<string | null>(null);
     const [pendingProposalCount, setPendingProposalCount] = useState(0);
 
@@ -1050,34 +1054,48 @@ const AdminDashboard: React.FC = () => {
         }
     };
 
-    // Move a project to any status, in either direction. Distinct from handleProposalAction above:
-    // that decides a submitted proposal (forwards only, and faculty can do it too), this is the
-    // admin-only correction path behind PUT /projects/:id/admin-status.
+    const openStatusModal = (group: any) => {
+        setStatusGroup(group);
+        setStatusRemarks(group.project?.feedback || '');
+        setStatusError('');
+    };
+
+    const closeStatusModal = () => {
+        setStatusGroup(null);
+        setStatusRemarks('');
+        setStatusError('');
+    };
+
+    // Move a group's project to any status, in either direction. Distinct from
+    // handleProposalAction, which decides a submitted proposal (forwards only, and faculty can do
+    // it too) — this is the admin-only correction path behind PUT /projects/:id/admin-status.
     //
     // A 409 means the project already carries evaluation work that un-approving would strand. The
     // server names what would be affected; re-send with confirm once the admin has seen it.
     const handleStatusOverride = async (
-        id: string,
         status: 'Draft' | 'Pending' | 'Approved' | 'Rejected',
         confirm = false
     ) => {
+        const projectId = statusGroup?.project?._id;
+        if (!projectId) return;
+
         setStatusOverrideLoading(status);
+        setStatusError('');
         try {
-            await api.put(`/projects/${id}/admin-status`, { status, feedback: proposalFeedback, confirm });
-            setProposalFeedback('');
-            setSelectedProposal(null);
+            await api.put(`/projects/${projectId}/admin-status`, { status, feedback: statusRemarks, confirm });
             // Refetch rather than patch: moving a project to Approved deletes the group's competing
             // proposals server-side, so local state would go stale.
-            await fetchProposals();
+            await refreshGroups();
+            closeStatusModal();
         } catch (error: any) {
             const data = error.response?.data;
             if (data?.requiresConfirmation && !confirm) {
                 if (window.confirm(`${data.message}\n\nChange the status anyway?`)) {
                     setStatusOverrideLoading(null);
-                    return handleStatusOverride(id, status, true);
+                    return handleStatusOverride(status, true);
                 }
             } else {
-                alert(errorMessage(error, `Could not change the status to ${status}.`));
+                setStatusError(errorMessage(error, `Could not change the status to ${status}.`));
             }
         } finally {
             setStatusOverrideLoading(null);
@@ -2848,6 +2866,19 @@ const AdminDashboard: React.FC = () => {
                                                                                                                 >
                                                                                                                     <Users className="w-4 h-4" /> {item.project ? 'Change Mentor' : 'Assign Mentor'}
                                                                                                                 </button>
+                                                                                                                {/* Needs a project: the status being changed is the project's,
+                                                                                                                    and the group's own status follows it. */}
+                                                                                                                {item.project && (
+                                                                                                                    <button
+                                                                                                                        onClick={() => {
+                                                                                                                            openStatusModal(item);
+                                                                                                                            setConfigBatchMenuOpen(null);
+                                                                                                                        }}
+                                                                                                                        className="w-full text-left px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-50 flex items-center gap-2"
+                                                                                                                    >
+                                                                                                                        <Power className="w-4 h-4" /> Change Status
+                                                                                                                    </button>
+                                                                                                                )}
                                                                                                                 {item.project && item.status === 'Approved' && (
                                                                                                                     <>
                                                                                                                         <div className="h-px bg-neutral-100 my-1" />
@@ -2935,94 +2966,106 @@ const AdminDashboard: React.FC = () => {
                                                 const batchRows = Object.entries(s?.batches || {}).sort(([a], [b]) => Number(b) - Number(a));
                                                 return (
                                                     <div key={bucket.id} className="bg-white rounded-2xl border border-neutral-200 shadow-sm overflow-hidden">
+                                                        {/* One emphasis per card: the pending count, because that is the only
+                                                            number here that asks the admin to do something. Everything else is
+                                                            reference and reads as quiet text — when every figure was a bordered
+                                                            uppercase pill, none of them stood out. */}
                                                         <button
                                                             onClick={() => setCollapsedProposalFaculty(prev => collapsed ? prev.filter(id => id !== bucket.id) : [...prev, bucket.id])}
-                                                            className="w-full p-5 hover:bg-neutral-50 transition-colors text-left"
+                                                            className="w-full px-5 py-4 hover:bg-neutral-50 transition-colors text-left"
                                                         >
-                                                            <div className="flex items-center gap-4">
+                                                            <div className="flex items-center gap-3.5">
                                                                 <Avatar
                                                                     name={bucket.name}
                                                                     photoUrl={bucket.photoUrl}
-                                                                    className="h-11 w-11 rounded-xl object-cover border border-neutral-200 shrink-0"
-                                                                    fallbackClassName="h-11 w-11 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold shrink-0"
+                                                                    className="h-10 w-10 rounded-full object-cover border border-neutral-200 shrink-0"
+                                                                    fallbackClassName="h-10 w-10 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold shrink-0"
                                                                 />
                                                                 <div className="flex-1 min-w-0">
-                                                                    <p className="font-bold text-neutral-900 truncate">{bucket.name}</p>
+                                                                    <p className="font-semibold text-neutral-900 truncate">{bucket.name}</p>
                                                                     <p className="text-xs text-neutral-500 truncate">{bucket.department || 'No department on record'}</p>
                                                                 </div>
-                                                                <span className="shrink-0 px-2.5 py-1 rounded-lg bg-neutral-100 text-neutral-600 text-[10px] font-bold uppercase tracking-wider">
-                                                                    {s?.total ?? bucket.items.length} total
-                                                                </span>
-                                                                {collapsed ? <ChevronDown className="w-5 h-5 text-neutral-400 shrink-0" /> : <ChevronUp className="w-5 h-5 text-neutral-400 shrink-0" />}
-                                                            </div>
 
-                                                            {/* Decision tally + mentorship load for this supervisor. Independent of the
-                                                                status filter and the search box, so the numbers stay comparable. */}
-                                                            <div className="flex flex-wrap items-center gap-1.5 mt-3">
-                                                                <span className="px-2.5 py-1 rounded-lg bg-amber-50 text-amber-700 border border-amber-100 text-[10px] font-bold uppercase tracking-wider">
-                                                                    {s?.pending ?? 0} Pending
-                                                                </span>
-                                                                <span className="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-100 text-[10px] font-bold uppercase tracking-wider">
-                                                                    {s?.approved ?? 0} Accepted
-                                                                </span>
-                                                                <span className="px-2.5 py-1 rounded-lg bg-rose-50 text-rose-700 border border-rose-100 text-[10px] font-bold uppercase tracking-wider">
-                                                                    {s?.rejected ?? 0} Rejected
-                                                                </span>
-                                                                {!!s?.draft && (
-                                                                    <span className="px-2.5 py-1 rounded-lg bg-neutral-100 text-neutral-500 border border-neutral-200 text-[10px] font-bold uppercase tracking-wider">
-                                                                        {s.draft} Draft
+                                                                {!!s?.pending && (
+                                                                    <span className="shrink-0 px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 text-xs font-semibold">
+                                                                        {s.pending} pending
                                                                     </span>
                                                                 )}
-                                                                <span className="px-2.5 py-1 rounded-lg bg-violet-50 text-violet-700 border border-violet-100 text-[10px] font-bold uppercase tracking-wider">
-                                                                    {s?.students ?? 0} Students mentored
-                                                                </span>
+                                                                {collapsed
+                                                                    ? <ChevronDown className="w-4 h-4 text-neutral-400 shrink-0" />
+                                                                    : <ChevronUp className="w-4 h-4 text-neutral-400 shrink-0" />}
+                                                            </div>
+
+                                                            {/* Decision tally + mentorship load. Independent of the status filter and
+                                                                the search box, so the numbers stay comparable between supervisors. */}
+                                                            <div className="mt-2.5 pl-[54px] flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-neutral-500">
+                                                                <span><span className="font-semibold text-emerald-600">{s?.approved ?? 0}</span> accepted</span>
+                                                                <span className="text-neutral-300">·</span>
+                                                                <span><span className="font-semibold text-rose-600">{s?.rejected ?? 0}</span> rejected</span>
+                                                                {!!s?.draft && (
+                                                                    <>
+                                                                        <span className="text-neutral-300">·</span>
+                                                                        <span><span className="font-semibold text-neutral-500">{s.draft}</span> draft</span>
+                                                                    </>
+                                                                )}
+                                                                <span className="text-neutral-300">·</span>
+                                                                <span><span className="font-semibold text-neutral-700">{s?.students ?? 0}</span> students mentored</span>
                                                             </div>
 
                                                             {batchRows.length > 0 && (
-                                                                <div className="flex flex-wrap items-center gap-1.5 mt-2">
-                                                                    <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-400">Approved load by batch</span>
-                                                                    {batchRows.map(([year, b]) => (
-                                                                        <span key={year} className="px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-100 text-[10px] font-bold tracking-wide">
-                                                                            {year}-{parseInt(year) + 4}: {b.groups} {b.groups === 1 ? 'group' : 'groups'} · {b.students} {b.students === 1 ? 'student' : 'students'}
+                                                                <p className="mt-1 pl-[54px] text-xs text-neutral-400">
+                                                                    Approved load —{' '}
+                                                                    {batchRows.map(([year, b], i) => (
+                                                                        <span key={year}>
+                                                                            {i > 0 && <span className="text-neutral-300"> · </span>}
+                                                                            <span className="text-neutral-500">{year}</span>: {b.groups} {b.groups === 1 ? 'group' : 'groups'}, {b.students} {b.students === 1 ? 'student' : 'students'}
                                                                         </span>
                                                                     ))}
-                                                                </div>
+                                                                </p>
                                                             )}
                                                         </button>
 
                                                         {!collapsed && (
                                                             <div className="border-t border-neutral-100 divide-y divide-neutral-100">
+                                                                {/* The whole row opens the proposal. A solid button on every row was
+                                                                    louder than the content it pointed at, and stranded a wide gap
+                                                                    between the group's name and the only thing to click. */}
                                                                 {bucket.items.map((p: any) => (
-                                                                    <div key={p._id} className="flex flex-col sm:flex-row sm:items-center gap-4 p-5 hover:bg-neutral-50/50 transition-colors">
+                                                                    <button
+                                                                        key={p._id}
+                                                                        onClick={() => { setSelectedProposal(p); setProposalFeedback(p.feedback || ''); }}
+                                                                        className="group/row w-full text-left flex items-center gap-4 px-5 py-3.5 hover:bg-indigo-50/40 transition-colors"
+                                                                    >
                                                                         <div className="flex-1 min-w-0">
-                                                                            <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                                                                                <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest bg-indigo-50 px-2 py-0.5 rounded">
+                                                                            <div className="flex items-center gap-2 mb-1 flex-wrap">
+                                                                                <span className="font-mono text-xs font-semibold text-neutral-400">
                                                                                     G-{p.group?.name ?? 'TBD'}
                                                                                 </span>
-                                                                                <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${p.status === 'Approved' ? 'bg-green-100 text-green-700' :
-                                                                                    p.status === 'Rejected' ? 'bg-red-100 text-red-700' :
-                                                                                        'bg-amber-100 text-amber-700'
+                                                                                <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium ${p.status === 'Approved' ? 'bg-emerald-50 text-emerald-700' :
+                                                                                    p.status === 'Rejected' ? 'bg-rose-50 text-rose-700' :
+                                                                                        p.status === 'Draft' ? 'bg-neutral-100 text-neutral-500' :
+                                                                                            'bg-amber-50 text-amber-700'
                                                                                     }`}>
+                                                                                    <span className={`w-1.5 h-1.5 rounded-full ${p.status === 'Approved' ? 'bg-emerald-500' :
+                                                                                        p.status === 'Rejected' ? 'bg-rose-500' :
+                                                                                            p.status === 'Draft' ? 'bg-neutral-400' :
+                                                                                                'bg-amber-500'
+                                                                                        }`} />
                                                                                     {p.status}
                                                                                 </span>
                                                                                 {p.group && (
-                                                                                    <span className="text-[10px] text-neutral-400 font-bold uppercase tracking-wider">
+                                                                                    <span className="text-xs text-neutral-400">
                                                                                         Batch {getGroupBatchYear(p.group)}
                                                                                     </span>
                                                                                 )}
                                                                             </div>
-                                                                            <p className="font-bold text-neutral-900 text-sm truncate">{p.title}</p>
+                                                                            <p className="font-semibold text-neutral-900 text-sm truncate">{p.title}</p>
                                                                             <p className="text-xs text-neutral-500 truncate mt-0.5">
                                                                                 {(p.group?.members || []).map((m: any) => m.name).join(', ') || 'No members listed'}
                                                                             </p>
                                                                         </div>
-                                                                        <button
-                                                                            onClick={() => { setSelectedProposal(p); setProposalFeedback(p.feedback || ''); }}
-                                                                            className="shrink-0 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all active:scale-95"
-                                                                        >
-                                                                            Review Details <ChevronRight className="w-4 h-4" />
-                                                                        </button>
-                                                                    </div>
+                                                                        <ChevronRight className="w-4 h-4 shrink-0 text-neutral-300 group-hover/row:text-indigo-500 transition-colors" />
+                                                                    </button>
                                                                 ))}
                                                             </div>
                                                         )}
@@ -4365,53 +4408,6 @@ const AdminDashboard: React.FC = () => {
                                         )}
                                     </div>
 
-                                    {/* Status override. The decision buttons above only ever move a
-                                        proposal forwards; this is the way back from a wrong call. */}
-                                    {selectedProposal && !selectedProposal.isArchived && (
-                                        <div className="pt-6 border-t border-neutral-200">
-                                            <h4 className="flex items-center gap-2 text-xs font-black text-neutral-400 uppercase tracking-widest mb-4">
-                                                Override Status
-                                            </h4>
-
-                                            <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl mb-4 text-[11px] text-amber-800 leading-relaxed">
-                                                <p className="font-bold mb-1">Read before changing.</p>
-                                                <p>
-                                                    The group's own status moves with the project — an approved project
-                                                    returned to Pending puts them back to "proposal pending", and Draft or
-                                                    Rejected returns them to "forming".
-                                                </p>
-                                                {selectedProposal.status === 'Approved' && (
-                                                    <p className="mt-2">
-                                                        Approving this proposal <strong>permanently deleted</strong> the group's
-                                                        other proposals. Undoing the approval will not bring them back.
-                                                    </p>
-                                                )}
-                                            </div>
-
-                                            <div className="grid grid-cols-2 gap-2">
-                                                {(['Draft', 'Pending', 'Approved', 'Rejected'] as const).map(s => (
-                                                    <button
-                                                        key={s}
-                                                        onClick={() => handleStatusOverride(selectedProposal._id, s)}
-                                                        disabled={selectedProposal.status === s || !!statusOverrideLoading}
-                                                        className={`px-4 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed ${selectedProposal.status === s
-                                                            ? 'bg-neutral-200 text-neutral-500'
-                                                            : 'bg-white border-2 border-neutral-200 text-neutral-600 hover:border-indigo-200 hover:text-indigo-600 hover:bg-indigo-50'
-                                                            }`}
-                                                    >
-                                                        {statusOverrideLoading === s
-                                                            ? <span className="inline-block animate-spin rounded-full h-3 w-3 border-2 border-indigo-500/30 border-t-indigo-500" />
-                                                            : selectedProposal.status === s ? `${s} (current)` : s}
-                                                    </button>
-                                                ))}
-                                            </div>
-
-                                            <p className="mt-3 text-[10px] text-neutral-400 leading-relaxed">
-                                                Any remarks typed above are saved with the change. Supervisor limits are still
-                                                enforced when moving a project to Approved.
-                                            </p>
-                                        </div>
-                                    )}
                                 </div>
                             </div>
                         </Dialog.Content>
@@ -5057,6 +5053,106 @@ const AdminDashboard: React.FC = () => {
                         </div>
                     </div>
                 )}
+
+                {/* Change status modal — moves the group's project in either direction */}
+                {statusGroup && (() => {
+                    const current = statusGroup.project?.status;
+                    const options = ['Draft', 'Pending', 'Approved', 'Rejected'] as const;
+                    // What the group's own status becomes, so the consequence is stated rather
+                    // than discovered. Mirrors applyProjectStatus on the server.
+                    const groupBecomes: Record<string, string> = {
+                        Approved: 'Approved',
+                        Pending: 'Proposal pending',
+                        Draft: 'Forming',
+                        Rejected: 'Forming',
+                    };
+                    return (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm">
+                            <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
+                                <div className="px-6 py-4 border-b border-neutral-100 flex items-center justify-between">
+                                    <h3 className="text-lg font-bold text-neutral-900">Change Status</h3>
+                                    <button onClick={closeStatusModal} className="text-neutral-400 hover:text-neutral-600">
+                                        <X className="w-5 h-5" />
+                                    </button>
+                                </div>
+
+                                <div className="p-6 space-y-4 overflow-y-auto">
+                                    <div className="text-sm text-neutral-600 bg-neutral-50 p-3 rounded-lg border border-neutral-200 space-y-1">
+                                        <p><strong>Group:</strong> {statusGroup.name ? `Group ${statusGroup.name}` : '(unnamed)'}</p>
+                                        <p><strong>Project:</strong> {statusGroup.project?.title || 'No project'}</p>
+                                        <p><strong>Current status:</strong> {current}</p>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium text-neutral-700 mb-2">Move to</label>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            {options.map(s => (
+                                                <button
+                                                    key={s}
+                                                    onClick={() => handleStatusOverride(s)}
+                                                    disabled={current === s || !!statusOverrideLoading}
+                                                    className={`px-4 py-3 rounded-xl text-sm font-semibold transition-colors disabled:cursor-not-allowed ${current === s
+                                                        ? 'bg-neutral-100 text-neutral-400 border border-neutral-200'
+                                                        : 'bg-white border border-neutral-200 text-neutral-700 hover:border-indigo-300 hover:text-indigo-600 hover:bg-indigo-50 disabled:opacity-50'
+                                                        }`}
+                                                >
+                                                    {statusOverrideLoading === s ? (
+                                                        <span className="inline-block animate-spin rounded-full h-4 w-4 border-2 border-indigo-500/30 border-t-indigo-500 align-middle" />
+                                                    ) : (
+                                                        <>
+                                                            {s}
+                                                            {current === s && <span className="block text-[10px] font-normal mt-0.5">Current</span>}
+                                                            {current !== s && <span className="block text-[10px] font-normal text-neutral-400 mt-0.5">Group → {groupBecomes[s]}</span>}
+                                                        </>
+                                                    )}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium text-neutral-700 mb-1">
+                                            Remarks <span className="font-normal text-neutral-400">(optional)</span>
+                                        </label>
+                                        <textarea
+                                            value={statusRemarks}
+                                            onChange={(e) => setStatusRemarks(e.target.value)}
+                                            rows={2}
+                                            placeholder="Saved with the change and shown to the group."
+                                            className="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 resize-none"
+                                        />
+                                    </div>
+
+                                    {current === 'Approved' && (
+                                        <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-800 leading-relaxed flex items-start gap-2">
+                                            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                                            <span>
+                                                Approving this proposal permanently deleted the group's other proposals —
+                                                moving it out of Approved will not bring them back. If it has already been
+                                                graded you will be asked to confirm.
+                                            </span>
+                                        </div>
+                                    )}
+
+                                    {statusError && (
+                                        <div className="p-3 rounded-lg bg-red-50 border border-red-100 text-sm text-red-600 flex items-start gap-2">
+                                            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                                            <p>{statusError}</p>
+                                        </div>
+                                    )}
+
+                                    <p className="text-xs text-neutral-400">
+                                        Supervisor student limits are still enforced when moving a project to Approved.
+                                    </p>
+                                </div>
+
+                                <div className="px-6 py-4 bg-neutral-50 border-t border-neutral-100 flex justify-end">
+                                    <button onClick={closeStatusModal} className="px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-100 rounded-lg transition">Close</button>
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })()}
 
                 {/* Change mentor modal — reassigns the supervisor on the group's project */}
                 {mentorGroup && (() => {
