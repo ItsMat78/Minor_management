@@ -2966,39 +2966,34 @@ const AdminDashboard: React.FC = () => {
                                                 const batchRows = Object.entries(s?.batches || {}).sort(([a], [b]) => Number(b) - Number(a));
                                                 return (
                                                     <div key={bucket.id} className="bg-white rounded-2xl border border-neutral-200 shadow-sm overflow-hidden">
-                                                        {/* One emphasis per card: the pending count, because that is the only
-                                                            number here that asks the admin to do something. Everything else is
-                                                            reference and reads as quiet text — when every figure was a bordered
-                                                            uppercase pill, none of them stood out. */}
                                                         <button
                                                             onClick={() => setCollapsedProposalFaculty(prev => collapsed ? prev.filter(id => id !== bucket.id) : [...prev, bucket.id])}
-                                                            className="w-full px-5 py-4 hover:bg-neutral-50 transition-colors text-left"
+                                                            className="w-full p-5 hover:bg-neutral-50 transition-colors text-left"
                                                         >
-                                                            <div className="flex items-center gap-3.5">
+                                                            <div className="flex items-center gap-4">
                                                                 <Avatar
                                                                     name={bucket.name}
                                                                     photoUrl={bucket.photoUrl}
-                                                                    className="h-10 w-10 rounded-full object-cover border border-neutral-200 shrink-0"
-                                                                    fallbackClassName="h-10 w-10 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold shrink-0"
+                                                                    className="h-11 w-11 rounded-xl object-cover border border-neutral-200 shrink-0"
+                                                                    fallbackClassName="h-11 w-11 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold shrink-0"
                                                                 />
                                                                 <div className="flex-1 min-w-0">
-                                                                    <p className="font-semibold text-neutral-900 truncate">{bucket.name}</p>
+                                                                    <p className="font-bold text-neutral-900 truncate">{bucket.name}</p>
                                                                     <p className="text-xs text-neutral-500 truncate">{bucket.department || 'No department on record'}</p>
                                                                 </div>
-
-                                                                {!!s?.pending && (
-                                                                    <span className="shrink-0 px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 text-xs font-semibold">
-                                                                        {s.pending} pending
-                                                                    </span>
-                                                                )}
-                                                                {collapsed
-                                                                    ? <ChevronDown className="w-4 h-4 text-neutral-400 shrink-0" />
-                                                                    : <ChevronUp className="w-4 h-4 text-neutral-400 shrink-0" />}
+                                                                <span className="shrink-0 px-2.5 py-1 rounded-lg bg-neutral-100 text-neutral-600 text-[10px] font-bold uppercase tracking-wider">
+                                                                    {s?.total ?? bucket.items.length} total
+                                                                </span>
+                                                                {collapsed ? <ChevronDown className="w-5 h-5 text-neutral-400 shrink-0" /> : <ChevronUp className="w-5 h-5 text-neutral-400 shrink-0" />}
                                                             </div>
 
-                                                            {/* Decision tally + mentorship load. Independent of the status filter and
-                                                                the search box, so the numbers stay comparable between supervisors. */}
-                                                            <div className="mt-2.5 pl-[54px] flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-neutral-500">
+                                                            {/* Decision tally + mentorship load for this supervisor. Independent of the
+                                                                status filter and the search box, so the numbers stay comparable.
+                                                                Plain text with coloured numerals rather than a row of pills — five
+                                                                bordered badges emphasised every figure equally and read as noise. */}
+                                                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-3 text-xs text-neutral-500">
+                                                                <span><span className="font-semibold text-amber-600">{s?.pending ?? 0}</span> pending</span>
+                                                                <span className="text-neutral-300">·</span>
                                                                 <span><span className="font-semibold text-emerald-600">{s?.approved ?? 0}</span> accepted</span>
                                                                 <span className="text-neutral-300">·</span>
                                                                 <span><span className="font-semibold text-rose-600">{s?.rejected ?? 0}</span> rejected</span>
@@ -3009,63 +3004,54 @@ const AdminDashboard: React.FC = () => {
                                                                     </>
                                                                 )}
                                                                 <span className="text-neutral-300">·</span>
-                                                                <span><span className="font-semibold text-neutral-700">{s?.students ?? 0}</span> students mentored</span>
+                                                                <span><span className="font-semibold text-violet-600">{s?.students ?? 0}</span> students mentored</span>
                                                             </div>
 
                                                             {batchRows.length > 0 && (
-                                                                <p className="mt-1 pl-[54px] text-xs text-neutral-400">
-                                                                    Approved load —{' '}
-                                                                    {batchRows.map(([year, b], i) => (
-                                                                        <span key={year}>
-                                                                            {i > 0 && <span className="text-neutral-300"> · </span>}
-                                                                            <span className="text-neutral-500">{year}</span>: {b.groups} {b.groups === 1 ? 'group' : 'groups'}, {b.students} {b.students === 1 ? 'student' : 'students'}
+                                                                <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                                                                    <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-400">Approved load by batch</span>
+                                                                    {batchRows.map(([year, b]) => (
+                                                                        <span key={year} className="px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-100 text-[10px] font-bold tracking-wide">
+                                                                            {year}-{parseInt(year) + 4}: {b.groups} {b.groups === 1 ? 'group' : 'groups'} · {b.students} {b.students === 1 ? 'student' : 'students'}
                                                                         </span>
                                                                     ))}
-                                                                </p>
+                                                                </div>
                                                             )}
                                                         </button>
 
                                                         {!collapsed && (
                                                             <div className="border-t border-neutral-100 divide-y divide-neutral-100">
-                                                                {/* The whole row opens the proposal. A solid button on every row was
-                                                                    louder than the content it pointed at, and stranded a wide gap
-                                                                    between the group's name and the only thing to click. */}
                                                                 {bucket.items.map((p: any) => (
-                                                                    <button
-                                                                        key={p._id}
-                                                                        onClick={() => { setSelectedProposal(p); setProposalFeedback(p.feedback || ''); }}
-                                                                        className="group/row w-full text-left flex items-center gap-4 px-5 py-3.5 hover:bg-indigo-50/40 transition-colors"
-                                                                    >
+                                                                    <div key={p._id} className="flex flex-col sm:flex-row sm:items-center gap-4 p-5 hover:bg-neutral-50/50 transition-colors">
                                                                         <div className="flex-1 min-w-0">
-                                                                            <div className="flex items-center gap-2 mb-1 flex-wrap">
-                                                                                <span className="font-mono text-xs font-semibold text-neutral-400">
+                                                                            <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                                                                                <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest bg-indigo-50 px-2 py-0.5 rounded">
                                                                                     G-{p.group?.name ?? 'TBD'}
                                                                                 </span>
-                                                                                <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium ${p.status === 'Approved' ? 'bg-emerald-50 text-emerald-700' :
-                                                                                    p.status === 'Rejected' ? 'bg-rose-50 text-rose-700' :
-                                                                                        p.status === 'Draft' ? 'bg-neutral-100 text-neutral-500' :
-                                                                                            'bg-amber-50 text-amber-700'
+                                                                                <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${p.status === 'Approved' ? 'bg-green-100 text-green-700' :
+                                                                                    p.status === 'Rejected' ? 'bg-red-100 text-red-700' :
+                                                                                        'bg-amber-100 text-amber-700'
                                                                                     }`}>
-                                                                                    <span className={`w-1.5 h-1.5 rounded-full ${p.status === 'Approved' ? 'bg-emerald-500' :
-                                                                                        p.status === 'Rejected' ? 'bg-rose-500' :
-                                                                                            p.status === 'Draft' ? 'bg-neutral-400' :
-                                                                                                'bg-amber-500'
-                                                                                        }`} />
                                                                                     {p.status}
                                                                                 </span>
                                                                                 {p.group && (
-                                                                                    <span className="text-xs text-neutral-400">
+                                                                                    <span className="text-[10px] text-neutral-400 font-bold uppercase tracking-wider">
                                                                                         Batch {getGroupBatchYear(p.group)}
                                                                                     </span>
                                                                                 )}
                                                                             </div>
-                                                                            <p className="font-semibold text-neutral-900 text-sm truncate">{p.title}</p>
+                                                                            <p className="font-bold text-neutral-900 text-sm truncate">{p.title}</p>
                                                                             <p className="text-xs text-neutral-500 truncate mt-0.5">
                                                                                 {(p.group?.members || []).map((m: any) => m.name).join(', ') || 'No members listed'}
                                                                             </p>
                                                                         </div>
-                                                                        <ChevronRight className="w-4 h-4 shrink-0 text-neutral-300 group-hover/row:text-indigo-500 transition-colors" />
-                                                                    </button>
+                                                                        <button
+                                                                            onClick={() => { setSelectedProposal(p); setProposalFeedback(p.feedback || ''); }}
+                                                                            className="shrink-0 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all active:scale-95"
+                                                                        >
+                                                                            Review Details <ChevronRight className="w-4 h-4" />
+                                                                        </button>
+                                                                    </div>
                                                                 ))}
                                                             </div>
                                                         )}
