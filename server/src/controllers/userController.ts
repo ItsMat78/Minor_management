@@ -195,6 +195,32 @@ export const getAllStudents = async (req: Request, res: Response) => {
             query.$and = [...(query.$and || []), { $or: [{ name: rx }, { email: rx }, { rollNumber: rx }] }];
         }
 
+        // Find which students are in groups. Exclude ARCHIVED groups (from previous semesters,
+        // archived at rollover) — otherwise every returning student stays flagged "grouped"
+        // forever and becomes unselectable in the directory. Matches createGroup's own check.
+        const groups = await Group.find({ isArchived: { $ne: true } }, 'members');
+        const groupedStudentIds = new Set<string>();
+        groups.forEach(g => {
+            if (g.members) {
+                g.members.forEach(m => groupedStudentIds.add(m.toString()));
+            }
+        });
+
+        // 3. Filter by Status (Grouped / Available) — IN THE QUERY, before pagination.
+        //
+        // This used to run in JS over the already-paginated page, which meant a paginated caller
+        // asking for 'available' got "the ungrouped students that happen to fall in the first N by
+        // roll number" rather than the first N ungrouped students. With most of a batch grouped,
+        // the group pickers showed a handful of students and hid the rest, and `total` counted the
+        // unfiltered set on top of that. Both are wrong for the same reason, so the filter has to
+        // be part of the query.
+        const groupedIds = Array.from(groupedStudentIds);
+        if (filterStatus === 'grouped') {
+            query._id = { $in: groupedIds };
+        } else if (filterStatus === 'available') {
+            query._id = { $nin: groupedIds };
+        }
+
         // Pagination (admin only — students always get their full cohort)
         const isAdmin = currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.FACULTY;
         const page = isAdmin && pageParam ? Math.max(1, parseInt(pageParam as string)) : 0;
@@ -211,28 +237,10 @@ export const getAllStudents = async (req: Request, res: Response) => {
         // Total count for pagination header
         const total = usePagination ? await User.countDocuments(query) : students.length;
 
-        // Find which students are in groups. Exclude ARCHIVED groups (from previous semesters,
-        // archived at rollover) — otherwise every returning student stays flagged "grouped"
-        // forever and becomes unselectable in the directory. Matches createGroup's own check.
-        const groups = await Group.find({ isArchived: { $ne: true } }, 'members');
-        const groupedStudentIds = new Set();
-        groups.forEach(g => {
-            if (g.members) {
-                g.members.forEach(m => groupedStudentIds.add(m.toString()));
-            }
-        });
-
-        let studentsWithStatus = students.map(s => ({
+        const studentsWithStatus = students.map(s => ({
             ...s.toObject(),
             isGrouped: groupedStudentIds.has(s._id.toString())
         }));
-
-        // 3. Filter by Status (Grouped / Available)
-        if (filterStatus === 'grouped') {
-            studentsWithStatus = studentsWithStatus.filter(s => s.isGrouped);
-        } else if (filterStatus === 'available') {
-            studentsWithStatus = studentsWithStatus.filter(s => !s.isGrouped);
-        }
 
         if (usePagination) {
             res.json({ data: studentsWithStatus, total, page, pages: Math.ceil(total / limit) });

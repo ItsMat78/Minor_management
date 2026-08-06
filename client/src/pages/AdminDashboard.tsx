@@ -369,6 +369,8 @@ const AdminDashboard: React.FC = () => {
     const [createGroupBatch, setCreateGroupBatch] = useState('');
     const [createGroupSearch, setCreateGroupSearch] = useState('');
     const [createGroupCandidates, setCreateGroupCandidates] = useState<any[]>([]);
+    // How many ungrouped students match in total — the list itself is capped at one page.
+    const [createGroupTotal, setCreateGroupTotal] = useState(0);
     const [createGroupLoadingCandidates, setCreateGroupLoadingCandidates] = useState(false);
     const [createGroupSelected, setCreateGroupSelected] = useState<any[]>([]);
     const [createGroupNextNumber, setCreateGroupNextNumber] = useState<number | null>(null);
@@ -994,9 +996,13 @@ const AdminDashboard: React.FC = () => {
                     },
                 });
                 if (cancelled) return;
-                setCreateGroupCandidates(Array.isArray(res.data) ? res.data : (res.data?.data || []));
+                const rows = Array.isArray(res.data) ? res.data : (res.data?.data || []);
+                setCreateGroupCandidates(rows);
+                // The server pages at 25 available students; say so rather than letting the
+                // list look like the complete set of who is left.
+                setCreateGroupTotal(Array.isArray(res.data) ? rows.length : (res.data?.total ?? rows.length));
             } catch {
-                if (!cancelled) setCreateGroupCandidates([]);
+                if (!cancelled) { setCreateGroupCandidates([]); setCreateGroupTotal(0); }
             } finally {
                 if (!cancelled) setCreateGroupLoadingCandidates(false);
             }
@@ -5022,6 +5028,12 @@ const AdminDashboard: React.FC = () => {
                                             })
                                         )}
                                     </div>
+
+                                    {createGroupTotal > createGroupCandidates.length && (
+                                        <p className="mt-2 text-xs text-neutral-400">
+                                            Showing {createGroupCandidates.length} of {createGroupTotal} students without a group — search to narrow it down.
+                                        </p>
+                                    )}
                                 </div>
 
                                 {createGroupError && (
