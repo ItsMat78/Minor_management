@@ -6,6 +6,8 @@ import User, { UserRole } from '../models/User';
 import Group from '../models/Group';
 import Project from '../models/Project';
 import Panel from '../models/Panel';
+import AuditLog from '../models/AuditLog';
+import { hashRecord, GENESIS } from '../utils/audit';
 import Event, { EventType } from '../models/Event';
 import { getGlobalSettings } from '../models/Settings';
 import { sessionLabelFor, sessionSortKey, resolveSession } from '../utils/session';
@@ -559,6 +561,79 @@ export const createAdmin = async (req: Request, res: Response) => {
         res.status(201).json({ message: 'Admin account created successfully', admin: adminObj });
     } catch (error) {
         res.status(500).json({ message: 'Server error', error });
+    }
+};
+
+/**
+ * Read the audit trail. GET /api/admin/audit  (admin only)
+ * Filters: q (free text over actor/target name/email + path), actor (user id), target (user id),
+ * action (substring), method, status, path (substring), from/to (ISO dates), page, limit.
+ * Newest first.
+ */
+export const getAuditLog = async (req: Request, res: Response) => {
+    try {
+        const { actor, target, action, method, status, path: pathQ, from, to, q } = req.query as any;
+        const page = Math.max(1, Number(req.query.page) || 1);
+        const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 100));
+
+        const filter: any = {};
+        if (actor) filter['actor.id'] = String(actor);
+        if (target) filter['target.id'] = String(target);
+        if (action) filter.action = { $regex: String(action), $options: 'i' };
+        if (method) filter.method = String(method).toUpperCase();
+        if (status) filter.status = Number(status);
+        if (pathQ) filter.path = { $regex: String(pathQ), $options: 'i' };
+        if (from || to) {
+            filter.ts = {};
+            if (from) filter.ts.$gte = new Date(String(from));
+            if (to) filter.ts.$lte = new Date(String(to));
+        }
+        if (q) {
+            const rx = { $regex: String(q), $options: 'i' };
+            filter.$or = [
+                { 'actor.name': rx }, { 'actor.email': rx },
+                { 'target.name': rx }, { path: rx }, { action: rx }, { ip: rx },
+            ];
+        }
+
+        const [items, total] = await Promise.all([
+            AuditLog.find(filter).sort({ seq: -1 }).skip((page - 1) * limit).limit(limit).lean(),
+            AuditLog.countDocuments(filter),
+        ]);
+        res.json({ items, total, page, limit, pages: Math.ceil(total / limit) });
+    } catch (error) {
+        console.error('Error reading audit log:', error);
+        res.status(500).json({ message: 'Server error' });
+    }
+};
+
+/**
+ * Verify the hash chain end to end. GET /api/admin/audit/verify  (admin only)
+ * Walks in seq order, recomputing each hash and checking the prevHash link and seq continuity.
+ * Reports the first anomaly, which is where a row was altered or deleted. `ok: true` means the
+ * on-box trail is intact from genesis to head.
+ */
+export const verifyAuditChain = async (_req: Request, res: Response) => {
+    try {
+        let prevHash = GENESIS;
+        let expectedSeq = 1;
+        let checked = 0;
+        let firstProblem: any = null;
+
+        const cursor = AuditLog.find().sort({ seq: 1 }).lean().cursor();
+        for (let rec = await cursor.next(); rec != null; rec = await cursor.next()) {
+            if (rec.seq !== expectedSeq) { firstProblem = { type: 'seq-gap', at: rec.seq, expected: expectedSeq }; break; }
+            if ((rec.prevHash || GENESIS) !== prevHash) { firstProblem = { type: 'prevHash-mismatch', at: rec.seq }; break; }
+            if (rec.hash !== hashRecord(prevHash, rec)) { firstProblem = { type: 'hash-mismatch', at: rec.seq }; break; }
+            prevHash = rec.hash;
+            expectedSeq = rec.seq + 1;
+            checked++;
+        }
+
+        res.json({ ok: !firstProblem, checked, head: prevHash, firstProblem });
+    } catch (error) {
+        console.error('Error verifying audit chain:', error);
+        res.status(500).json({ message: 'Server error' });
     }
 };
 

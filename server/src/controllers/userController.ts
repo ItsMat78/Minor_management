@@ -11,6 +11,7 @@ import { publicUrlFor, deleteFileByUrl } from '../middleware/uploadMiddleware';
 import Event, { EventType } from '../models/Event';
 import { getGlobalSettings } from '../models/Settings';
 import { branchFromRoll } from '../utils/branch';
+import { recordAudit } from '../utils/audit';
 
 /** Returns the participatingBatches of the current active GF event, or [] if none. */
 async function getActiveParticipatingBatches(): Promise<string[]> {
@@ -374,6 +375,10 @@ export const deleteUser = async (req: Request, res: Response) => {
         const user = await User.findById(id);
         if (!user) return res.status(404).json({ message: 'User not found' });
 
+        // Capture identity + affected groups BEFORE deletion — the audit middleware runs at
+        // response finish, by which point this account (and its name) no longer exists.
+        const affectedGroups = await Group.find({ members: user._id }).select('name').lean();
+
         // Delete avatar from disk
         deleteFileByUrl(user.photoUrl);
 
@@ -381,6 +386,16 @@ export const deleteUser = async (req: Request, res: Response) => {
         await Group.updateMany({ members: user._id }, { $pull: { members: user._id } });
 
         await User.findByIdAndDelete(id);
+
+        await recordAudit(req, {
+            action: 'user.delete',
+            target: { type: 'user', id: String(user._id), name: user.name },
+            before: {
+                name: user.name, email: user.email, role: user.role, rollNumber: (user as any).rollNumber,
+                removedFromGroups: affectedGroups.map((g: any) => g.name),
+            },
+        });
+
         res.json({ message: 'User deleted' });
     } catch (error) {
         console.error('Error deleting user:', error);

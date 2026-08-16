@@ -109,7 +109,7 @@ export const login = async (req: Request, res: Response) => {
             });
         }
 
-        const token = jwt.sign({ id: user._id, role: user.role }, JWT_SECRET, { expiresIn: '1d' });
+        const token = jwt.sign({ id: user._id, role: user.role, name: user.name, email: user.email }, JWT_SECRET, { expiresIn: '1d' });
 
         const userObj = user.toObject() as any;
         delete userObj.password;
@@ -151,7 +151,7 @@ export const verifyOtp = async (req: Request, res: Response) => {
         user.otpExpires = undefined;
         await user.save();
 
-        const token = jwt.sign({ id: user._id, role: user.role }, JWT_SECRET, { expiresIn: '1d' });
+        const token = jwt.sign({ id: user._id, role: user.role, name: user.name, email: user.email }, JWT_SECRET, { expiresIn: '1d' });
         const userObj = user.toObject() as any;
         delete userObj.password;
 
@@ -274,7 +274,7 @@ export const verifyForgotPasswordOtp = async (req: Request, res: Response) => {
         user.mustChangePassword = true;
         await user.save();
 
-        const token = jwt.sign({ id: user._id, role: user.role }, JWT_SECRET, { expiresIn: '1d' });
+        const token = jwt.sign({ id: user._id, role: user.role, name: user.name, email: user.email }, JWT_SECRET, { expiresIn: '1d' });
         const userObj = user.toObject() as any;
         delete userObj.password;
 

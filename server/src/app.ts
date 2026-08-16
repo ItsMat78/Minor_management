@@ -3,6 +3,7 @@ import cors from 'cors';
 import multer from 'multer';
 import { allowedOrigins } from './config/cors';
 import { UnsupportedFileTypeError, UPLOAD_ROOT } from './middleware/uploadMiddleware';
+import { auditMiddleware } from './middleware/auditMiddleware';
 
 import authRoutes from './routes/authRoutes';
 import groupRoutes from './routes/groupRoutes';
@@ -28,6 +29,11 @@ app.use(cors({
     credentials: true
 }));
 app.use(express.json({ limit: '50mb' }));
+
+// Audit every request from here down — API calls and uploaded-file fetches alike. Mounted
+// before the routers so it wraps them; it reads the outcome on response finish, by which point
+// `auth` has populated req.user. See middleware/auditMiddleware.ts.
+app.use(auditMiddleware);
 
 // UPLOAD_ROOT, not a cwd-relative string: this must be the exact directory multer writes into.
 app.use('/uploads', express.static(UPLOAD_ROOT));
