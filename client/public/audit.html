@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Audit Log — Minor Project Portal</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+         background:#0b0e14; color:#d7dce5; font-size:14px; }
+  header { padding:14px 20px; border-bottom:1px solid #1e2430; display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+  h1 { font-size:16px; margin:0; font-weight:700; letter-spacing:.02em; }
+  .muted { color:#7a8496; }
+  input, select, button { font: inherit; }
+  input, select { background:#141925; border:1px solid #263041; color:#d7dce5; padding:7px 9px; border-radius:8px; }
+  input:focus, select:focus { outline:none; border-color:#3b82f6; }
+  button { background:#1d283a; border:1px solid #2c3a52; color:#e6ebf3; padding:7px 12px; border-radius:8px; cursor:pointer; }
+  button:hover { background:#24324a; }
+  button.primary { background:#2563eb; border-color:#2563eb; color:#fff; }
+  button.primary:hover { background:#1d4fd7; }
+  .wrap { padding:16px 20px; }
+  .controls { display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end; margin-bottom:14px; }
+  .controls label { display:flex; flex-direction:column; gap:3px; font-size:11px; color:#7a8496; }
+  .scroll { overflow-x:auto; border:1px solid #161c27; border-radius:10px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; min-width:820px; }
+  th, td { text-align:left; padding:8px 10px; border-bottom:1px solid #161c27; vertical-align:top; }
+  th { position:sticky; top:0; background:#0f131c; color:#8b95a7; font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:.04em; }
+  tbody tr.row { cursor:pointer; }
+  tbody tr.row:hover td { background:#0f141e; }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size:12px; }
+  .tag { display:inline-block; padding:1px 7px; border-radius:6px; font-size:11px; font-weight:600; }
+  .m-GET{background:#1b2430;color:#8ba3c7} .m-POST{background:#13301f;color:#6ee7a8}
+  .m-PUT{background:#332813;color:#f5c977} .m-DELETE{background:#3a1717;color:#f79393} .m-OTHER{background:#222831;color:#9aa}
+  .s2{color:#5bd18b} .s3{color:#6aa8f0} .s4{color:#e6b45e} .s5{color:#ef6a6a}
+  .aname{font-weight:600;color:#e6ebf3} .asub{color:#6b7688; font-size:11px}
+  .banner{padding:10px 14px;border-radius:8px;margin-bottom:12px;font-weight:600}
+  .ok{background:#0f2a1a;color:#6ee7a8;border:1px solid #1c4d31}
+  .bad{background:#2e1414;color:#f79393;border:1px solid #5a2020}
+  .foot{display:flex;gap:12px;align-items:center;margin-top:14px}
+  pre.detail{margin:0;padding:12px;background:#0d1119;color:#a9b6cc;font-size:11.5px;white-space:pre-wrap;word-break:break-word;border-left:3px solid #2c3a52}
+  #login{max-width:340px;margin:8vh auto;padding:24px;background:#0f131c;border:1px solid #1e2430;border-radius:14px}
+  #login h1{margin-bottom:4px} #login .muted{margin:0 0 16px} #login label{display:block;margin-bottom:10px;font-size:12px;color:#7a8496}
+  #login input{width:100%;margin-top:4px} #login button{width:100%;margin-top:6px} .err{color:#f79393;font-size:12px;min-height:16px}
+  .hide{display:none}
+</style>
+</head>
+<body>
+
+<div id="login">
+  <h1>Audit Log</h1>
+  <p class="muted">Sign in with an <b>admin</b> account.</p>
+  <label>Email <input id="email" type="email" autocomplete="username"></label>
+  <label>Password <input id="password" type="password" autocomplete="current-password"></label>
+  <div class="err" id="loginErr"></div>
+  <button class="primary" onclick="login()">Sign in</button>
+</div>
+
+<div id="app" class="hide">
+  <header>
+    <h1>Audit Log</h1>
+    <span class="muted" id="who"></span>
+    <span style="flex:1"></span>
+    <button onclick="verify()">Verify chain</button>
+    <button onclick="logout()">Sign out</button>
+  </header>
+  <div class="wrap">
+    <div id="verifyBanner"></div>
+    <div class="controls">
+      <label>Search<input id="q" placeholder="name, email, IP, path…" style="width:210px"></label>
+      <label>Action<input id="action" placeholder="e.g. member.remove" style="width:150px"></label>
+      <label>Method
+        <select id="method"><option value="">any</option><option>GET</option><option>POST</option><option>PUT</option><option>DELETE</option></select>
+      </label>
+      <label>Status<input id="status" placeholder="200" style="width:70px"></label>
+      <label>From<input id="from" type="date"></label>
+      <label>To<input id="to" type="date"></label>
+      <button class="primary" onclick="go(1)">Search</button>
+      <button onclick="clearFilters()">Clear</button>
+    </div>
+    <div class="scroll">
+      <table>
+        <thead><tr>
+          <th>Time (local)</th><th>Actor</th><th>IP</th><th>Method</th><th>Action</th><th>Target</th><th>Status</th><th>ms</th>
+        </tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+    <div class="foot">
+      <button onclick="go(page-1)">‹ Prev</button>
+      <span class="muted" id="pageInfo"></span>
+      <button onclick="go(page+1)">Next ›</button>
+      <span style="flex:1"></span>
+      <span class="muted">Click a row for full detail (incl. before/after)</span>
+    </div>
+  </div>
+</div>
+
+<script>
+  // This page is served from the portal, so same-origin '/api' works directly.
+  // If you host it on a different origin, set API to the full base URL, e.g.
+  //   const API = 'https://minor-project.iiitnr.ac.in';
+  const API = '';
+
+  let token = sessionStorage.getItem('auditToken') || '';
+  let page = 1, items = [];
+
+  if (token) showApp();
+
+  async function login() {
+    const email = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
+    const err = document.getElementById('loginErr'); err.textContent = '';
+    try {
+      const r = await fetch(API + '/api/auth/login', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      const d = await r.json();
+      if (!r.ok) { err.textContent = d.message || 'Login failed.'; return; }
+      if (d.requiresActivation) { err.textContent = 'Account not activated (OTP sent to email).'; return; }
+      if (d.user && d.user.role !== 'Admin') { err.textContent = 'That account is not an admin.'; return; }
+      token = d.token;
+      sessionStorage.setItem('auditToken', token);
+      document.getElementById('who').textContent = d.user ? (d.user.name + ' · ' + d.user.email) : '';
+      showApp();
+    } catch (e) { err.textContent = 'Network error.'; }
+  }
+
+  function showApp() {
+    document.getElementById('login').classList.add('hide');
+    document.getElementById('app').classList.remove('hide');
+    go(1);
+  }
+  function logout() { sessionStorage.removeItem('auditToken'); token = ''; location.reload(); }
+  function clearFilters() { ['q','action','status','from','to'].forEach(id => document.getElementById(id).value = ''); document.getElementById('method').value = ''; go(1); }
+
+  const val = id => document.getElementById(id).value.trim();
+  function query() {
+    const p = new URLSearchParams();
+    const add = (k, v) => { if (v) p.set(k, v); };
+    add('q', val('q')); add('action', val('action')); add('method', val('method')); add('status', val('status'));
+    if (val('from')) p.set('from', val('from'));
+    if (val('to')) p.set('to', val('to') + 'T23:59:59');   // make the "to" day inclusive
+    p.set('limit', '100'); p.set('page', page);
+    return p.toString();
+  }
+
+  async function go(n) {
+    if (n < 1) n = 1;
+    page = n;
+    try {
+      const r = await fetch(API + '/api/admin/audit?' + query(), { headers: { 'x-auth-token': token } });
+      if (r.status === 401 || r.status === 403) { alert('Session expired or not an admin — sign in again.'); logout(); return; }
+      render(await r.json());
+    } catch (e) { alert('Failed to load logs.'); }
+  }
+
+  function render(d) {
+    items = d.items || [];
+    document.getElementById('pageInfo').textContent =
+      `Page ${d.page} of ${d.pages || 1} · ${d.total} record${d.total === 1 ? '' : 's'}`;
+    const tb = document.getElementById('rows'); tb.innerHTML = '';
+    items.forEach((x, i) => {
+      const tr = document.createElement('tr');
+      tr.className = 'row';
+      tr.onclick = () => toggleDetail(i, tr);
+      tr.innerHTML =
+        `<td class="mono">${fmt(x.ts)}</td>` +
+        `<td>${actor(x.actor)}</td>` +
+        `<td class="mono">${esc(x.ip || '')}</td>` +
+        `<td>${method(x.method)}</td>` +
+        `<td class="mono">${esc(x.action || '')}</td>` +
+        `<td>${target(x.target)}</td>` +
+        `<td class="${scls(x.status)}">${x.status || ''}</td>` +
+        `<td class="muted">${x.durationMs ?? ''}</td>`;
+      tb.appendChild(tr);
+    });
+  }
+
+  function toggleDetail(i, rowEl) {
+    const next = rowEl.nextElementSibling;
+    if (next && next.classList.contains('det')) { next.remove(); return; }
+    const tr = document.createElement('tr'); tr.className = 'det';
+    tr.innerHTML = `<td colspan="8"><pre class="detail">${esc(JSON.stringify(items[i], null, 2))}</pre></td>`;
+    rowEl.after(tr);
+  }
+
+  function actor(a) {
+    if (!a) return '<span class="muted">— (anon)</span>';
+    return `<div class="aname">${esc(a.name || a.id || '?')}</div>` +
+           `<div class="asub">${esc(a.role || '')}${a.email ? ' · ' + esc(a.email) : ''}</div>`;
+  }
+  function target(t) {
+    if (!t) return '';
+    return `<div class="aname">${esc(t.name || '')}</div><div class="asub mono">${esc(t.id || '')}</div>`;
+  }
+  function method(m) { const c = ['GET','POST','PUT','DELETE'].includes(m) ? m : 'OTHER'; return `<span class="tag m-${c}">${esc(m || '')}</span>`; }
+  function scls(s) { return s ? 's' + String(s)[0] : 'muted'; }
+  function fmt(ts) { try { return new Date(ts).toLocaleString(); } catch (e) { return ts; } }
+  function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c])); }
+
+  async function verify() {
+    const b = document.getElementById('verifyBanner');
+    b.innerHTML = '<div class="banner muted">Verifying…</div>';
+    try {
+      const r = await fetch(API + '/api/admin/audit/verify', { headers: { 'x-auth-token': token } });
+      const d = await r.json();
+      if (d.ok) b.innerHTML = `<div class="banner ok">✓ Chain intact — ${d.checked} records verified, unbroken from the first entry.</div>`;
+      else b.innerHTML = `<div class="banner bad">✗ Tampering detected: ${esc(d.firstProblem?.type)} at record #${esc(d.firstProblem?.at)}. Everything before it is intact.</div>`;
+    } catch (e) { b.innerHTML = '<div class="banner bad">Verify failed to run.</div>'; }
+  }
+
+  document.getElementById('password').addEventListener('keydown', e => { if (e.key === 'Enter') login(); });
+</script>
+</body>
+</html>
