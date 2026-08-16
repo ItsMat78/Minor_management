@@ -109,6 +109,11 @@ export const login = async (req: Request, res: Response) => {
             });
         }
 
+        // Attribute this login in the audit trail. The audit middleware records the actor from
+        // req.user on response finish, but login is a public route where `auth` never set it — so
+        // set it here on success. A failed login (wrong password) never reaches this line and is
+        // logged anonymously, which is what we want.
+        (req as any).user = { id: String(user._id), role: user.role, name: user.name, email: user.email };
         const token = jwt.sign({ id: user._id, role: user.role, name: user.name, email: user.email }, JWT_SECRET, { expiresIn: '1d' });
 
         const userObj = user.toObject() as any;
@@ -151,6 +156,7 @@ export const verifyOtp = async (req: Request, res: Response) => {
         user.otpExpires = undefined;
         await user.save();
 
+        (req as any).user = { id: String(user._id), role: user.role, name: user.name, email: user.email };
         const token = jwt.sign({ id: user._id, role: user.role, name: user.name, email: user.email }, JWT_SECRET, { expiresIn: '1d' });
         const userObj = user.toObject() as any;
         delete userObj.password;
@@ -274,6 +280,7 @@ export const verifyForgotPasswordOtp = async (req: Request, res: Response) => {
         user.mustChangePassword = true;
         await user.save();
 
+        (req as any).user = { id: String(user._id), role: user.role, name: user.name, email: user.email };
         const token = jwt.sign({ id: user._id, role: user.role, name: user.name, email: user.email }, JWT_SECRET, { expiresIn: '1d' });
         const userObj = user.toObject() as any;
         delete userObj.password;

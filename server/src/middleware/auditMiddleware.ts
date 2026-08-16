@@ -32,6 +32,28 @@ const RULES: Array<{ m: string; re: RegExp; action: string; targetUser?: boolean
     { m: 'POST',   re: /^\/api\/admin\/semester-rollover/,         action: 'admin.semesterRollover' },
     { m: 'POST',   re: /^\/api\/auth\/login/,                       action: 'auth.login' },
     { m: 'POST',   re: /^\/api\/auth\/verify/,                      action: 'auth.verifyOtp' },
+
+    // Reads — friendly labels for the common ones. Order specific → general (first match wins);
+    // anything unmatched still logs as a plain `GET <path>`.
+    { m: 'GET', re: /^\/api\/auth\/me/,                    action: 'session.check' },
+    { m: 'GET', re: /^\/api\/admin\/audit\/verify/,        action: 'audit.verify' },
+    { m: 'GET', re: /^\/api\/admin\/audit/,                action: 'audit.view' },
+    { m: 'GET', re: /^\/api\/admin\/stats/,                action: 'admin.stats' },
+    { m: 'GET', re: /^\/api\/admin\/archive/,              action: 'admin.archive' },
+    { m: 'GET', re: /^\/api\/groups\/my\/invites/,         action: 'group.myInvites' },
+    { m: 'GET', re: /^\/api\/groups\/mentees/,             action: 'group.mentees' },
+    { m: 'GET', re: /^\/api\/groups\/my/,                  action: 'group.viewMine' },
+    { m: 'GET', re: /^\/api\/groups(?:[/?]|$)/,            action: 'groups.list' },
+    { m: 'GET', re: /^\/api\/users\/students/,             action: 'students.list' },
+    { m: 'GET', re: /^\/api\/users\/faculty/,              action: 'faculty.list' },
+    { m: 'GET', re: /^\/api\/projects\/admin\/proposals/,  action: 'proposals.list' },
+    { m: 'GET', re: /^\/api\/projects\/faculty/,           action: 'projects.faculty' },
+    { m: 'GET', re: /^\/api\/projects\/archived/,          action: 'projects.archived' },
+    { m: 'GET', re: /^\/api\/projects(?:[/?]|$)/,          action: 'projects.list' },
+    { m: 'GET', re: /^\/api\/events\/active/,              action: 'events.active' },
+    { m: 'GET', re: /^\/api\/events/,                      action: 'events.list' },
+    { m: 'GET', re: /^\/api\/panels/,                      action: 'panels.view' },
+    { m: 'GET', re: /^\/uploads\//,                        action: 'file.download' },
 ];
 
 const match = (method: string, path: string) => {
