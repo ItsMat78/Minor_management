@@ -716,6 +716,7 @@ const Dashboard: React.FC = () => {
                                     <ProfilePhotoUpload
                                         className="h-24 w-24 rounded-full object-cover border-4 border-indigo-100 shadow-md mx-auto"
                                         fallbackClassName="h-24 w-24 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-600 font-bold text-3xl mx-auto"
+                                        allowRemove
                                     />
                                 </div>
 

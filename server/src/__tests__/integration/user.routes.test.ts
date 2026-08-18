@@ -220,6 +220,75 @@ describe('POST /api/users/profile-photo', () => {
     });
 });
 
+// ── DELETE /api/users/profile-photo ───────────────────────────────────────────
+//
+// Sits above the admin-only DELETE /:id in the router. The ordering is the whole risk here:
+// behind it, a student clearing their own photo would be answered by the delete-a-user route.
+
+describe('DELETE /api/users/profile-photo', () => {
+    it('returns 401 without authentication', async () => {
+        const res = await request(app).delete('/api/users/profile-photo');
+        expect(res.status).toBe(401);
+    });
+
+    it('clears the field so the initial-letter avatar takes over', async () => {
+        const student = await createTestUser({ role: UserRole.STUDENT, rollNumber: '23IT704' });
+        await request(app)
+            .post('/api/users/profile-photo')
+            .set('x-auth-token', generateToken(student))
+            .attach('photo', Buffer.from('fake-jpeg-bytes'), { filename: 'me.jpg', contentType: 'image/jpeg' });
+
+        const res = await request(app)
+            .delete('/api/users/profile-photo')
+            .set('x-auth-token', generateToken(student));
+
+        expect(res.status).toBe(200);
+        // $unset, not '': every consumer tests photoUrl for truthiness, and an empty string is a
+        // field that means "absent".
+        expect((await User.findById(student._id))!.photoUrl).toBeUndefined();
+    });
+
+    it('is a no-op, not an error, when there is no photo to remove', async () => {
+        const student = await createTestUser({ role: UserRole.STUDENT, rollNumber: '23IT705' });
+
+        const res = await request(app)
+            .delete('/api/users/profile-photo')
+            .set('x-auth-token', generateToken(student));
+
+        expect(res.status).toBe(200);
+        expect((await User.findById(student._id))!.photoUrl).toBeUndefined();
+    });
+
+    it('does not reach the admin-only delete-a-user route: a non-admin succeeds and no user is deleted', async () => {
+        const student = await createTestUser({ role: UserRole.STUDENT, rollNumber: '23IT706' });
+
+        const res = await request(app)
+            .delete('/api/users/profile-photo')
+            .set('x-auth-token', generateToken(student));
+
+        expect(res.status).toBe(200);
+        expect(await User.findById(student._id)).not.toBeNull();
+    });
+
+    it("removes only the caller's photo, not another user's", async () => {
+        const student = await createTestUser({ role: UserRole.STUDENT, rollNumber: '23IT707' });
+        const other = await createTestUser({ role: UserRole.STUDENT, rollNumber: '23IT708', email: 'other@t.ac.in' });
+        for (const u of [student, other]) {
+            await request(app)
+                .post('/api/users/profile-photo')
+                .set('x-auth-token', generateToken(u))
+                .attach('photo', Buffer.from('fake-jpeg-bytes'), { filename: 'me.jpg', contentType: 'image/jpeg' });
+        }
+
+        await request(app)
+            .delete('/api/users/profile-photo')
+            .set('x-auth-token', generateToken(student));
+
+        expect((await User.findById(student._id))!.photoUrl).toBeUndefined();
+        expect((await User.findById(other._id))!.photoUrl).toMatch(/\/uploads\/avatars\//);
+    });
+});
+
 // ── GET /api/users/students ───────────────────────────────────────────────────
 
 describe('GET /api/users/students', () => {

@@ -427,6 +427,30 @@ export const uploadProfilePhoto = async (req: Request, res: Response) => {
     }
 };
 
+/**
+ * Drops the caller's own photo, falling back to the initial-letter avatar everywhere it was shown.
+ *
+ * $unset rather than setting an empty string: `photoUrl` is optional on the model, and every
+ * consumer (Avatar, the exports, the group views) tests it for truthiness — leaving '' behind
+ * would work but would put a field on the document that means "absent".
+ */
+export const removeProfilePhoto = async (req: Request, res: Response) => {
+    try {
+        const userId = (req as any).user.id;
+
+        // Pre-update document, so the URL of the file to unlink comes back with no extra query.
+        const previous = await User.findByIdAndUpdate(userId, { $unset: { photoUrl: '' } }).select('photoUrl');
+        if (!previous) return res.status(404).json({ message: 'User not found' });
+
+        if (previous.photoUrl) deleteFileByUrl(previous.photoUrl);
+
+        res.json({ message: 'Profile photo removed' });
+    } catch (error) {
+        console.error("Error removing profile photo:", error);
+        res.status(500).json({ message: 'Server error' });
+    }
+};
+
 export const exportStudents = async (req: Request, res: Response) => {
     try {
         const { batch } = req.query;
