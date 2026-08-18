@@ -156,6 +156,17 @@ const getProjectColor = (id: string) => { // Existing function kept
     return colors[Math.abs(hash) % colors.length];
 };
 
+/**
+ * The "something changed here" marker, next to a batch heading. Pulses rather than sitting still:
+ * a collapsed batch shows nothing else, so a static dot at this size reads as decoration.
+ */
+const NewUpdateDot = () => (
+    <span className="relative flex h-2.5 w-2.5 shrink-0" title="New updates in this batch">
+        <span className="absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75 animate-ping" />
+        <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-red-500" />
+    </span>
+);
+
 const MenteeCard = ({ item, activeTab, navigate, setSelectedProject }: any) => {
     const groupData = item.group || item;
     const isDropper = groupData?.targetBatch && groupData.targetBatch !== getOriginalGroupBatchYear(groupData);
@@ -172,7 +183,7 @@ const MenteeCard = ({ item, activeTab, navigate, setSelectedProject }: any) => {
                     setSelectedProject(item);
                 }
             }}
-            className={`bg-white rounded-2xl border shadow-sm overflow-hidden hover:shadow-xl hover:-translate-y-1 transition-all group flex flex-col cursor-pointer relative ${isDropper ? 'border-red-200 hover:border-red-300 bg-red-50/30' : 'border-neutral-200 hover:border-indigo-200'} ${item.project?.hasNewUpdate ? '!border-blue-300 !shadow-md' : ''
+            className={`bg-white rounded-2xl border shadow-sm overflow-hidden hover:shadow-xl hover:-translate-y-1 transition-all group flex flex-col cursor-pointer relative ${isDropper ? 'border-red-200 hover:border-red-300 bg-red-50/30' : 'border-neutral-200 hover:border-indigo-200'} ${item.project?.hasNewUpdate ? '!border-2 !border-blue-400 !shadow-md' : ''
                 }`}
         >
             {/* Unique Color Stripe */}
@@ -1150,6 +1161,7 @@ const FacultyDashboard: React.FC = () => {
                                     <ProfilePhotoUpload
                                         className="h-24 w-24 rounded-full object-cover border-4 border-indigo-100 shadow-md mx-auto"
                                         fallbackClassName="h-24 w-24 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-600 font-bold text-3xl mx-auto"
+                                        allowRemove
                                     />
                                 </div>
                                 <h2 className="text-3xl font-bold text-neutral-900">{user?.name}</h2>
@@ -1541,6 +1553,9 @@ const FacultyDashboard: React.FC = () => {
 
                                                         if (batchMentees.length === 0) return null;
 
+                                                        // One unseen update anywhere in the batch marks the whole section: while the batch is
+                                                        // collapsed the header is the only thing showing.
+                                                        const batchHasNewUpdate = batchMentees.some((item: any) => item.project?.hasNewUpdate);
                                                         const teamsCount = batchMentees.length;
                                                         const studentsCount = batchMentees.reduce((acc: number, item: any) => acc + (item.members?.length || item.group?.members?.length || 0), 0);
 
@@ -1557,7 +1572,10 @@ const FacultyDashboard: React.FC = () => {
                                                                                 <ChevronDown className={`w-5 h-5 transition-transform duration-300 ${!isBatchExpanded(batchKey) ? '-rotate-90' : ''}`} />
                                                                             </div>
                                                                             <div>
-                                                                                <h3 className="text-xl font-bold text-neutral-900">{batchKey === 'Unknown' ? 'Other/Uncategorized' : `Batch ${batchKey}-${parseInt(batchKey) + 4}`}</h3>
+                                                                                <h3 className="text-xl font-bold text-neutral-900 flex items-center gap-2">
+                                                                                    {batchKey === 'Unknown' ? 'Other/Uncategorized' : `Batch ${batchKey}-${parseInt(batchKey) + 4}`}
+                                                                                    {batchHasNewUpdate && <NewUpdateDot />}
+                                                                                </h3>
                                                                                 <p className="text-sm font-medium text-neutral-500 mt-0.5">{batchMentees.length} Active Projects</p>
                                                                             </div>
                                                                         </div>
@@ -1955,6 +1973,9 @@ const FacultyDashboard: React.FC = () => {
 
                                                             if (batchMentees.length === 0) return null;
 
+                                                            // One unseen update anywhere in the batch marks the whole section: while the batch is
+                                                            // collapsed the header is the only thing showing.
+                                                            const batchHasNewUpdate = batchMentees.some((item: any) => item.project?.hasNewUpdate);
                                                             const teamsCount = batchMentees.length;
                                                             const studentsCount = batchMentees.reduce((acc: number, item: any) => acc + (item.members?.length || item.group?.members?.length || 0), 0);
 
@@ -1970,7 +1991,10 @@ const FacultyDashboard: React.FC = () => {
                                                                                 <ChevronDown className={`w-5 h-5 transition-transform duration-300 ${!isBatchExpanded(batchKey) ? '-rotate-90' : ''}`} />
                                                                             </div>
                                                                             <div>
-                                                                                <h3 className="text-xl font-bold text-neutral-900">{batchKey === 'Unknown' ? 'Other/Uncategorized' : `Batch ${batchKey}-${parseInt(batchKey) + 4}`}</h3>
+                                                                                <h3 className="text-xl font-bold text-neutral-900 flex items-center gap-2">
+                                                                                    {batchKey === 'Unknown' ? 'Other/Uncategorized' : `Batch ${batchKey}-${parseInt(batchKey) + 4}`}
+                                                                                    {batchHasNewUpdate && <NewUpdateDot />}
+                                                                                </h3>
                                                                                 <p className="text-sm font-medium text-neutral-500 mt-0.5">{batchMentees.length} Active Projects</p>
                                                                             </div>
                                                                         </div>
