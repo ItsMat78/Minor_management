@@ -43,6 +43,13 @@
   #login h1{margin-bottom:4px} #login .muted{margin:0 0 16px} #login label{display:block;margin-bottom:10px;font-size:12px;color:#7a8496}
   #login input{width:100%;margin-top:4px} #login button{width:100%;margin-top:6px} .err{color:#f79393;font-size:12px;min-height:16px}
   .hide{display:none}
+  .hint{color:#6b7688;font-size:12px;margin:-4px 0 12px;line-height:1.5}
+  .hint b{color:#8b95a7;font-weight:600}
+  .alabel{color:#8b95a7;font-size:11px;margin-top:1px}
+  .sum{font-size:12px;color:#a9b6cc;max-width:360px}
+  .sum .k{color:#6b7688}
+  .sum .more{color:#5c6678;font-size:11px}
+  .anon{color:#7a8496;border-bottom:1px dotted #3a4456;cursor:help}
 </style>
 </head>
 <body>
@@ -66,7 +73,22 @@
   </header>
   <div class="wrap">
     <div id="verifyBanner"></div>
+    <p class="hint">
+      Every request is recorded. <b>Actions</b> are things someone did (a proposal approved, marks
+      submitted, a member removed) — click any row for the full record, including what was sent.
+      <b>Page views</b> are the reads behind those actions, and they outnumber actions heavily:
+      each avatar image on a dashboard is one. <b>Not signed in</b> means the request carried no
+      login token — a failed login, a password-reset step, or a file the browser fetched for an
+      <code>&lt;img&gt;</code> tag, which never carries one.
+    </p>
     <div class="controls">
+      <label>Show
+        <select id="kind">
+          <option value="writes">Actions only</option>
+          <option value="">Actions + page views</option>
+          <option value="reads">Page views only</option>
+        </select>
+      </label>
       <label>Search<input id="q" placeholder="name, email, IP, path…" style="width:210px"></label>
       <label>Action<input id="action" placeholder="e.g. member.remove" style="width:150px"></label>
       <label>Method
@@ -81,7 +103,7 @@
     <div class="scroll">
       <table>
         <thead><tr>
-          <th>Time (local)</th><th>Actor</th><th>IP</th><th>Method</th><th>Action</th><th>Target</th><th>Status</th><th>ms</th>
+          <th>Time (local)</th><th>Actor</th><th>IP</th><th>Method</th><th>Action</th><th>Target</th><th>What was sent</th><th>Status</th><th>ms</th>
         </tr></thead>
         <tbody id="rows"></tbody>
       </table>
@@ -133,12 +155,18 @@
     go(1);
   }
   function logout() { sessionStorage.removeItem('auditToken'); token = ''; location.reload(); }
-  function clearFilters() { ['q','action','status','from','to'].forEach(id => document.getElementById(id).value = ''); document.getElementById('method').value = ''; go(1); }
+  function clearFilters() {
+    ['q','action','status','from','to'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('method').value = '';
+    document.getElementById('kind').value = 'writes';
+    go(1);
+  }
 
   const val = id => document.getElementById(id).value.trim();
   function query() {
     const p = new URLSearchParams();
     const add = (k, v) => { if (v) p.set(k, v); };
+    add('kind', val('kind'));
     add('q', val('q')); add('action', val('action')); add('method', val('method')); add('status', val('status'));
     if (val('from')) p.set('from', val('from'));
     if (val('to')) p.set('to', val('to') + 'T23:59:59');   // make the "to" day inclusive
@@ -170,8 +198,9 @@
         `<td>${actor(x.actor)}</td>` +
         `<td class="mono">${esc(x.ip || '')}</td>` +
         `<td>${method(x.method)}</td>` +
-        `<td class="mono">${esc(x.action || '')}</td>` +
+        `<td>${action(x.action)}</td>` +
         `<td>${target(x.target)}</td>` +
+        `<td>${summary(x)}</td>` +
         `<td class="${scls(x.status)}">${x.status || ''}</td>` +
         `<td class="muted">${x.durationMs ?? ''}</td>`;
       tb.appendChild(tr);
@@ -182,12 +211,17 @@
     const next = rowEl.nextElementSibling;
     if (next && next.classList.contains('det')) { next.remove(); return; }
     const tr = document.createElement('tr'); tr.className = 'det';
-    tr.innerHTML = `<td colspan="8"><pre class="detail">${esc(JSON.stringify(items[i], null, 2))}</pre></td>`;
+    tr.innerHTML = `<td colspan="9"><pre class="detail">${esc(JSON.stringify(items[i], null, 2))}</pre></td>`;
     rowEl.after(tr);
   }
 
+  // Kept free of angle brackets and quotes: this goes straight into a title attribute.
+  const ANON_WHY = 'No signed-in user made this request. Usually a failed login (the token is only '
+    + 'issued on success), a password-reset step, or a file the browser fetched by itself — avatars '
+    + 'and attachments load through image and link tags, which never send the auth header.';
+
   function actor(a) {
-    if (!a) return '<span class="muted">— (anon)</span>';
+    if (!a) return `<span class="anon" title="${ANON_WHY}">Not signed in</span>`;
     return `<div class="aname">${esc(a.name || a.id || '?')}</div>` +
            `<div class="asub">${esc(a.role || '')}${a.email ? ' · ' + esc(a.email) : ''}</div>`;
   }
@@ -195,6 +229,122 @@
     if (!t) return '';
     return `<div class="aname">${esc(t.name || '')}</div><div class="asub mono">${esc(t.id || '')}</div>`;
   }
+  // Plain English for the action codes the server records. A code with no entry still shows —
+  // this only adds a caption, so a new route is never invisible here, just unlabelled.
+  const LABELS = {
+    'auth.login': 'Signed in',
+    'auth.verifyOtp': 'Entered activation OTP',
+    'auth.resendOtp': 'Asked for a new OTP',
+    'auth.changePassword': 'Changed own password',
+    'auth.passwordReset.request': 'Asked to reset password',
+    'auth.passwordReset.verifyOtp': 'Entered password-reset OTP',
+    'user.create': 'Created a user',
+    'user.update': 'Edited a user',
+    'user.delete': 'Deleted a user',
+    'user.profile.selfUpdate': 'Edited own profile',
+    'user.photo.set': 'Set own profile photo',
+    'user.photo.remove': 'Removed own profile photo',
+    'users.import.preview': 'Previewed a user import',
+    'users.import.commit': 'Imported users',
+    'group.create': 'Created a group',
+    'group.create.admin': 'Created a group (admin)',
+    'group.update': 'Edited a group',
+    'group.member.add': 'Added members to a group',
+    'group.member.remove': 'Removed a member from a group',
+    'group.member.leave': 'Left a group',
+    'group.invite.send': 'Invited students to a group',
+    'group.invite.accept': 'Accepted a group invite',
+    'group.invite.reject': 'Declined a group invite',
+    'group.invite.cancel': 'Cancelled a group invite',
+    'group.mentor.set': 'Assigned a mentor',
+    'project.proposal.submit': 'Submitted a proposal',
+    'project.status.decide': 'Approved / rejected a proposal',
+    'project.status.adminOverride': 'Overrode a proposal decision',
+    'project.update': 'Edited a project',
+    'project.details.update': 'Edited project details',
+    'project.update.post': 'Posted a progress update',
+    'project.updates.markRead': 'Marked updates read',
+    'project.submission.upload': 'Uploaded report / PPT',
+    'project.evaluation.submit': 'Submitted evaluation marks',
+    'project.evaluation.perStudent': 'Saved per-student marks',
+    'project.feedback.add': 'Left feedback',
+    'project.feedback.perStudent': 'Left per-student feedback',
+    'project.delete': 'Deleted a project',
+    'panel.create': 'Created a panel',
+    'panel.update': 'Edited a panel',
+    'panel.delete': 'Deleted a panel',
+    'panel.import.preview': 'Previewed a panel import',
+    'panel.evaluation.import': 'Imported evaluation marks',
+    'panel.evaluation.batchImport': 'Imported marks for a batch',
+    'event.create': 'Opened a deadline window',
+    'event.update': 'Edited a deadline window',
+    'event.toggle': 'Turned a deadline window on / off',
+    'event.delete': 'Deleted a deadline window',
+    'admin.create': 'Created an admin',
+    'admin.semesterRollover': 'Ran the semester rollover',
+    'admin.facultyLimits.set': 'Changed default faculty limits',
+    'import.excel.preview': 'Previewed an Excel import',
+    'import.excel.commit': 'Imported from Excel',
+    'import.snapshot.preview': 'Previewed a snapshot restore',
+    'import.snapshot.commit': 'Restored a snapshot',
+    'import.snapshot.export': 'Exported a full snapshot',
+    'students.export': 'Exported the student list',
+    'faculty.export': 'Exported the faculty list',
+    'panels.export': 'Exported panels',
+    'panels.exportEvaluations': 'Exported evaluations',
+    'panels.exportOfficial': 'Exported the official sheet',
+    'panels.exportTemplate': 'Exported a panel template',
+    'panels.exportBatchFinal': 'Exported the batch final sheet',
+    'panels.exportPanelFinal': 'Exported a panel final sheet',
+    'admin.exportSessions': 'Exported session data',
+    'audit.view': 'Read this audit log',
+    'audit.verify': 'Verified the audit chain',
+    'file.download': 'Loaded an uploaded file',
+    'session.check': 'Resumed a session',
+  };
+
+  function action(a) {
+    const label = LABELS[a];
+    return `<div class="mono">${esc(a || '')}</div>` + (label ? `<div class="alabel">${esc(label)}</div>` : '');
+  }
+
+  // Flatten to key=value pairs so a row shows the decision itself, not just its shape.
+  function pairs(o, prefix, out) {
+    for (const k of Object.keys(o || {})) {
+      if (out.length > 40) return out;
+      const v = o[k];
+      if (v === null || v === undefined || v === '') continue;
+      const key = prefix ? prefix + '.' + k : k;
+      if (Array.isArray(v)) out.push([key, v.length === 0 ? '[]' : '[' + v.length + ' items]']);
+      else if (typeof v === 'object') pairs(v, key, out);
+      else out.push([key, String(v)]);
+    }
+    return out;
+  }
+
+  const SHOWN = 4;   // enough to read the decision at a glance; the rest is one click away
+
+  function summary(x) {
+    const m = x.meta || {};
+    const req = m.request || {};
+    const out = [];
+    if (req.body) pairs(req.body, '', out);
+    if (m.before || m.after) pairs({ before: m.before, after: m.after }, '', out);
+    for (const k of Object.keys(m)) {
+      if (k === 'request' || k === 'before' || k === 'after') continue;
+      pairs({ [k]: m[k] }, '', out);
+    }
+    const files = (req.files || []).map(f => f.name).filter(Boolean);
+
+    const bits = [];
+    if (files.length) bits.push(`<div><span class="k">files</span> ${esc(files.join(', '))}</div>`);
+    out.slice(0, SHOWN).forEach(([k, v]) => {
+      bits.push(`<div><span class="k">${esc(k)}</span> ${esc(v.length > 90 ? v.slice(0, 90) + '…' : v)}</div>`);
+    });
+    if (out.length > SHOWN) bits.push(`<div class="more">+${out.length - SHOWN} more — click the row</div>`);
+    return bits.length ? `<div class="sum">${bits.join('')}</div>` : '';
+  }
+
   function method(m) { const c = ['GET','POST','PUT','DELETE'].includes(m) ? m : 'OTHER'; return `<span class="tag m-${c}">${esc(m || '')}</span>`; }
   function scls(s) { return s ? 's' + String(s)[0] : 'muted'; }
   function fmt(ts) { try { return new Date(ts).toLocaleString(); } catch (e) { return ts; } }
@@ -211,6 +361,7 @@
     } catch (e) { b.innerHTML = '<div class="banner bad">Verify failed to run.</div>'; }
   }
 
+  document.getElementById('kind').addEventListener('change', () => go(1));
   document.getElementById('password').addEventListener('keydown', e => { if (e.key === 'Enter') login(); });
 </script>
 </body>

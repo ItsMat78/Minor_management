@@ -567,12 +567,15 @@ export const createAdmin = async (req: Request, res: Response) => {
 /**
  * Read the audit trail. GET /api/admin/audit  (admin only)
  * Filters: q (free text over actor/target name/email + path), actor (user id), target (user id),
- * action (substring), method, status, path (substring), from/to (ISO dates), page, limit.
- * Newest first.
+ * action (substring), method, status, path (substring), from/to (ISO dates), page, limit,
+ * and kind — 'writes' for things people did, 'reads' for pages they opened. Newest first.
+ *
+ * kind exists because reads outnumber writes by roughly a hundred to one (every avatar
+ * <img> is a logged GET), so an unfiltered list buries the actions in page traffic.
  */
 export const getAuditLog = async (req: Request, res: Response) => {
     try {
-        const { actor, target, action, method, status, path: pathQ, from, to, q } = req.query as any;
+        const { actor, target, action, method, status, path: pathQ, from, to, q, kind } = req.query as any;
         const page = Math.max(1, Number(req.query.page) || 1);
         const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 100));
 
@@ -581,6 +584,8 @@ export const getAuditLog = async (req: Request, res: Response) => {
         if (target) filter['target.id'] = String(target);
         if (action) filter.action = { $regex: String(action), $options: 'i' };
         if (method) filter.method = String(method).toUpperCase();
+        else if (kind === 'writes') filter.method = { $ne: 'GET' };
+        else if (kind === 'reads') filter.method = 'GET';
         if (status) filter.status = Number(status);
         if (pathQ) filter.path = { $regex: String(pathQ), $options: 'i' };
         if (from || to) {
