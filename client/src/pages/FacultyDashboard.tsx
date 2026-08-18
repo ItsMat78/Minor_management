@@ -189,12 +189,6 @@ const MenteeCard = ({ item, activeTab, navigate, setSelectedProject }: any) => {
             {/* Unique Color Stripe */}
             <div className={`h-1.5 w-full ${borderColor}`} />
 
-            {item.project?.hasNewUpdate && (
-                <div className="absolute top-3 right-3 px-2 py-0.5 bg-blue-50 text-blue-600 text-[10px] font-bold uppercase rounded border border-blue-100 shadow-sm z-10">
-                    New Update
-                </div>
-            )}
-
             <div className="p-6 flex-1 flex flex-col">
                 <div className="flex justify-between items-start mb-4">
                     {activeTab !== 'mentees' ? (
@@ -290,7 +284,16 @@ const MenteeCard = ({ item, activeTab, navigate, setSelectedProject }: any) => {
                 )}
 
                 <div className="mt-auto pt-4 border-t border-neutral-100 flex items-center justify-between text-xs text-neutral-500">
-                    <span>{new Date(item.createdAt || Date.now()).toLocaleDateString()}</span>
+                    {/* The flag takes the date's slot rather than sitting alongside it: on a card
+                        that has an unseen update, when it was last touched is the less useful of
+                        the two, and it is still on the row in list view. */}
+                    {item.project?.hasNewUpdate ? (
+                        <span className="px-2 py-0.5 bg-blue-50 text-blue-600 text-[10px] font-bold uppercase rounded border border-blue-100 shadow-sm whitespace-nowrap">
+                            New Update
+                        </span>
+                    ) : (
+                        <span>{new Date(item.createdAt || Date.now()).toLocaleDateString()}</span>
+                    )}
 
                     {(activeTab === 'proposals' && item.status === 'Approved') ? (
                         <button
@@ -1627,12 +1630,13 @@ const FacultyDashboard: React.FC = () => {
                                                                                                     ? 'bg-amber-50/50 hover:bg-amber-50'
                                                                                                     : isDropper ? 'bg-red-50/30 hover:bg-red-50' : 'bg-white hover:bg-neutral-50'}`}
                                                                                             >
-                                                                                                {item.project?.hasNewUpdate ? (
-                                                                                                    <td className="absolute left-0 top-0 bottom-0 w-1 bg-amber-400 animate-pulse"></td>
-                                                                                                ) : isDropper ? (
-                                                                                                    <td className="absolute left-0 top-0 bottom-0 w-1 bg-red-500"></td>
-                                                                                                ) : null}
-                                                                                                <td className="px-4 py-3">
+                                                                                                {/* The accent stripe lives inside the first cell rather than in a <td> of its own:
+                                                                                                    an extra cell still occupies a column however it is positioned, which pushed
+                                                                                                    every cell of a flagged row one column right of its header. */}
+                                                                                                <td className="px-4 py-3 relative">
+                                                                                                    {(item.project?.hasNewUpdate || isDropper) && (
+                                                                                                        <span className={`absolute left-0 top-0 bottom-0 w-1.5 ${item.project?.hasNewUpdate ? 'bg-amber-400 animate-pulse' : 'bg-red-500'}`} />
+                                                                                                    )}
                                                                                                     <div className="flex flex-col gap-1">
                                                                                                         <div className="flex items-start justify-between gap-2">
                                                                                                             <span className="font-bold text-neutral-900 group-hover:text-indigo-600 transition-colors line-clamp-1 text-base">
