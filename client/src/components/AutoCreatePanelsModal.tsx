@@ -60,7 +60,7 @@ interface AutoCreatePanelsModalProps {
 
 const DRAW_RESTARTS = 12;
 
-const pinned = import.meta.env.DEV ? Number(import.meta.env.VITE_PANEL_SEED) || 0 : 0;
+const pinned = Number(import.meta.env.VITE_PANEL_SEED) || 0;
 const newSeed = () => pinned || Math.floor(Math.random() * 900000) + 100000;
 
 /** True when two allocations hold the same faculty, panel for panel, in the same order. */
