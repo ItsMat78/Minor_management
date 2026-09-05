@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Users, GripVertical, AlertTriangle, Mail } from 'lucide-react';
+import { X, Users, GripVertical, AlertTriangle, Mail, Shuffle } from 'lucide-react';
 import {
     DndContext,
     DragOverlay,
@@ -22,6 +22,12 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
+// Panel sizing policy. Auto-generation aims for TARGET and is guaranteed to stay
+// within [MIN, MAX]; only manual drags can push a panel past MAX.
+const TARGET_PANEL_SIZE = 3;
+const MIN_PANEL_SIZE = 2;
+const MAX_PANEL_SIZE = 4;
+
 interface FacultyWorkload {
     _id: string;
     name: string;
@@ -39,10 +45,188 @@ interface AutoCreatePanelsModalProps {
     faculties: FacultyWorkload[];
     batchYear: number;
     onClose: () => void;
-    onConfirm: (panels: { faculty: string[], batchYear: number, room?: string, _id?: string }[]) => Promise<void>;
+    onConfirm: (panels: { faculty: string[], batchYear: number, room?: string, _id?: string, seed?: number }[]) => Promise<void>;
     isEditingMode?: boolean;
     initialPanels?: any[];
 }
+
+// ── Seeded draw ─────────────────────────────────────────────────────────────
+// Allocation is deterministic: the same workloads always produce the same panels.
+// A draw randomises only the *ties* — faculty supervising the same number of groups,
+// and equally loaded panels at the same fill level — which reshuffles who sits with
+// whom without touching the sort keys that drive load balance. Seed 0 means "no draw",
+// i.e. the plain deterministic run. The seed is saved with the panels so any
+// arrangement can be re-derived and checked afterwards.
+
+const DRAW_RESTARTS = 12;
+
+const pinned = import.meta.env.DEV ? Number(import.meta.env.VITE_PANEL_SEED) || 0 : 0;
+const newSeed = () => pinned || Math.floor(Math.random() * 900000) + 100000;
+
+/** True when two allocations hold the same faculty, panel for panel, in the same order. */
+const sameArrangement = (a: DraftPanel[], b: DraftPanel[]) =>
+    a.length === b.length &&
+    a.every((panel, i) => {
+        const other = b[i].faculties;
+        return panel.faculties.length === other.length &&
+            panel.faculties.every((f, j) => f._id === other[j]._id);
+    });
+
+const mulberry32 = (seed: number) => () => {
+    seed = (seed + 0x6D2B79F5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+};
+
+// Fisher-Yates. The trailing comma in <T,> stops TSX reading the parameter as JSX.
+const shuffle = <T,>(items: T[], rng: () => number): T[] => {
+    const out = [...items];
+    for (let i = out.length - 1; i > 0; i--) {
+        const j = Math.floor(rng() * (i + 1));
+        [out[i], out[j]] = [out[j], out[i]];
+    }
+    return out;
+};
+
+const panelLoad = (p: DraftPanel) => p.faculties.reduce((sum, m) => sum + m.groupCount, 0);
+
+interface LoadSpread { gap: number; variance: number }
+
+const loadSpread = (ps: DraftPanel[]): LoadSpread => {
+    const loads = ps.map(panelLoad);
+    if (loads.length === 0) return { gap: 0, variance: 0 };
+    const mean = loads.reduce((s, l) => s + l, 0) / loads.length;
+    return {
+        gap: Math.max(...loads) - Math.min(...loads),
+        variance: loads.reduce((s, l) => s + (l - mean) ** 2, 0)
+    };
+};
+
+const beats = (a: LoadSpread, b: LoadSpread) =>
+    a.gap < b.gap || (a.gap === b.gap && a.variance < b.variance - 1e-9);
+
+const tiesWith = (a: LoadSpread, b: LoadSpread) =>
+    a.gap === b.gap && Math.abs(a.variance - b.variance) < 1e-9;
+
+/**
+ * One allocation pass over the faculty who actually supervise groups.
+ * Pass `rng` to break ties randomly; pass null for the deterministic run.
+ */
+const allocatePanels = (activeFacs: FacultyWorkload[], rng: (() => number) | null): DraftPanel[] => {
+    const ordered = rng ? shuffle(activeFacs, rng) : [...activeFacs];
+    // Stable sort, so equal group counts keep whatever order `ordered` gave them.
+    const sortedActive = ordered.sort((a, b) => b.groupCount - a.groupCount);
+    const activeCount = sortedActive.length;
+
+    // Aim for panels of TARGET_PANEL_SIZE, but never take so few panels that one
+    // overflows MAX_PANEL_SIZE (5 active faculty used to land in a single panel of 5)
+    // nor so many that they drop below MIN_PANEL_SIZE.
+    const panelsCount = activeCount === 0 ? 0 : Math.min(
+        Math.max(
+            Math.round(activeCount / TARGET_PANEL_SIZE),
+            Math.ceil(activeCount / MAX_PANEL_SIZE)
+        ),
+        Math.max(1, Math.floor(activeCount / MIN_PANEL_SIZE))
+    );
+
+    const drafts: DraftPanel[] = Array.from({ length: panelsCount }, (_, i) => ({
+        id: `panel-${i}`,
+        faculties: []
+    }));
+
+    // Cardinality-constrained LPT. Every panel is entitled to `baseSize` members and
+    // `extraSeats` of them get one more, so head counts stay within 1 of each other.
+    // Heaviest faculty go first, filling panels level by level, and within a level the
+    // lightest panel wins. Choosing purely by load instead reads as the more obvious
+    // fix but is worse in practice: the small supervisors pile into whichever panel is
+    // momentarily lightest, which fills it up and strands it far below the rest.
+    const baseSize = panelsCount > 0 ? Math.floor(activeCount / panelsCount) : 0;
+    let extraSeats = panelsCount > 0 ? activeCount % panelsCount : 0;
+
+    sortedActive.forEach(f => {
+        const seated = drafts.filter(p =>
+            p.faculties.length < baseSize || (p.faculties.length === baseSize && extraSeats > 0)
+        );
+        // Seats are sized to hold everyone exactly, so `seated` only empties if the
+        // arithmetic above is ever changed; fall back to the whole set.
+        const pool = seated.length > 0 ? seated : drafts;
+        const minSize = Math.min(...pool.map(p => p.faculties.length));
+        const level = pool.filter(p => p.faculties.length === minSize);
+
+        const targetPanel = (rng ? shuffle(level, rng) : level)
+            .sort((a, b) => panelLoad(a) - panelLoad(b))[0];
+
+        if (!targetPanel) return;
+        if (targetPanel.faculties.length === baseSize) extraSeats--;
+        targetPanel.faculties.push(f);
+    });
+
+    // Local search: exchange two faculty between panels whenever that narrows the gap
+    // between the busiest and quietest panel. Greedy placement alone leaves avoidable
+    // imbalance (5 active faculty landed 11/9 where 10/10 exists), and a swap can only
+    // move load — every panel keeps the size the seat budget gave it.
+    for (let pass = 0; drafts.length > 1 && pass < 30; pass++) {
+        const current = loadSpread(drafts);
+        let best: { a: number, b: number, i: number, j: number, gap: number, variance: number } | null = null;
+
+        for (let a = 0; a < drafts.length; a++) {
+            for (let b = a + 1; b < drafts.length; b++) {
+                for (let i = 0; i < drafts[a].faculties.length; i++) {
+                    for (let j = 0; j < drafts[b].faculties.length; j++) {
+                        const fa = drafts[a].faculties[i];
+                        const fb = drafts[b].faculties[j];
+                        if (fa.groupCount === fb.groupCount) continue;
+
+                        drafts[a].faculties[i] = fb;
+                        drafts[b].faculties[j] = fa;
+                        const candidate = loadSpread(drafts);
+                        drafts[a].faculties[i] = fa;
+                        drafts[b].faculties[j] = fb;
+
+                        if (!beats(candidate, current)) continue;
+                        if (best && !beats(candidate, best)) continue;
+                        best = { a, b, i, j, ...candidate };
+                    }
+                }
+            }
+        }
+
+        if (!best) break;
+        const held = drafts[best.a].faculties[best.i];
+        drafts[best.a].faculties[best.i] = drafts[best.b].faculties[best.j];
+        drafts[best.b].faculties[best.j] = held;
+    }
+
+    return drafts;
+};
+
+/**
+ * Runs the allocation several times and returns one of the best-balanced results.
+ *
+ * Restart 0 is the unshuffled run, so a draw can never come out worse balanced than
+ * the plain deterministic allocation. Among the restarts that tie for the best spread
+ * one is picked at random — always taking the single best would collapse every seed
+ * back onto the same answer, leaving nothing to draw.
+ */
+const drawPanels = (activeFacs: FacultyWorkload[], seed: number): DraftPanel[] => {
+    const deterministic = allocatePanels(activeFacs, null);
+    if (!seed) return deterministic;
+
+    const scored = [deterministic];
+    for (let k = 1; k < DRAW_RESTARTS; k++) {
+        // Spread the sub-seeds apart; adjacent seeds otherwise start mulberry32 in
+        // nearly the same place and the restarts come back near-identical.
+        scored.push(allocatePanels(activeFacs, mulberry32((seed + k * 0x9E3779B1) | 0)));
+    }
+
+    const withSpread = scored.map(panels => ({ panels, spread: loadSpread(panels) }));
+    const best = withSpread.reduce((acc, s) => (beats(s.spread, acc.spread) ? s : acc));
+    const tied = withSpread.filter(s => tiesWith(s.spread, best.spread));
+
+    const pick = mulberry32(seed);
+    return tied[Math.min(Math.floor(pick() * tied.length), tied.length - 1)].panels;
+};
 
 // Draggable Faculty Item Component
 const DraggableFaculty = ({ faculty, panelId, isOverlay }: { faculty: FacultyWorkload, panelId: string, isOverlay?: boolean }) => {
@@ -99,7 +283,7 @@ const DroppablePanel = ({ panel, index, onDelete, onRoomChange }: { panel: Draft
     });
 
     const totalGroups = panel.faculties.reduce((sum, f) => sum + f.groupCount, 0);
-    const isOvercrowded = panel.faculties.length > 3;
+    const isOvercrowded = panel.faculties.length > MAX_PANEL_SIZE;
 
     return (
         <div
@@ -119,7 +303,7 @@ const DroppablePanel = ({ panel, index, onDelete, onRoomChange }: { panel: Draft
                 <div className="flex items-center gap-1">
                     {isOvercrowded && (
                         <div className="flex items-center gap-1 text-orange-600 bg-orange-50 px-2 py-1 rounded text-xs font-bold border border-orange-100 mr-1">
-                            <AlertTriangle className="w-3 h-3" /> {'>'}3
+                            <AlertTriangle className="w-3 h-3" /> {'>'}{MAX_PANEL_SIZE}
                         </div>
                     )}
                     <button
@@ -210,6 +394,9 @@ interface BoardState {
 
 const AutoCreatePanelsModal: React.FC<AutoCreatePanelsModalProps> = ({ faculties, batchYear, onClose, onConfirm, isEditingMode, initialPanels }) => {
     const [board, setBoard] = useState<BoardState>({ panels: [], unallocated: [] });
+    // Panels open on a fresh random draw. Seed 0 is the plain deterministic allocation,
+    // still reachable from the Default Order button.
+    const [seed, setSeed] = useState(newSeed);
     const [isSaving, setIsSaving] = useState(false);
     const [hasOvercrowded, setHasOvercrowded] = useState(false);
     const [activeFaculty, setActiveFaculty] = useState<FacultyWorkload | null>(null);
@@ -263,14 +450,18 @@ const AutoCreatePanelsModal: React.FC<AutoCreatePanelsModalProps> = ({ faculties
             if (prev.unallocated.length === 0) return prev;
             const nextPanels = prev.panels.map(p => ({ ...p, faculties: [...p.faculties] }));
             const reserve = [...prev.unallocated];
-            
-            // Distribute as many as possible to panels with < 3 members
-            for (let i = 0; i < nextPanels.length && reserve.length > 0; i++) {
-                while (nextPanels[i].faculties.length < 3 && reserve.length > 0) {
-                    nextPanels[i].faculties.push(reserve.shift()!);
+
+            // Bring every panel up to TARGET first, and only then top up towards MAX —
+            // otherwise the first panels would swallow the reserve while later ones stay
+            // short. Reserve faculty carry no groups, so this never affects load balance.
+            for (const limit of [TARGET_PANEL_SIZE, MAX_PANEL_SIZE]) {
+                for (let i = 0; i < nextPanels.length && reserve.length > 0; i++) {
+                    while (nextPanels[i].faculties.length < limit && reserve.length > 0) {
+                        nextPanels[i].faculties.push(reserve.shift()!);
+                    }
                 }
             }
-            
+
             return { panels: nextPanels, unallocated: reserve };
         });
     };
@@ -290,34 +481,11 @@ const AutoCreatePanelsModal: React.FC<AutoCreatePanelsModalProps> = ({ faculties
         const activeFacs = faculties.filter(f => f.groupCount > 0);
         const reserveFacs = faculties.filter(f => f.groupCount === 0);
 
-        const sortedActive = [...activeFacs].sort((a, b) => b.groupCount - a.groupCount);
-
-        // Form panels only for active faculty
-        const N = Math.floor(sortedActive.length / 3);
-        const panelsCount = N === 0 ? (sortedActive.length > 0 ? 1 : 0) : N;
-
-        const initialDrafts: DraftPanel[] = Array.from({ length: panelsCount }, (_, i) => ({
-            id: `panel-${i}`,
-            faculties: []
-        }));
-
-        sortedActive.forEach(f => {
-            const targetPanel = [...initialDrafts].sort((a, b) => {
-                if (a.faculties.length !== b.faculties.length) {
-                    return a.faculties.length - b.faculties.length;
-                }
-                const aGroups = a.faculties.reduce((sum, f) => sum + f.groupCount, 0);
-                const bGroups = b.faculties.reduce((sum, f) => sum + f.groupCount, 0);
-                return aGroups - bGroups;
-            })[0];
-            if (targetPanel) targetPanel.faculties.push(f);
-        });
-
-        setBoard({ panels: initialDrafts, unallocated: reserveFacs });
-    }, [faculties, isEditingMode, initialPanels]);
+        setBoard({ panels: drawPanels(activeFacs, seed), unallocated: reserveFacs });
+    }, [faculties, isEditingMode, initialPanels, seed]);
 
     useEffect(() => {
-        setHasOvercrowded(draftPanels.some(p => p.faculties.length > 3));
+        setHasOvercrowded(draftPanels.some(p => p.faculties.length > MAX_PANEL_SIZE));
     }, [draftPanels]);
 
     const handleDragStart = (event: DragStartEvent) => {
@@ -435,10 +603,20 @@ const AutoCreatePanelsModal: React.FC<AutoCreatePanelsModalProps> = ({ faculties
             return;
         }
 
+        // A seed is only worth recording if the board is still what that seed produces.
+        // Hand-editing (or arriving here through the edit/import flows, where the panels
+        // were never drawn at all) makes the arrangement unreproducible, so it records no
+        // draw rather than a seed that would re-derive to something else.
+        const drawn = isEditingMode ? null : drawPanels(faculties.filter(f => f.groupCount > 0), seed);
+        const recordedSeed = drawn && sameArrangement(drawn, validPanels) ? seed : 0;
+
         const dataToSave = validPanels.map((p: any) => ({
             batchYear: batchYear,
             faculty: p.faculties.map((f: any) => f._id),
             room: p.room || undefined,
+            // Every panel in a batch carries the seed of the draw that produced it, so the
+            // arrangement stays re-derivable after the fact. 0 means "no draw".
+            seed: recordedSeed,
             ...(p._tempPanelId ? { _id: p._tempPanelId } : {})
         }));
 
@@ -469,7 +647,7 @@ const AutoCreatePanelsModal: React.FC<AutoCreatePanelsModalProps> = ({ faculties
                             <div className="mt-4 px-4 py-2.5 bg-orange-50 border border-orange-200 rounded-xl flex items-center gap-3 shadow-sm inline-flex">
                                 <AlertTriangle className="w-4 h-4 text-orange-600 shrink-0" />
                                 <span className="text-xs font-bold text-orange-800 leading-tight">
-                                    Notice: {isEditingMode ? "Some panels have more than 3 members." : "Unallocated faculty were merged into existing panels to maintain structural integrity."}
+                                    Notice: Some panels have more than {MAX_PANEL_SIZE} members.
                                 </span>
                             </div>
                         )}
@@ -494,15 +672,43 @@ const AutoCreatePanelsModal: React.FC<AutoCreatePanelsModalProps> = ({ faculties
                                     <h4 className="text-sm font-black text-neutral-900 uppercase tracking-widest flex items-center gap-2">
                                         <div className="w-2 h-2 bg-indigo-600 rounded-full"></div>
                                         Panel Configuration
+                                        {!isEditingMode && seed > 0 && (
+                                            <span
+                                                className="ml-1 px-2 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-100 rounded-md text-[10px] font-mono font-bold tracking-normal normal-case"
+                                                title="Seed of the draw that produced these panels. Saved with them, so this arrangement can be reproduced."
+                                            >
+                                                Draw #{seed}
+                                            </span>
+                                        )}
                                     </h4>
-                                    {draftPanels.length > 0 && (
-                                        <button
-                                            onClick={clearAllPanels}
-                                            className="px-3 py-1.5 bg-red-50 text-red-600 text-[10px] font-black uppercase tracking-wider rounded-lg hover:bg-red-100 transition-colors flex items-center gap-1.5 border border-red-100"
-                                        >
-                                            <X className="w-3 h-3" /> Delete All Panels
-                                        </button>
-                                    )}
+                                    <div className="flex items-center gap-2">
+                                        {!isEditingMode && (
+                                            <button
+                                                onClick={() => setSeed(newSeed())}
+                                                title="Draw the panels again. Balance is unaffected — only faculty who are interchangeable to the allocator move."
+                                                className="px-3 py-1.5 bg-indigo-50 text-indigo-600 text-[10px] font-black uppercase tracking-wider rounded-lg hover:bg-indigo-100 transition-colors flex items-center gap-1.5 border border-indigo-100"
+                                            >
+                                                <Shuffle className="w-3 h-3" /> Randomize Assignment
+                                            </button>
+                                        )}
+                                        {!isEditingMode && seed > 0 && (
+                                            <button
+                                                onClick={() => setSeed(0)}
+                                                title="Use the plain deterministic allocation instead of a random draw."
+                                                className="px-3 py-1.5 bg-white text-neutral-500 text-[10px] font-black uppercase tracking-wider rounded-lg hover:bg-neutral-100 transition-colors flex items-center gap-1.5 border border-neutral-200"
+                                            >
+                                                Default Order
+                                            </button>
+                                        )}
+                                        {draftPanels.length > 0 && (
+                                            <button
+                                                onClick={clearAllPanels}
+                                                className="px-3 py-1.5 bg-red-50 text-red-600 text-[10px] font-black uppercase tracking-wider rounded-lg hover:bg-red-100 transition-colors flex items-center gap-1.5 border border-red-100"
+                                            >
+                                                <X className="w-3 h-3" /> Delete All Panels
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                                     {draftPanels.map((p: any, i) => (

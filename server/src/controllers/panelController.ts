@@ -374,11 +374,11 @@ export const exportEvaluations = async (req: any, res: Response) => {
 
 export const createPanel = async (req: any, res: Response) => {
     try {
-        const { faculty, batchYear, room } = req.body;
+        const { faculty, batchYear, room, seed } = req.body;
         if (!faculty || !batchYear) {
             return res.status(400).json({ message: 'Missing required fields' });
         }
-        const newPanel = new Panel({ faculty, batchYear, room: room || undefined });
+        const newPanel = new Panel({ faculty, batchYear, room: room || undefined, seed: seed || undefined });
         await newPanel.save();
 
         // Notify the panel members. Only createPanel sends this — editing a panel (updatePanel)
@@ -399,7 +399,7 @@ export const createPanel = async (req: any, res: Response) => {
 export const updatePanel = async (req: any, res: Response) => {
     try {
         const panelId = req.params.id;
-        const { faculty, batchYear, room } = req.body;
+        const { faculty, batchYear, room, seed } = req.body;
 
         if (!faculty || !batchYear) {
             return res.status(400).json({ message: 'Missing required fields' });
@@ -407,7 +407,7 @@ export const updatePanel = async (req: any, res: Response) => {
 
         const updatedPanel = await Panel.findByIdAndUpdate(
             panelId,
-            { faculty, batchYear, room: room || undefined },
+            { faculty, batchYear, room: room || undefined, seed: seed || undefined },
             { new: true }
         ).populate('faculty', 'name email photoUrl department maxGroups currentGroups');
 

@@ -1260,51 +1260,129 @@ const AdminDashboard: React.FC = () => {
         setShowAutoCreateModal(true);
     };
 
+    const panelRoster = (p: any): string[] =>
+        (p.faculty || []).map((f: any) => String(typeof f === 'string' ? f : f._id));
+
+    // Pair every proposed panel with the existing panel it supersedes, so a panel that
+    // did not actually move keeps its _id — and therefore its position in the batch's
+    // panel numbering, which getMyPanelEvaluationGroups derives from createdAt order.
+    // Panels carrying an _id (interactive edit) pair directly; the rest are paired by how
+    // much of their faculty roster overlaps, so a reshuffled panel keeps its identity.
+    const pairPanelsWithExisting = (proposed: any[], existing: any[]) => {
+        const pairs = new Map<number, any>();
+        const claimed = new Set<string>();
+
+        proposed.forEach((p, i) => {
+            if (!p._id) return;
+            const match = existing.find((e: any) => String(e._id) === String(p._id));
+            if (match) {
+                pairs.set(i, match);
+                claimed.add(String(match._id));
+            }
+        });
+
+        const candidates: { index: number, panel: any, overlap: number }[] = [];
+        proposed.forEach((p, i) => {
+            if (pairs.has(i)) return;
+            const roster = new Set(panelRoster(p));
+            existing.forEach((e: any) => {
+                if (claimed.has(String(e._id))) return;
+                const overlap = panelRoster(e).filter(id => roster.has(id)).length;
+                if (overlap > 0) candidates.push({ index: i, panel: e, overlap });
+            });
+        });
+
+        // Greedy: strongest overlap wins the pairing, then both sides are off the table.
+        candidates.sort((a, b) => b.overlap - a.overlap);
+        candidates.forEach(c => {
+            if (pairs.has(c.index) || claimed.has(String(c.panel._id))) return;
+            pairs.set(c.index, c.panel);
+            claimed.add(String(c.panel._id));
+        });
+
+        return { pairs, claimed };
+    };
+
     const confirmAutoCreatePanels = async (newPanels: any[]) => {
         try {
-            if (isEditingPanelsDnd) {
-                // In interactive edit mode, some have _id (existing) some don't (newly dropped empty panels)
-                const existingPanelsForBatchRaw = await api.get(`/panels?batchYear=${autoCreateBatchYear}`);
-                const existingPanelsForBatch = Array.isArray(existingPanelsForBatchRaw.data) ? existingPanelsForBatchRaw.data : [];
+            const batchYearNum = parseInt(autoCreateBatchYear);
+            const resExisting = await api.get(`/panels?batchYear=${batchYearNum}`);
+            const existingPanelsForBatch = Array.isArray(resExisting.data) ? resExisting.data : [];
 
-                const submittedPanelIds = newPanels.filter(p => p._id).map(p => p._id);
+            const { pairs, claimed } = pairPanelsWithExisting(newPanels, existingPanelsForBatch);
 
-                // 1. Delete panels that were completely emptied and removed
-                for (const p of existingPanelsForBatch) {
-                    if (!submittedPanelIds.includes(p._id)) {
-                        await api.delete(`/panels/${p._id}`);
-                    }
-                }
+            const isUnchanged = (proposed: any, existing: any) => {
+                const next = panelRoster(proposed);
+                const prev = panelRoster(existing);
+                if (next.length !== prev.length) return false;
+                if (next.some((id, i) => id !== prev[i])) return false;
+                // The seed is compared too, so every panel in a batch records the draw it
+                // came from. Regenerating without redrawing keeps the seed and stays a
+                // genuine no-op; a redraw rewrites it even where the roster held.
+                if ((proposed.seed || 0) !== (existing.seed || 0)) return false;
+                return (proposed.room || '') === (existing.room || '');
+            };
 
-                // 2. Update existing and create new
-                for (const p of newPanels) {
-                    if (p._id) {
-                        await api.put(`/panels/${p._id}`, { faculty: p.faculty, batchYear: p.batchYear, room: p.room || undefined });
-                    } else {
-                        await api.post('/panels', { faculty: p.faculty, batchYear: p.batchYear, room: p.room || undefined });
-                    }
-                }
-            } else {
-                // Standard auto-create: Delete all first
-                const batchYearNum = parseInt(autoCreateBatchYear);
-                const resExisting = await api.get(`/panels?batchYear=${batchYearNum}`);
-                const existingPanelsForBatch = Array.isArray(resExisting.data) ? resExisting.data : [];
+            let created = 0, updated = 0, removed = 0, untouched = 0, movedFaculty = 0;
 
-                for (const p of existingPanelsForBatch) {
-                    await api.delete(`/panels/${p._id}`);
-                }
+            // 1. Drop only the existing panels nothing was paired with.
+            for (const p of existingPanelsForBatch) {
+                if (claimed.has(String(p._id))) continue;
+                await api.delete(`/panels/${p._id}`);
+                removed++;
+            }
 
-                // Create new panels
-                for (const p of newPanels) {
-                    await api.post('/panels', p);
-                }
+            // 2. Patch paired panels, but only where the roster or room actually moved.
+            //    Skipping the no-ops is what stops a regeneration from churning every
+            //    panel's _id and re-emailing faculty whose assignment did not change.
+            for (let i = 0; i < newPanels.length; i++) {
+                const match = pairs.get(i);
+                if (!match) continue;
+                if (isUnchanged(newPanels[i], match)) { untouched++; continue; }
+
+                const before = new Set(panelRoster(match));
+                movedFaculty += panelRoster(newPanels[i]).filter(id => !before.has(id)).length;
+
+                await api.put(`/panels/${match._id}`, {
+                    faculty: newPanels[i].faculty,
+                    batchYear: newPanels[i].batchYear,
+                    room: newPanels[i].room || undefined,
+                    seed: newPanels[i].seed || undefined
+                });
+                updated++;
+            }
+
+            // 3. Create the genuinely new panels. This is the only path that emails
+            //    faculty — createPanel notifies, updatePanel is deliberately silent.
+            for (let i = 0; i < newPanels.length; i++) {
+                if (pairs.has(i)) continue;
+                await api.post('/panels', {
+                    faculty: newPanels[i].faculty,
+                    batchYear: newPanels[i].batchYear,
+                    room: newPanels[i].room || undefined,
+                    seed: newPanels[i].seed || undefined
+                });
+                created++;
             }
 
             setShowAutoCreateModal(false);
             setIsEditingPanelsDnd(false);
             const res = await api.get(`/panels?batchYear=${filterBatch}`);
             setPanels(Array.isArray(res.data) ? res.data : []);
-            alert(`Panels ${isEditingPanelsDnd ? 'Updated' : 'Auto-Created'} Successfully!`);
+
+            const summary = [
+                created ? `${created} created` : null,
+                updated ? `${updated} updated` : null,
+                removed ? `${removed} removed` : null,
+                untouched ? `${untouched} unchanged` : null
+            ].filter(Boolean).join(', ');
+
+            alert(
+                `Panels saved${summary ? `: ${summary}.` : ' — nothing needed changing.'}` +
+                (movedFaculty > 0
+                    ? `\n\nNote: ${movedFaculty} faculty joined an existing panel. Updates to existing panels are silent, so they were not emailed.`
+                    : '')
+            );
         } catch (e: any) {
             alert("Error saving panels: " + (e.response?.data?.message || e.message));
             console.error("Panel save error:", e.response?.data || e);
