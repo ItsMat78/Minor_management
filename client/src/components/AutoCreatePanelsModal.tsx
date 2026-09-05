@@ -672,34 +672,9 @@ const AutoCreatePanelsModal: React.FC<AutoCreatePanelsModalProps> = ({ faculties
                                     <h4 className="text-sm font-black text-neutral-900 uppercase tracking-widest flex items-center gap-2">
                                         <div className="w-2 h-2 bg-indigo-600 rounded-full"></div>
                                         Panel Configuration
-                                        {!isEditingMode && seed > 0 && (
-                                            <span
-                                                className="ml-1 px-2 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-100 rounded-md text-[10px] font-mono font-bold tracking-normal normal-case"
-                                                title="Seed of the draw that produced these panels. Saved with them, so this arrangement can be reproduced."
-                                            >
-                                                Draw #{seed}
-                                            </span>
-                                        )}
                                     </h4>
                                     <div className="flex items-center gap-2">
-                                        {!isEditingMode && (
-                                            <button
-                                                onClick={() => setSeed(newSeed())}
-                                                title="Draw the panels again. Balance is unaffected — only faculty who are interchangeable to the allocator move."
-                                                className="px-3 py-1.5 bg-indigo-50 text-indigo-600 text-[10px] font-black uppercase tracking-wider rounded-lg hover:bg-indigo-100 transition-colors flex items-center gap-1.5 border border-indigo-100"
-                                            >
-                                                <Shuffle className="w-3 h-3" /> Randomize Assignment
-                                            </button>
-                                        )}
-                                        {!isEditingMode && seed > 0 && (
-                                            <button
-                                                onClick={() => setSeed(0)}
-                                                title="Use the plain deterministic allocation instead of a random draw."
-                                                className="px-3 py-1.5 bg-white text-neutral-500 text-[10px] font-black uppercase tracking-wider rounded-lg hover:bg-neutral-100 transition-colors flex items-center gap-1.5 border border-neutral-200"
-                                            >
-                                                Default Order
-                                            </button>
-                                        )}
+                                            
                                         {draftPanels.length > 0 && (
                                             <button
                                                 onClick={clearAllPanels}
