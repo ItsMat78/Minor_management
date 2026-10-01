@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../utils/api';
 import { errorMessage } from '../utils/apiError';
-import { Layout, Users, CheckSquare, MessageSquare, Menu, Clock, Calendar, X, ChevronRight, Plus, Archive, FileText, Search, Square, AlertCircle, Trash2, AlertTriangle, Trophy, Star, Pencil, UserCircle } from 'lucide-react';
+import { Layout, Users, CheckSquare, MessageSquare, Menu, Clock, Calendar, X, ChevronRight, Plus, Archive, FileText, Search, Square, AlertCircle, Trash2, AlertTriangle, Trophy, Star, Pencil, UserCircle, ClipboardList, MapPin } from 'lucide-react';
 import FilePreview from '../components/FilePreview';
 import ProfilePhotoUpload from '../components/ProfilePhotoUpload';
 import AttachmentGallery from '../components/AttachmentGallery';
@@ -14,6 +14,7 @@ import Chat from '../components/Chat';
 import { motion, AnimatePresence } from 'framer-motion';
 import * as Dialog from '@radix-ui/react-dialog';
 import { GlobalEventBanner } from '../components/GlobalEventBanner';
+import { DEFAULT_RUBRIC_CONFIG } from '../utils/rubrics';
 
 interface Group {
     _id: string;
@@ -40,7 +41,7 @@ interface Student {
     photoUrl?: string;
 }
 
-type StudentTab = 'directory' | 'project' | 'group' | 'archive' | 'results' | 'profile';
+type StudentTab = 'directory' | 'project' | 'group' | 'evaluation' | 'archive' | 'results' | 'profile';
 
 const Dashboard: React.FC = () => {
     const { user, logout, activeEvents, refreshUser } = useAuth();
@@ -157,6 +158,20 @@ const Dashboard: React.FC = () => {
         if (activeTab === 'archive' && user?.role === 'Student') {
             fetchArchivedProjects();
         }
+    }, [activeTab]);
+
+    // Evaluation panel + rubrics, loaded when the Evaluation tab opens so a panel or rubric the
+    // admin publishes mid-session shows up on the next visit.
+    const [panelInfo, setPanelInfo] = useState<any>(null);
+    const [loadingPanel, setLoadingPanel] = useState(false);
+
+    useEffect(() => {
+        if (activeTab !== 'evaluation' || user?.role !== 'Student') return;
+        setLoadingPanel(true);
+        api.get('/panels/my-student-panel')
+            .then(res => setPanelInfo(res.data))
+            .catch(() => setPanelInfo(null))
+            .finally(() => setLoadingPanel(false));
     }, [activeTab]);
 
     // Submission State
@@ -553,6 +568,14 @@ const Dashboard: React.FC = () => {
                                 onClick={() => selectTab('group')}
                             />
                             {approvedProjectForSidebar && (
+                                <SidebarItem
+                                    icon={<ClipboardList className="w-5 h-5" />}
+                                    label="Evaluation"
+                                    active={activeTab === 'evaluation'}
+                                    onClick={() => selectTab('evaluation')}
+                                />
+                            )}
+                            {approvedProjectForSidebar && (
                                 <div className="pt-3 border-t border-neutral-100 mt-2 space-y-1">
                                     <p className="px-3 text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Deliverables</p>
                                     <button
@@ -653,6 +676,7 @@ const Dashboard: React.FC = () => {
                                 <ChevronRight className="w-3 h-3" />
                                 <span>
                                     {activeTab === 'directory' ? 'Directory' :
+                                     activeTab === 'evaluation' ? 'Evaluation' :
                                      activeTab === 'results' ? 'Results' :
                                      activeTab === 'archive' ? 'Archive' :
                                      activeTab === 'profile' ? 'Profile' : 'My Project'}
@@ -662,6 +686,7 @@ const Dashboard: React.FC = () => {
                                 title starts smaller on phones rather than truncating to nothing. */}
                             <h1 className="text-base sm:text-xl font-bold text-neutral-800 truncate">
                                 {activeTab === 'directory' ? 'Student Directory' :
+                                 activeTab === 'evaluation' ? 'Evaluation Panel & Rubrics' :
                                  activeTab === 'results' ? 'My Results' :
                                  activeTab === 'archive' ? 'Project Archive' :
                                  activeTab === 'profile' ? 'My Profile' : 'Project Workspace'}
@@ -1920,6 +1945,127 @@ const Dashboard: React.FC = () => {
                                     <h2 className="text-xl font-bold text-neutral-900">No Group Found</h2>
                                     <p className="text-neutral-500 mt-1 max-w-xs mx-auto">It seems you aren't part of any group yet or something went wrong while fetching data.</p>
                                 </div>
+                            )}
+                        </div>
+                    )}
+
+                    {activeTab === 'evaluation' && (
+                        <div className="max-w-4xl mx-auto space-y-6">
+                            {loadingPanel && !panelInfo ? (
+                                <div className="text-center py-24 text-neutral-400 text-sm">Loading…</div>
+                            ) : (
+                                <>
+                                    {/* Panel card */}
+                                    <div className="bg-white rounded-3xl border border-neutral-200 shadow-sm overflow-hidden">
+                                        <div className="px-5 sm:px-7 py-5 border-b border-neutral-100 flex flex-wrap items-center justify-between gap-3">
+                                            <div className="flex items-center gap-3">
+                                                <div className="p-2.5 bg-indigo-50 rounded-xl text-indigo-700">
+                                                    <Users className="w-5 h-5" />
+                                                </div>
+                                                <div>
+                                                    <h3 className="font-black text-neutral-900 text-base">
+                                                        {panelInfo?.panel ? `Panel ${panelInfo.panelNumber}` : 'Evaluation Panel'}
+                                                    </h3>
+                                                    {panelInfo?.panel && (
+                                                        <p className="text-xs text-neutral-500">Batch {panelInfo.panel.batchYear}</p>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            {panelInfo?.panel?.room && (
+                                                <span className="flex items-center gap-1.5 text-xs font-bold text-neutral-700 bg-neutral-100 px-3 py-1.5 rounded-full">
+                                                    <MapPin className="w-3.5 h-3.5" /> Room {panelInfo.panel.room}
+                                                </span>
+                                            )}
+                                        </div>
+                                        {panelInfo?.panel ? (
+                                            <ul className="divide-y divide-neutral-100">
+                                                {(panelInfo.panel.faculty || []).map((f: any) => (
+                                                    <li key={f._id} className="flex items-center gap-3 px-5 sm:px-7 py-3">
+                                                        <Avatar
+                                                            name={f.name}
+                                                            photoUrl={f.photoUrl}
+                                                            className="h-9 w-9 rounded-full object-cover shrink-0 border border-neutral-200"
+                                                            fallbackClassName="h-9 w-9 rounded-full bg-neutral-100 flex items-center justify-center text-sm text-neutral-600 font-bold shrink-0"
+                                                        />
+                                                        <div className="min-w-0 flex-1">
+                                                            <p className="text-sm font-bold text-neutral-900 truncate">{f.name}</p>
+                                                            <p className="text-xs text-neutral-500 truncate">{f.email}</p>
+                                                        </div>
+                                                        {String(f._id) === String(panelInfo.mentorId) && (
+                                                            <span className="text-[10px] font-black uppercase tracking-widest text-indigo-700 bg-indigo-50 px-2 py-1 rounded-full shrink-0">Your Mentor</span>
+                                                        )}
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        ) : (
+                                            <div className="p-7 text-center text-neutral-400">
+                                                <Clock className="w-8 h-8 mx-auto mb-3 opacity-40" />
+                                                <p className="text-sm font-medium">Panel not assigned yet</p>
+                                                <p className="text-xs mt-1">Your evaluation panel will appear here once the admin creates it.</p>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Rubric cards: shown once an evaluation event of that type exists for the batch */}
+                                    {([['mid-term', 'Mid-Term Evaluation Rubric'], ['end-term', 'End-Term Evaluation Rubric']] as const).map(([type, title]) => {
+                                        const entry = panelInfo?.rubrics?.[type];
+                                        const rubric = entry ? (entry.rubricParams || DEFAULT_RUBRIC_CONFIG[type]) : null;
+                                        return (
+                                            <div key={type} className="bg-white rounded-3xl border border-neutral-200 shadow-sm overflow-hidden">
+                                                <div className="px-5 sm:px-7 py-5 border-b border-neutral-100 flex items-center justify-between gap-3">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className={`p-2.5 rounded-xl ${type === 'mid-term' ? 'bg-emerald-50 text-emerald-700' : 'bg-indigo-50 text-indigo-700'}`}>
+                                                            <ClipboardList className="w-5 h-5" />
+                                                        </div>
+                                                        <div>
+                                                            <h3 className="font-black text-neutral-900 text-base">{title}</h3>
+                                                            {entry?.endDate && (
+                                                                <p className="text-xs text-neutral-500">Ends {new Date(entry.endDate).toLocaleDateString()}</p>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                    {rubric?.maxMarks != null && (
+                                                        <div className="text-right shrink-0">
+                                                            <p className="text-2xl font-black text-neutral-900 leading-none">{rubric.maxMarks}</p>
+                                                            <p className="text-[10px] text-neutral-400 font-medium mt-0.5">Max Marks</p>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                {rubric ? (
+                                                    <div className="p-5 sm:p-7 space-y-6">
+                                                        {(rubric.sections || []).map((section: any) => (
+                                                            <div key={section.key || section.title}>
+                                                                <div className="flex items-center justify-between mb-3">
+                                                                    <p className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">{section.title}</p>
+                                                                    {section.maxMarks != null && (
+                                                                        <span className="text-xs font-bold text-neutral-500 tabular-nums">{section.maxMarks} marks</span>
+                                                                    )}
+                                                                </div>
+                                                                <div className="space-y-2">
+                                                                    {(section.fields || []).map((f: any) => (
+                                                                        <div key={f.key} className="flex items-start justify-between gap-4 text-sm">
+                                                                            <div className="min-w-0">
+                                                                                <p className="text-neutral-800 font-medium">{f.label}</p>
+                                                                                {f.description && <p className="text-xs text-neutral-500">{f.description}</p>}
+                                                                            </div>
+                                                                            <span className="font-bold text-neutral-900 tabular-nums shrink-0">{f.max}</span>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                ) : (
+                                                    <div className="p-7 text-center text-neutral-400">
+                                                        <Clock className="w-8 h-8 mx-auto mb-3 opacity-40" />
+                                                        <p className="text-sm font-medium">Rubric not published yet</p>
+                                                        <p className="text-xs mt-1">It will appear here once the evaluation is scheduled.</p>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </>
                             )}
                         </div>
                     )}

@@ -3,6 +3,7 @@ import Panel, { IPanel } from '../models/Panel';
 import Group from '../models/Group';
 import Project from '../models/Project';
 import User from '../models/User';
+import Event, { EventType } from '../models/Event';
 import ExcelJS from 'exceljs';
 import fs from 'fs';
 import { sendPanelAssignmentEmail } from '../utils/emailService';
@@ -537,6 +538,60 @@ export const getMyPanelEvaluationGroups = async (req: any, res: Response) => {
 
     } catch (error: any) {
         res.status(500).json({ message: 'Error fetching panel groups', error: error.message });
+    }
+};
+
+// The logged-in student's evaluation panel and the rubrics they will be marked against.
+// A group falls under a panel when its mentor sits on a panel for the group's batch (the same
+// rule the faculty/admin panel views use). A rubric is only returned once an evaluation event of
+// that type exists for the batch; `rubricParams` is null when the event uses the default rubric.
+export const getMyStudentPanel = async (req: any, res: Response) => {
+    try {
+        const group: any = await Group.findOne({ members: req.user.id, isArchived: { $ne: true } })
+            .sort({ createdAt: -1 })
+            .populate('members', 'rollNumber')
+            .populate('project', 'faculty status')
+            .lean();
+        if (!group) return res.status(404).json({ message: 'No group found' });
+
+        const gBatch = group.targetBatch ? String(group.targetBatch) : (group.members?.[0]?.rollNumber ? '20' + String(group.members[0].rollNumber).substring(0, 2) : null);
+        const mentorId = group.project?.faculty ? String(group.project.faculty) : null;
+
+        let panel: any = null;
+        let panelNumber: number | null = null;
+        if (gBatch && mentorId) {
+            panel = await Panel.findOne({ batchYear: Number(gBatch), faculty: mentorId, isArchived: { $ne: true } })
+                .populate('faculty', 'name email photoUrl department')
+                .lean();
+            if (panel) {
+                const batchPanels = await Panel.find({ batchYear: panel.batchYear }).sort({ createdAt: 1 }).select('_id').lean();
+                panelNumber = batchPanels.findIndex((p: any) => String(p._id) === String(panel._id)) + 1;
+            }
+        }
+
+        const latestEvent = (type: EventType) => Event.findOne({
+            type,
+            $or: [{ batchYear: { $in: [null, ''] } }, { batchYear: { $exists: false } }, ...(gBatch ? [{ batchYear: gBatch }] : [])]
+        }).sort({ createdAt: -1 }).select('rubricParams startDate endDate extensionDate isActive').lean();
+        const [midEvent, endEvent]: any[] = await Promise.all([
+            latestEvent(EventType.MID_TERM_EVALUATION),
+            latestEvent(EventType.END_TERM_EVALUATION)
+        ]);
+        const toRubric = (ev: any) => ev ? {
+            rubricParams: ev.rubricParams || null,
+            startDate: ev.startDate,
+            endDate: ev.extensionDate || ev.endDate,
+            isActive: ev.isActive
+        } : null;
+
+        res.status(200).json({
+            panel: panel ? { _id: panel._id, faculty: panel.faculty, room: panel.room, batchYear: panel.batchYear } : null,
+            panelNumber,
+            mentorId,
+            rubrics: { 'mid-term': toRubric(midEvent), 'end-term': toRubric(endEvent) }
+        });
+    } catch (error: any) {
+        res.status(500).json({ message: 'Error fetching panel', error: error.message });
     }
 };
 
