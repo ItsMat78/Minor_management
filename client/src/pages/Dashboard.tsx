@@ -15,6 +15,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import * as Dialog from '@radix-ui/react-dialog';
 import { GlobalEventBanner } from '../components/GlobalEventBanner';
 import { DEFAULT_RUBRIC_CONFIG } from '../utils/rubrics';
+import ArchivedProjectCard, { type ArchivedProject } from '../components/ArchivedProjectCard';
 
 interface Group {
     _id: string;
@@ -137,16 +138,14 @@ const Dashboard: React.FC = () => {
     const [selectedProject, setSelectedProject] = useState<any>(null);
 
     // Archive State
-    const [archivedGroups, setArchivedGroups] = useState<any[]>([]);
-    const [archivedOrphanProjects, setArchivedOrphanProjects] = useState<any[]>([]);
+    const [archivedProjects, setArchivedProjects] = useState<ArchivedProject[]>([]);
     const [loadingArchive, setLoadingArchive] = useState(false);
 
     const fetchArchivedProjects = async () => {
         setLoadingArchive(true);
         try {
             const res = await api.get('/projects/archived');
-            setArchivedGroups(res.data.groups ?? []);
-            setArchivedOrphanProjects(res.data.orphanProjects ?? []);
+            setArchivedProjects(Array.isArray(res.data) ? res.data : []);
         } catch (error) {
             console.error('Failed to fetch archived projects', error);
         } finally {
@@ -2079,13 +2078,13 @@ const Dashboard: React.FC = () => {
                                     </div>
                                     <div>
                                         <h2 className="text-xl font-bold text-neutral-900">Project Archive</h2>
-                                        <p className="text-sm text-neutral-500">Your past projects from previous academic cycles.</p>
+                                        <p className="text-sm text-neutral-500">All projects from previous academic cycles. Yours are listed first.</p>
                                     </div>
                                 </div>
 
                                 {loadingArchive ? (
                                     <div className="text-center py-12 text-neutral-400">Loading archive...</div>
-                                ) : archivedGroups.length === 0 && archivedOrphanProjects.length === 0 ? (
+                                ) : archivedProjects.length === 0 ? (
                                     <div className="text-center py-12 text-neutral-400">
                                         <Archive className="w-10 h-10 mx-auto mb-3 opacity-40" />
                                         <p className="font-medium">No archived projects yet.</p>
@@ -2093,86 +2092,7 @@ const Dashboard: React.FC = () => {
                                     </div>
                                 ) : (
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                                        {archivedGroups.map((g: any) => {
-                                            const project = g.project;
-                                            const batchLabel = g.targetBatch || (g.members?.[0]?.rollNumber ? '20' + String(g.members[0].rollNumber).substring(0, 2) : '—');
-                                            const mentorName = project?.archivedMentorName || project?.faculty?.name || 'No mentor';
-                                            return (
-                                                <div key={g._id} className="p-5 rounded-xl border border-neutral-200 hover:border-indigo-200 hover:bg-neutral-50 transition-colors">
-                                                    <div className="flex justify-between items-start mb-3">
-                                                        <div className="flex gap-2">
-                                                            <span className="px-2 py-0.5 bg-neutral-100 text-neutral-600 text-xs rounded font-medium">Batch {batchLabel}</span>
-                                                            {g.name && <span className="px-2 py-0.5 bg-indigo-50 text-indigo-600 text-xs rounded font-medium">Group {g.name}</span>}
-                                                        </div>
-                                                        <span className="px-2 py-0.5 bg-amber-50 text-amber-600 text-xs rounded font-medium">Archived</span>
-                                                    </div>
-                                                    {project ? (
-                                                        <>
-                                                            <h4 className="font-bold text-neutral-900 mb-1 line-clamp-2">{project.title}</h4>
-                                                            <p className="text-sm text-neutral-500 line-clamp-2 mb-3">{project.description || 'No description.'}</p>
-                                                            <div className="flex items-center gap-2 text-xs text-neutral-400">
-                                                                <Users className="w-3.5 h-3.5" />
-                                                                <span>{mentorName}</span>
-                                                            </div>
-                                                            {project.tags?.length > 0 && (
-                                                                <div className="flex flex-wrap gap-1 mt-3">
-                                                                    {project.tags.slice(0, 3).map((tag: string) => (
-                                                                        <span key={tag} className="px-2 py-0.5 bg-neutral-100 text-neutral-500 text-xs rounded">{tag}</span>
-                                                                    ))}
-                                                                </div>
-                                                            )}
-                                                            {(project.midTermEvaluation || project.endTermEvaluation || project.finalReportEvaluation) && (
-                                                                <div className="mt-3 pt-3 border-t border-neutral-100 flex flex-wrap gap-3 text-xs text-neutral-600">
-                                                                    {project.midTermEvaluation?.totalMarks != null && (
-                                                                        <span><span className="font-semibold">Mid:</span> {project.midTermEvaluation.totalMarks}</span>
-                                                                    )}
-                                                                    {project.endTermEvaluation?.totalMarks != null && (
-                                                                        <span><span className="font-semibold">End:</span> {project.endTermEvaluation.totalMarks}</span>
-                                                                    )}
-                                                                    {project.finalReportEvaluation?.totalMarks != null && (
-                                                                        <span><span className="font-semibold">Final:</span> {project.finalReportEvaluation.totalMarks}</span>
-                                                                    )}
-                                                                </div>
-                                                            )}
-                                                        </>
-                                                    ) : (
-                                                        <p className="text-sm text-neutral-400 italic">No project associated with this group.</p>
-                                                    )}
-                                                </div>
-                                            );
-                                        })}
-                                        {archivedOrphanProjects.map((p: any) => (
-                                            <div key={p._id} className="p-5 rounded-xl border border-neutral-200 hover:border-indigo-200 hover:bg-neutral-50 transition-colors">
-                                                <div className="flex justify-between items-start mb-3">
-                                                    <div className="flex gap-2">
-                                                        {p.archivedBatch && <span className="px-2 py-0.5 bg-neutral-100 text-neutral-600 text-xs rounded font-medium">Batch {p.archivedBatch}</span>}
-                                                        {p.archivedGroupName && <span className="px-2 py-0.5 bg-indigo-50 text-indigo-600 text-xs rounded font-medium">Group {p.archivedGroupName}</span>}
-                                                    </div>
-                                                    <span className="px-2 py-0.5 bg-amber-50 text-amber-600 text-xs rounded font-medium">Archived</span>
-                                                </div>
-                                                <h4 className="font-bold text-neutral-900 mb-1 line-clamp-2">{p.title}</h4>
-                                                <p className="text-sm text-neutral-500 line-clamp-2 mb-3">{p.description || 'No description.'}</p>
-                                                {p.archivedMentorName && (
-                                                    <div className="flex items-center gap-2 text-xs text-neutral-400">
-                                                        <Users className="w-3.5 h-3.5" />
-                                                        <span>{p.archivedMentorName}</span>
-                                                    </div>
-                                                )}
-                                                {(p.midTermEvaluation || p.endTermEvaluation || p.finalReportEvaluation) && (
-                                                    <div className="mt-3 pt-3 border-t border-neutral-100 flex flex-wrap gap-3 text-xs text-neutral-600">
-                                                        {p.midTermEvaluation?.totalMarks != null && (
-                                                            <span><span className="font-semibold">Mid:</span> {p.midTermEvaluation.totalMarks}</span>
-                                                        )}
-                                                        {p.endTermEvaluation?.totalMarks != null && (
-                                                            <span><span className="font-semibold">End:</span> {p.endTermEvaluation.totalMarks}</span>
-                                                        )}
-                                                        {p.finalReportEvaluation?.totalMarks != null && (
-                                                            <span><span className="font-semibold">Final:</span> {p.finalReportEvaluation.totalMarks}</span>
-                                                        )}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        ))}
+                                        {archivedProjects.map(p => <ArchivedProjectCard key={p._id} project={p} />)}
                                     </div>
                                 )}
                             </div>

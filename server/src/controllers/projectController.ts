@@ -10,6 +10,7 @@ import Event, { EventType } from '../models/Event';
 import { nextActiveGroupNumber } from '../utils/groupNumbering';
 import { midTermEvaluationOpened, projectDetailsFrozen, DETAILS_FROZEN_MESSAGE } from '../utils/evaluationLock';
 import { supervisorCapacity, mentorFullMessage } from '../utils/supervisorCapacity';
+import { resolveSession } from '../utils/session';
 
 // ... (imports)
 
@@ -460,59 +461,99 @@ export const getProjects = async (req: Request, res: Response) => {
     }
 };
 
-export const getArchivedProjects = async (req: Request, res: Response) => {
-    try {
-        const userId = (req as any).user.id;
-        const me = await User.findById(userId).select('email').lean() as any;
+// ── Archive ──────────────────────────────────────────────────────────────────
+// Every signed-in user can browse every archived (approved) project. Each entry is built from a
+// whitelist: anyone sees the title, description, tags, members, supervisor, session and semester.
+// Marks and the group name are added only for the viewer's own projects — a student sees their
+// own marks, the mentor sees every member's.
 
-        // Live archived groups (member _id is stable across roll/branch changes)
-        const archivedGroups = await Group.find({ members: userId, isArchived: true })
-            .populate({
-                path: 'project',
-                select: 'title description tags archivedMentorName status isArchived createdAt faculty midTermEvaluation endTermEvaluation finalReportEvaluation feedback',
-                populate: { path: 'faculty', select: 'name' }
-            })
-            .sort({ updatedAt: -1 })
-            .lean();
-
-        // Snapshot-imported orphan projects: match by email (unchanged across branch transfers)
-        const orphanProjects = me?.email ? await Project.find({
-            isArchived: true,
-            $or: [{ group: null }, { group: { $exists: false } }],
-            'archivedMembers.email': me.email
-        }).lean() : [];
-
-        res.json({ groups: archivedGroups, orphanProjects });
-    } catch (error) {
-        res.status(500).json({ message: 'Server error', error });
-    }
+// Semester the work belonged to, from the batch and the session it was archived in,
+// e.g. batch 2023 + "Even 2024-25" → 4.
+const archiveSemester = (batch?: string, session?: string): number | null => {
+    const match = /^(Odd|Even)\s+(\d{4})-\d{2}$/.exec(session || '');
+    if (!batch || !/^\d{4}$/.test(String(batch)) || !match) return null;
+    const sem = (Number(match[2]) - Number(batch)) * 2 + (match[1] === 'Odd' ? 1 : 2);
+    return sem > 0 ? sem : null;
 };
 
-// Faculty view: archived projects they mentored. Matched by archivedMentorName (snapshot-safe).
-export const getFacultyArchivedProjects = async (req: Request, res: Response) => {
+const loadArchivedProjects = () => Project.find({ isArchived: true, status: 'Approved' })
+    .select('title description tags semester faculty group archivedMentorName archivedGroupName archivedBatch archivedSession archivedMembers studentEvaluations updatedAt createdAt')
+    .populate('faculty', 'name')
+    .populate({ path: 'group', select: 'name targetBatch members archivedSession', populate: { path: 'members', select: 'name email rollNumber' } })
+    .populate('studentEvaluations.student', 'email')
+    .sort({ updatedAt: -1 })
+    .lean();
+
+// viewer: the caller's id/email/name; role decides whether "mine" means member or mentor.
+const shapeArchiveEntry = (p: any, viewer: { id: string; email?: string; name?: string; isFaculty: boolean }) => {
+    const g = p.group || {};
+    const liveMembers: any[] = g.members || [];
+    const members: any[] = liveMembers.length > 0 ? liveMembers : (p.archivedMembers || []);
+    const roll0 = members[0]?.rollNumber ? String(members[0].rollNumber) : '';
+    const batch = p.archivedBatch || (g.targetBatch ? String(g.targetBatch) : (/^\d{2}/.test(roll0) ? '20' + roll0.substring(0, 2) : undefined));
+    const session = resolveSession({ ...p, archivedSession: p.archivedSession || g.archivedSession });
+    const supervisor = p.archivedMentorName || p.faculty?.name || null;
+
+    const isMember = (m: any) => (m._id && String(m._id) === viewer.id) || (!!viewer.email && m.email === viewer.email);
+    const isMine = viewer.isFaculty
+        ? (!!viewer.name && p.archivedMentorName === viewer.name) || String(p.faculty?._id ?? p.faculty) === viewer.id
+        : members.some(isMember);
+
+    // A member's mid/end marks; evaluations reference the student, so match by id or email.
+    const marksFor = (m: any) => {
+        const evals = (p.studentEvaluations || []).filter((e: any) => {
+            const s = e.student || {};
+            return (m._id && String(s._id ?? s) === String(m._id)) || (!!m.email && s.email === m.email);
+        });
+        const pick = (t: string) => evals.find((e: any) => e.evalType === t)?.marks ?? null;
+        return { midTerm: pick('mid-term'), endTerm: pick('end-term') };
+    };
+
+    return {
+        _id: p._id,
+        title: p.title,
+        description: p.description,
+        tags: p.tags || [],
+        supervisor,
+        batch: batch ?? null,
+        session,
+        semester: p.semester || archiveSemester(batch, session),
+        isMine,
+        ...(isMine ? { groupName: g.name || p.archivedGroupName || null } : {}),
+        members: members.map((m: any) => {
+            const base: any = { name: m.name };
+            if (!isMine) return base;
+            base.rollNumber = m.rollNumber;
+            // Students see only their own marks; the mentor sees everyone's.
+            if (viewer.isFaculty || isMember(m)) base.marks = marksFor(m);
+            return base;
+        }),
+    };
+};
+
+const sendArchive = async (req: Request, res: Response, isFaculty: boolean) => {
     try {
-        const userId = (req as any).user.id;
-        const me = await User.findById(userId).select('name').lean() as any;
+        const userId = String((req as any).user.id);
+        const me = await User.findById(userId).select('email name').lean() as any;
         if (!me) return res.status(404).json({ message: 'User not found' });
 
-        const archivedProjects = await Project.find({
-            isArchived: true,
-            archivedMentorName: me.name
-        })
-            .populate({
-                path: 'group',
-                select: 'name targetBatch members isArchived',
-                populate: { path: 'members', select: 'name email rollNumber branch photoUrl' }
-            })
-            .sort({ updatedAt: -1 })
-            .lean();
-
-        res.json(archivedProjects);
+        const viewer = { id: userId, email: me.email, name: me.name, isFaculty };
+        const entries = (await loadArchivedProjects())
+            .map(p => shapeArchiveEntry(p, viewer))
+            .sort((a, b) => Number(b.isMine) - Number(a.isMine));
+        res.json(entries);
     } catch (error: any) {
-        console.error('getFacultyArchivedProjects error:', error);
+        console.error('archive error:', error);
         res.status(500).json({ message: 'Server error', error: error.message });
     }
 };
+
+// Student view of the archive; their own projects come first.
+export const getArchivedProjects = (req: Request, res: Response) => sendArchive(req, res, false);
+
+// Faculty view of the archive; projects they mentored (matched by archivedMentorName, which is
+// snapshot-safe) come first.
+export const getFacultyArchivedProjects = (req: Request, res: Response) => sendArchive(req, res, true);
 
 export const addUpdate = async (req: Request, res: Response) => {
     try {

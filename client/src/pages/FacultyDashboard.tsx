@@ -13,6 +13,7 @@ import AttachmentGallery from '../components/AttachmentGallery';
 import CustomBatchDropdown from '../components/CustomBatchDropdown';
 import { useParticipatingBatches } from '../hooks/useParticipatingBatches';
 import { DEFAULT_RUBRIC_CONFIG as RUBRIC_CONFIG } from '../utils/rubrics';
+import ArchivedProjectCard, { type ArchivedProject } from '../components/ArchivedProjectCard';
 
 interface Project {
     _id: string;
@@ -399,7 +400,7 @@ const FacultyDashboard: React.FC = () => {
     );
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
-    const [archivedProjects, setArchivedProjects] = useState<any[]>([]);
+    const [archivedProjects, setArchivedProjects] = useState<ArchivedProject[]>([]);
     const [loadingArchive, setLoadingArchive] = useState(false);
 
     // Self-service profile editing (My Profile tab).
@@ -1041,8 +1042,8 @@ const FacultyDashboard: React.FC = () => {
                                     <Archive className="w-6 h-6" />
                                 </div>
                                 <div>
-                                    <h2 className="text-lg font-bold text-neutral-900">Past Projects You Mentored</h2>
-                                    <p className="text-xs text-neutral-500">Read-only archive of projects from prior semesters where you were the guide.</p>
+                                    <h2 className="text-lg font-bold text-neutral-900">Past Projects</h2>
+                                    <p className="text-xs text-neutral-500">Read-only archive of all projects from prior semesters. Ones you mentored are listed first, with their marks.</p>
                                 </div>
                             </div>
 
@@ -1052,52 +1053,11 @@ const FacultyDashboard: React.FC = () => {
                                 </div>
                             ) : archivedProjects.length === 0 ? (
                                 <div className="text-center py-16 bg-white rounded-2xl border border-dashed border-neutral-200 text-neutral-500 text-sm">
-                                    No archived projects found for your account.
+                                    No archived projects yet.
                                 </div>
                             ) : (
-                                // Six columns never fit a phone; without a scroll wrapper the mark
-                                // columns were clipped away entirely. Matches the directory table.
-                                <div className="bg-white rounded-2xl border border-neutral-200 overflow-x-auto shadow-sm">
-                                    <table className="w-full text-sm min-w-[640px]">
-                                        <thead className="bg-neutral-50 text-neutral-500 uppercase text-xs">
-                                            <tr>
-                                                <th className="text-left px-4 py-3">Title</th>
-                                                <th className="text-left px-4 py-3">Group</th>
-                                                <th className="text-left px-4 py-3">Members</th>
-                                                <th className="text-left px-4 py-3">Mid</th>
-                                                <th className="text-left px-4 py-3">End</th>
-                                                <th className="text-left px-4 py-3">Final</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {archivedProjects.map((p: any) => {
-                                                const g = p.group || {};
-                                                const liveMembers: any[] = g.members || [];
-                                                const members: any[] = liveMembers.length > 0
-                                                    ? liveMembers
-                                                    : (p.archivedMembers || []);
-                                                const groupName = g.name || p.archivedGroupName || '—';
-                                                return (
-                                                    <tr key={p._id} className="border-t border-neutral-100 hover:bg-neutral-50 align-top">
-                                                        <td className="px-4 py-3 font-semibold text-neutral-900">{p.title || '—'}</td>
-                                                        <td className="px-4 py-3 text-neutral-700">{groupName}</td>
-                                                        <td className="px-4 py-3 text-neutral-700">
-                                                            {members.length === 0 ? '—' : (
-                                                                <div className="space-y-0.5 text-xs">
-                                                                    {members.map((m: any, i: number) => (
-                                                                        <div key={m._id || m.rollNumber || m.email || i}>{m.name} <span className="text-neutral-400">({m.rollNumber || '—'})</span></div>
-                                                                    ))}
-                                                                </div>
-                                                            )}
-                                                        </td>
-                                                        <td className="px-4 py-3 text-neutral-700">{p.midTermEvaluation?.totalMarks ?? '—'}</td>
-                                                        <td className="px-4 py-3 text-neutral-700">{p.endTermEvaluation?.totalMarks ?? '—'}</td>
-                                                        <td className="px-4 py-3 text-neutral-700">{p.finalReportEvaluation?.totalMarks ?? '—'}</td>
-                                                    </tr>
-                                                );
-                                            })}
-                                        </tbody>
-                                    </table>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                                    {archivedProjects.map((p: ArchivedProject) => <ArchivedProjectCard key={p._id} project={p} />)}
                                 </div>
                             )}
                         </div>
