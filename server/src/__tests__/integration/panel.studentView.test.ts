@@ -5,6 +5,7 @@
 import request from 'supertest';
 import app from '../../app';
 import Panel from '../../models/Panel';
+import Group from '../../models/Group';
 import Event, { EventType } from '../../models/Event';
 import { createTestUser, createTestGroup, createTestProject, generateToken } from '../helpers/factories';
 import { UserRole } from '../../models/User';
@@ -63,6 +64,33 @@ describe('GET /api/panels/my-student-panel', () => {
         expect(res.body.mentorId).toBe(String(mentor._id));
         // Numbered by creation order within the batch, as the faculty panel view does
         expect(res.body.panelNumber).toBe(3);
+    });
+
+    it("lists the panel's groups in group-number order, flagging the student's own", async () => {
+        const { mentor, student } = await setupMenteeGroup();
+        const other = await createTestUser({ role: UserRole.FACULTY, name: 'Other' });
+        const outsider = await createTestUser({ role: UserRole.FACULTY, name: 'Outsider' });
+        await Panel.create({ faculty: [mentor._id, other._id], batchYear: 2023 });
+        await Panel.create({ faculty: [outsider._id], batchYear: 2023 });
+
+        const addGroup = async (name: string, faculty: any, roll: string) => {
+            const m = await createTestUser({ rollNumber: roll });
+            const g = await Group.create({ name, members: [m._id], createdBy: m._id, status: 'Approved' });
+            const p = await createTestProject(g._id as any, { status: 'Approved', faculty, title: `P${name}` });
+            g.project = p._id as any;
+            await g.save();
+        };
+        await addGroup('10', other._id, '23IT010');
+        await addGroup('2', other._id, '23IT011');
+        await addGroup('5', outsider._id, '23IT012'); // different panel
+        await addGroup('3', other._id, '24IT013');    // different batch
+        const mine = await Group.findOne({ members: student._id });
+        await Group.findByIdAndUpdate(mine!._id, { name: '7' });
+
+        const res = await request(app).get('/api/panels/my-student-panel').set('x-auth-token', generateToken(student));
+        expect(res.body.panelGroups.map((g: any) => g.name)).toEqual(['2', '7', '10']);
+        expect(res.body.panelGroups.find((g: any) => g.name === '7')).toMatchObject({ isMine: true, mentorName: 'Mentor' });
+        expect(res.body.panelGroups.find((g: any) => g.name === '10')).toMatchObject({ isMine: false, projectTitle: 'P10', mentorName: 'Other' });
     });
 
     it('returns the rubric of the latest evaluation event for the batch', async () => {

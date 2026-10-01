@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../utils/api';
 import { errorMessage } from '../utils/apiError';
-import { Layout, Users, CheckSquare, MessageSquare, Menu, Clock, Calendar, X, ChevronRight, Plus, Archive, FileText, Search, Square, AlertCircle, Trash2, AlertTriangle, Trophy, Star, Pencil, UserCircle, ClipboardList, MapPin } from 'lucide-react';
+import { Layout, Users, CheckSquare, MessageSquare, Menu, Clock, Calendar, X, ChevronRight, Plus, Archive, FileText, Search, Square, AlertCircle, Trash2, AlertTriangle, Trophy, Star, Pencil, UserCircle, ClipboardList, MapPin, ChevronDown } from 'lucide-react';
 import FilePreview from '../components/FilePreview';
 import ProfilePhotoUpload from '../components/ProfilePhotoUpload';
 import AttachmentGallery from '../components/AttachmentGallery';
@@ -16,6 +16,7 @@ import * as Dialog from '@radix-ui/react-dialog';
 import { GlobalEventBanner } from '../components/GlobalEventBanner';
 import { DEFAULT_RUBRIC_CONFIG } from '../utils/rubrics';
 import ArchivedProjectCard, { type ArchivedProject } from '../components/ArchivedProjectCard';
+import Workbook from '../components/Workbook';
 
 interface Group {
     _id: string;
@@ -159,13 +160,15 @@ const Dashboard: React.FC = () => {
         }
     }, [activeTab]);
 
-    // Evaluation panel + rubrics, loaded when the Evaluation tab opens so a panel or rubric the
+    // Evaluation panel + rubrics, loaded when the Evaluation or project tab opens so a panel or rubric the
     // admin publishes mid-session shows up on the next visit.
     const [panelInfo, setPanelInfo] = useState<any>(null);
+    // Project-tab sidebar; only collapsible below xl, where it would otherwise push the content down.
+    const [isProjectSidebarOpen, setIsProjectSidebarOpen] = useState(false);
     const [loadingPanel, setLoadingPanel] = useState(false);
 
     useEffect(() => {
-        if (activeTab !== 'evaluation' || user?.role !== 'Student') return;
+        if ((activeTab !== 'evaluation' && activeTab !== 'project') || user?.role !== 'Student') return;
         setLoadingPanel(true);
         api.get('/panels/my-student-panel')
             .then(res => setPanelInfo(res.data))
@@ -510,8 +513,6 @@ const Dashboard: React.FC = () => {
 
     const _allGroupProjects = (group?.projects || (group?.project ? [group.project] : [])) as any[];
     const approvedProjectForSidebar = _allGroupProjects.find((p: any) => p.status === 'Approved');
-    const hasMidTermSubs = !!(approvedProjectForSidebar?.submissions?.midTermReport || approvedProjectForSidebar?.submissions?.midTermPPT);
-    const hasEndTermSubs = !!(approvedProjectForSidebar?.submissions?.endTermReport || approvedProjectForSidebar?.submissions?.endTermPPT);
     const midTermActive = activeEvents?.some(e => e.type === 'mid_term_evaluation');
     const endTermActive = activeEvents?.some(e => e.type === 'end_term_evaluation');
     const myStudentEvals = ((approvedProjectForSidebar?.studentEvaluations || []) as any[]).filter(
@@ -573,29 +574,6 @@ const Dashboard: React.FC = () => {
                                     active={activeTab === 'evaluation'}
                                     onClick={() => selectTab('evaluation')}
                                 />
-                            )}
-                            {approvedProjectForSidebar && (
-                                <div className="pt-3 border-t border-neutral-100 mt-2 space-y-1">
-                                    <p className="px-3 text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Deliverables</p>
-                                    <button
-                                        onClick={() => selectTab('project')}
-                                        className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-colors ${hasMidTermSubs ? 'text-emerald-700 hover:bg-emerald-50' : 'text-neutral-400 hover:bg-neutral-50'}`}
-                                    >
-                                        <CheckSquare className="w-4 h-4" />
-                                        Mid-Term Files
-                                        {hasMidTermSubs && <span className="ml-auto w-2 h-2 bg-emerald-500 rounded-full" />}
-                                        {midTermActive && !hasMidTermSubs && <span className="ml-auto text-[9px] text-amber-600 font-bold uppercase">Open</span>}
-                                    </button>
-                                    <button
-                                        onClick={() => selectTab('project')}
-                                        className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-colors ${hasEndTermSubs ? 'text-indigo-700 hover:bg-indigo-50' : 'text-neutral-400 hover:bg-neutral-50'}`}
-                                    >
-                                        <CheckSquare className="w-4 h-4" />
-                                        End-Term Files
-                                        {hasEndTermSubs && <span className="ml-auto w-2 h-2 bg-indigo-500 rounded-full" />}
-                                        {endTermActive && !hasEndTermSubs && <span className="ml-auto text-[9px] text-amber-600 font-bold uppercase">Open</span>}
-                                    </button>
-                                </div>
                             )}
                         </>
                     )}
@@ -1310,60 +1288,9 @@ const Dashboard: React.FC = () => {
                                                             )}
                                                         </div>
 
-                                                        {/* Final Deliverables Tray */}
-                                                        {(midTermActive || endTermActive) && <div className="mb-8 bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-100 rounded-2xl p-5 sm:p-6">
-                                                            <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
-                                                                <h3 className="text-lg font-bold text-neutral-900 flex items-center gap-2">
-                                                                    <Archive className="w-5 h-5 text-emerald-600 shrink-0" /> Final Deliverables
-                                                                </h3>
-                                                                {!approvedProject.isArchived && (midTermActive || endTermActive) && (
-                                                                    <button
-                                                                        onClick={() => setIsSubmitDialogOpen(true)}
-                                                                        className="text-xs font-bold text-emerald-700 flex items-center gap-1.5 bg-white px-3 py-1.5 rounded-lg hover:bg-emerald-50 transition-colors border border-emerald-200"
-                                                                    >
-                                                                        <Plus className="w-3.5 h-3.5" /> Upload / Replace
-                                                                    </button>
-                                                                )}
-                                                            </div>
-                                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                                {[
-                                                                    { label: 'Mid-Term', keys: { report: 'midTermReport', ppt: 'midTermPPT', plag: 'midTermPlagiarism' }, accent: 'indigo' },
-                                                                    { label: 'End-Term', keys: { report: 'endTermReport', ppt: 'endTermPPT', plag: 'endTermPlagiarism' }, accent: 'emerald' },
-                                                                ].map(({ label, keys, accent }) => {
-                                                                    const subs = approvedProject.submissions || {};
-                                                                    const slots = [
-                                                                        { name: 'Report', url: subs[keys.report] },
-                                                                        { name: 'Presentation', url: subs[keys.ppt] },
-                                                                        { name: 'Plagiarism Report', url: subs[keys.plag] },
-                                                                    ];
-                                                                    return (
-                                                                        <div key={label} className="bg-white p-4 rounded-xl border border-neutral-200">
-                                                                            <div className="flex items-center justify-between mb-3">
-                                                                                <h4 className="text-sm font-bold text-neutral-800">{label} Evaluation</h4>
-                                                                                <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-${accent}-50 text-${accent}-700 border border-${accent}-100`}>
-                                                                                    {slots.filter(s => s.url).length} / 3
-                                                                                </span>
-                                                                            </div>
-                                                                            <div className="space-y-2">
-                                                                                {slots.map((slot) => (
-                                                                                    <div key={slot.name} className="flex items-center justify-between text-xs">
-                                                                                        <span className="text-neutral-600 font-medium">{slot.name}</span>
-                                                                                        {slot.url ? (
-                                                                                            <a href={slot.url} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline font-semibold inline-flex items-center gap-1">
-                                                                                                <FileText className="w-3 h-3" /> View
-                                                                                            </a>
-                                                                                        ) : (
-                                                                                            <span className="text-neutral-400 italic">Not submitted</span>
-                                                                                        )}
-                                                                                    </div>
-                                                                                ))}
-                                                                            </div>
-                                                                        </div>
-                                                                    );
-                                                                })}
-                                                            </div>
-                                                        </div>}
 
+                                                        {/* Updates timeline and weekly workbook side by side; stacked below xl */}
+                                                        <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 items-start">
                                                         <div className="space-y-6">
                                                             <div className="flex flex-wrap items-center justify-between gap-4">
                                                                 <h3 className="text-lg font-bold text-neutral-900 flex items-center gap-2">
@@ -1458,6 +1385,16 @@ const Dashboard: React.FC = () => {
                                                                     </div>
                                                                 )}
                                                             </div>
+                                                        </div>
+
+                                                        <Workbook
+                                                            projectId={approvedProject._id}
+                                                            entries={approvedProject.workbook}
+                                                            members={group.members}
+                                                            role="member"
+                                                            archived={approvedProject.isArchived}
+                                                            groupName={group.name}
+                                                        />
                                                         </div>
                                                     </div>
                                                 );
@@ -1624,10 +1561,22 @@ const Dashboard: React.FC = () => {
                                         })()}
                                     </div>
 
-                                    {/* Sticky Sidebar: Team & Mentor & Help */}
+                                    {/* Sidebar: Team, Mentor, Evaluation. Sticky beside the content from xl up;
+                                        below that it sits above the content as one collapsible strip. */}
                                     {approvedProject && (
-                                        <div className="xl:col-span-1 space-y-6">
-                                            <div className="sticky top-6 space-y-6">
+                                        <div className="xl:col-span-1 order-first xl:order-none">
+                                            <button
+                                                onClick={() => setIsProjectSidebarOpen(o => !o)}
+                                                aria-expanded={isProjectSidebarOpen}
+                                                className="xl:hidden w-full flex items-center justify-between gap-3 bg-white px-4 py-3 rounded-2xl border border-neutral-200 shadow-sm text-sm font-bold text-neutral-800"
+                                            >
+                                                <span className="flex items-center gap-2 min-w-0">
+                                                    <Users className="w-4 h-4 text-indigo-600 shrink-0" />
+                                                    <span className="truncate">Group, mentor &amp; evaluation</span>
+                                                </span>
+                                                <ChevronDown className={`w-4 h-4 text-neutral-400 shrink-0 transition-transform ${isProjectSidebarOpen ? 'rotate-180' : ''}`} />
+                                            </button>
+                                            <div className={`${isProjectSidebarOpen ? 'block' : 'hidden'} xl:block mt-4 xl:mt-0 xl:sticky xl:top-6 space-y-6`}>
                                                 {/* Team Members */}
                                                 <div className="bg-white p-5 sm:p-6 rounded-2xl border border-neutral-200 shadow-sm relative">
                                                     <h4 className="font-bold text-neutral-900 mb-4 flex items-center gap-2">
@@ -1684,6 +1633,110 @@ const Dashboard: React.FC = () => {
                                                             <p className="text-xs text-neutral-500">No mentor assigned yet.</p>
                                                         </div>
                                                     )}
+                                                </div>
+
+                                                {/* Evaluation panel: panel, its groups, deliverables */}
+                                                <div className="bg-white p-5 sm:p-6 rounded-2xl border border-neutral-200 shadow-sm">
+                                                    <h4 className="font-bold text-neutral-900 mb-4 text-sm flex items-center gap-2">
+                                                        <ClipboardList className="w-4 h-4 text-emerald-600" /> Evaluation Panel
+                                                    </h4>
+
+                                                    <p className="text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-2">Panel</p>
+                                                    {panelInfo?.panel ? (
+                                                        <div className="mb-5">
+                                                            <div className="flex items-center justify-between gap-2 mb-2">
+                                                                <span className="text-sm font-bold text-neutral-900">Panel {panelInfo.panelNumber}</span>
+                                                                {panelInfo.panel.room && (
+                                                                    <span className="flex items-center gap-1 text-[11px] font-bold text-neutral-600 bg-neutral-100 px-2 py-0.5 rounded-full">
+                                                                        <MapPin className="w-3 h-3" /> {panelInfo.panel.room}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                            <ul className="space-y-1">
+                                                                {(panelInfo.panel.faculty || []).map((f: any) => (
+                                                                    <li key={f._id} className="text-xs text-neutral-600 truncate">
+                                                                        {f.name}
+                                                                        {String(f._id) === String(panelInfo.mentorId) && <span className="ml-1.5 text-[10px] font-bold text-indigo-600">(mentor)</span>}
+                                                                    </li>
+                                                                ))}
+                                                            </ul>
+                                                            {panelInfo.panelGroups?.length > 0 && (
+                                                                <>
+                                                                    <p className="text-[10px] font-black text-neutral-400 uppercase tracking-widest mt-4 mb-2">
+                                                                        Groups ({panelInfo.panelGroups.length})
+                                                                    </p>
+                                                                    <ul className="space-y-1 max-h-64 overflow-y-auto pr-1">
+                                                                        {panelInfo.panelGroups.map((g: any) => (
+                                                                            <li
+                                                                                key={g._id}
+                                                                                className={`flex items-start gap-2 text-xs rounded-md px-2 py-1.5 ${g.isMine ? 'bg-indigo-50 ring-1 ring-indigo-100' : ''}`}
+                                                                            >
+                                                                                <span className={`shrink-0 w-8 font-black tabular-nums ${g.isMine ? 'text-indigo-700' : 'text-neutral-400'}`}>G{g.name}</span>
+                                                                                <span className="min-w-0">
+                                                                                    <span className="block text-neutral-700 truncate" title={g.projectTitle}>{g.projectTitle}</span>
+                                                                                    {g.mentorName && <span className="block text-[10px] text-neutral-400 truncate">{g.mentorName}</span>}
+                                                                                </span>
+                                                                            </li>
+                                                                        ))}
+                                                                    </ul>
+                                                                </>
+                                                            )}
+                                                        </div>
+                                                    ) : (
+                                                        <p className="text-xs text-neutral-400 italic mb-5">Not assigned yet.</p>
+                                                    )}
+
+                                                    <div className="flex items-center justify-between gap-2 mb-2">
+                                                        <p className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Deliverables</p>
+                                                        {!approvedProject.isArchived && (midTermActive || endTermActive) && (
+                                                            <button
+                                                                onClick={() => setIsSubmitDialogOpen(true)}
+                                                                className="text-[11px] font-bold text-emerald-700 flex items-center gap-1 bg-emerald-50 px-2 py-1 rounded-md hover:bg-emerald-100 border border-emerald-200"
+                                                            >
+                                                                <Plus className="w-3 h-3" /> Upload / Replace
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                    <div className="space-y-3">
+                                                        {[
+                                                            { label: 'Mid-Term', keys: { report: 'midTermReport', ppt: 'midTermPPT', plag: 'midTermPlagiarism' }, accent: 'indigo', open: midTermActive },
+                                                            { label: 'End-Term', keys: { report: 'endTermReport', ppt: 'endTermPPT', plag: 'endTermPlagiarism' }, accent: 'emerald', open: endTermActive },
+                                                        ].map(({ label, keys, accent, open }) => {
+                                                            const subs = approvedProject.submissions || {};
+                                                            const slots = [
+                                                                { name: 'Report', url: subs[keys.report] },
+                                                                { name: 'Presentation', url: subs[keys.ppt] },
+                                                                { name: 'Plagiarism Report', url: subs[keys.plag] },
+                                                            ];
+                                                            return (
+                                                                <div key={label} className="p-3 rounded-xl border border-neutral-200">
+                                                                    <div className="flex items-center justify-between mb-2">
+                                                                        <h5 className="text-xs font-bold text-neutral-800 flex items-center gap-1.5">
+                                                                            {label}
+                                                                            {open && <span className="text-[9px] text-amber-600 font-bold uppercase">Open</span>}
+                                                                        </h5>
+                                                                        <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-${accent}-50 text-${accent}-700 border border-${accent}-100`}>
+                                                                            {slots.filter(s => s.url).length} / 3
+                                                                        </span>
+                                                                    </div>
+                                                                    <div className="space-y-1.5">
+                                                                        {slots.map((slot) => (
+                                                                            <div key={slot.name} className="flex items-center justify-between gap-2 text-xs">
+                                                                                <span className="text-neutral-600 font-medium truncate">{slot.name}</span>
+                                                                                {slot.url ? (
+                                                                                    <a href={slot.url} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline font-semibold inline-flex items-center gap-1 shrink-0">
+                                                                                        <FileText className="w-3 h-3" /> View
+                                                                                    </a>
+                                                                                ) : (
+                                                                                    <span className="text-neutral-400 italic shrink-0">Not submitted</span>
+                                                                                )}
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>

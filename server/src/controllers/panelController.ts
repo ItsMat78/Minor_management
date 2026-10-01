@@ -559,6 +559,7 @@ export const getMyStudentPanel = async (req: any, res: Response) => {
 
         let panel: any = null;
         let panelNumber: number | null = null;
+        let panelGroups: any[] = [];
         if (gBatch && mentorId) {
             panel = await Panel.findOne({ batchYear: Number(gBatch), faculty: mentorId, isArchived: { $ne: true } })
                 .populate('faculty', 'name email photoUrl department')
@@ -566,6 +567,31 @@ export const getMyStudentPanel = async (req: any, res: Response) => {
             if (panel) {
                 const batchPanels = await Panel.find({ batchYear: panel.batchYear }).sort({ createdAt: 1 }).select('_id').lean();
                 panelNumber = batchPanels.findIndex((p: any) => String(p._id) === String(panel._id)) + 1;
+
+                // Every group this panel evaluates — same rule as the faculty panel view: the
+                // group's mentor sits on the panel and the group is in the panel's batch.
+                const panelFacultyIds = panel.faculty.map((f: any) => String(f._id));
+                const facultyNames = new Map(panel.faculty.map((f: any) => [String(f._id), f.name]));
+                const candidates: any[] = await Group.find({ status: { $in: ['Approved', 'Forming', 'Pending'] }, isArchived: { $ne: true } })
+                    .populate('members', 'rollNumber')
+                    .populate('project', 'title faculty')
+                    .select('name targetBatch members project')
+                    .lean();
+                panelGroups = candidates
+                    .filter(g => {
+                        const fac = g.project?.faculty ? String(g.project.faculty) : null;
+                        if (!fac || !panelFacultyIds.includes(fac)) return false;
+                        const b = g.targetBatch ? String(g.targetBatch) : (g.members?.[0]?.rollNumber ? '20' + String(g.members[0].rollNumber).substring(0, 2) : null);
+                        return b === String(panel.batchYear);
+                    })
+                    .map(g => ({
+                        _id: g._id,
+                        name: g.name,
+                        projectTitle: g.project.title,
+                        mentorName: facultyNames.get(String(g.project.faculty)) || null,
+                        isMine: String(g._id) === String(group._id),
+                    }))
+                    .sort((a, b) => (parseInt(a.name, 10) || Infinity) - (parseInt(b.name, 10) || Infinity) || String(a.name).localeCompare(String(b.name)));
             }
         }
 
@@ -587,6 +613,7 @@ export const getMyStudentPanel = async (req: any, res: Response) => {
         res.status(200).json({
             panel: panel ? { _id: panel._id, faculty: panel.faculty, room: panel.room, batchYear: panel.batchYear } : null,
             panelNumber,
+            panelGroups,
             mentorId,
             rubrics: { 'mid-term': toRubric(midEvent), 'end-term': toRubric(endEvent) }
         });
