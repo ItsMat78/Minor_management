@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { BookOpen, CheckCircle2, ChevronDown, Download, Lock, Pencil } from 'lucide-react';
+import { BookOpen, CheckCircle2, ChevronDown, Download, Lock, Pencil, X } from 'lucide-react';
 import api from '../utils/api';
 import { errorMessage } from '../utils/apiError';
 
@@ -25,11 +25,13 @@ interface WorkbookProps {
     canExport?: boolean;
     archived?: boolean;
     groupName?: string;
+    // Rendered inside a drawer: shows a close button in the header.
+    onClose?: () => void;
 }
 
 // The weekly workbook: WORKBOOK_WEEKS fixed weeks. Group members record what was done; the
 // mentor marks each member's attendance and approves (signs) the week, which locks it.
-const Workbook: React.FC<WorkbookProps> = ({ projectId, entries: entriesProp, members, role, canExport, archived, groupName }) => {
+const Workbook: React.FC<WorkbookProps> = ({ projectId, entries: entriesProp, members, role, canExport, archived, groupName, onClose }) => {
     const [entries, setEntries] = useState<WorkbookEntry[]>(entriesProp || []);
     useEffect(() => { setEntries(entriesProp || []); }, [entriesProp]);
 
@@ -104,6 +106,11 @@ const Workbook: React.FC<WorkbookProps> = ({ projectId, entries: entriesProp, me
                             className="text-xs font-bold text-indigo-700 flex items-center gap-1.5 bg-indigo-50 px-3 py-1.5 rounded-lg hover:bg-indigo-100 border border-indigo-200"
                         >
                             <Download className="w-3.5 h-3.5" /> Export
+                        </button>
+                    )}
+                    {onClose && (
+                        <button onClick={onClose} aria-label="Close workbook" className="p-1.5 rounded-lg text-neutral-500 hover:bg-neutral-200">
+                            <X className="w-4 h-4" />
                         </button>
                     )}
                 </div>

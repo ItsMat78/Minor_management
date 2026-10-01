@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import Workbook from '../components/Workbook';
+import WorkbookTray from '../components/WorkbookTray';
 import Avatar from '../components/Avatar';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../utils/api';
@@ -429,8 +429,6 @@ const MenteeGroupPage: React.FC = () => {
                                 </div>
                             </div>
 
-                            {/* Updates timeline and weekly workbook side by side; stacked below 2xl */}
-                            <div className="grid grid-cols-1 2xl:grid-cols-2 gap-8 items-start">
                             {/* Project Timeline */}
                             <div>
                                 <div className="flex items-center justify-between mb-6">
@@ -509,7 +507,7 @@ const MenteeGroupPage: React.FC = () => {
                                 )}
                             </div>
                             {group.project && (
-                                <Workbook
+                                <WorkbookTray
                                     projectId={group.project._id}
                                     entries={group.project.workbook}
                                     members={group.members || []}
@@ -519,7 +517,6 @@ const MenteeGroupPage: React.FC = () => {
                                     groupName={group.name}
                                 />
                             )}
-                            </div>
                         </div>
 
                         {/* Right Column - Team & Mentor (1/3 width) */}

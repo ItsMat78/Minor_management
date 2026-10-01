@@ -16,7 +16,7 @@ import * as Dialog from '@radix-ui/react-dialog';
 import { GlobalEventBanner } from '../components/GlobalEventBanner';
 import { DEFAULT_RUBRIC_CONFIG } from '../utils/rubrics';
 import ArchivedProjectCard, { type ArchivedProject } from '../components/ArchivedProjectCard';
-import Workbook from '../components/Workbook';
+import WorkbookTray from '../components/WorkbookTray';
 
 interface Group {
     _id: string;
@@ -570,7 +570,7 @@ const Dashboard: React.FC = () => {
                             {approvedProjectForSidebar && (
                                 <SidebarItem
                                     icon={<ClipboardList className="w-5 h-5" />}
-                                    label="Evaluation"
+                                    label="Evaluation Panel"
                                     active={activeTab === 'evaluation'}
                                     onClick={() => selectTab('evaluation')}
                                 />
@@ -653,7 +653,7 @@ const Dashboard: React.FC = () => {
                                 <ChevronRight className="w-3 h-3" />
                                 <span>
                                     {activeTab === 'directory' ? 'Directory' :
-                                     activeTab === 'evaluation' ? 'Evaluation' :
+                                     activeTab === 'evaluation' ? 'Evaluation Panel' :
                                      activeTab === 'results' ? 'Results' :
                                      activeTab === 'archive' ? 'Archive' :
                                      activeTab === 'profile' ? 'Profile' : 'My Project'}
@@ -1289,8 +1289,6 @@ const Dashboard: React.FC = () => {
                                                         </div>
 
 
-                                                        {/* Updates timeline and weekly workbook side by side; stacked below xl */}
-                                                        <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 items-start">
                                                         <div className="space-y-6">
                                                             <div className="flex flex-wrap items-center justify-between gap-4">
                                                                 <h3 className="text-lg font-bold text-neutral-900 flex items-center gap-2">
@@ -1387,7 +1385,7 @@ const Dashboard: React.FC = () => {
                                                             </div>
                                                         </div>
 
-                                                        <Workbook
+                                                        <WorkbookTray
                                                             projectId={approvedProject._id}
                                                             entries={approvedProject.workbook}
                                                             members={group.members}
@@ -1395,7 +1393,6 @@ const Dashboard: React.FC = () => {
                                                             archived={approvedProject.isArchived}
                                                             groupName={group.name}
                                                         />
-                                                        </div>
                                                     </div>
                                                 );
                                             } else {
@@ -1635,55 +1632,31 @@ const Dashboard: React.FC = () => {
                                                     )}
                                                 </div>
 
-                                                {/* Evaluation panel: panel, its groups, deliverables */}
+                                                {/* Evaluation panel (summary): panel faculty, room, deliverables. Group list and
+                                                    rubrics live on the Evaluation Panel tab. */}
                                                 <div className="bg-white p-5 sm:p-6 rounded-2xl border border-neutral-200 shadow-sm">
-                                                    <h4 className="font-bold text-neutral-900 mb-4 text-sm flex items-center gap-2">
-                                                        <ClipboardList className="w-4 h-4 text-emerald-600" /> Evaluation Panel
-                                                    </h4>
+                                                    <div className="flex items-center justify-between gap-2 mb-4">
+                                                        <h4 className="font-bold text-neutral-900 text-sm flex items-center gap-2">
+                                                            <ClipboardList className="w-4 h-4 text-emerald-600" /> Evaluation Panel
+                                                        </h4>
+                                                        {panelInfo?.panel?.room && (
+                                                            <span className="flex items-center gap-1 text-[11px] font-bold text-neutral-600 bg-neutral-100 px-2 py-0.5 rounded-full shrink-0">
+                                                                <MapPin className="w-3 h-3" /> {panelInfo.panel.room}
+                                                            </span>
+                                                        )}
+                                                    </div>
 
-                                                    <p className="text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-2">Panel</p>
                                                     {panelInfo?.panel ? (
-                                                        <div className="mb-5">
-                                                            <div className="flex items-center justify-between gap-2 mb-2">
-                                                                <span className="text-sm font-bold text-neutral-900">Panel {panelInfo.panelNumber}</span>
-                                                                {panelInfo.panel.room && (
-                                                                    <span className="flex items-center gap-1 text-[11px] font-bold text-neutral-600 bg-neutral-100 px-2 py-0.5 rounded-full">
-                                                                        <MapPin className="w-3 h-3" /> {panelInfo.panel.room}
-                                                                    </span>
-                                                                )}
-                                                            </div>
-                                                            <ul className="space-y-1">
-                                                                {(panelInfo.panel.faculty || []).map((f: any) => (
-                                                                    <li key={f._id} className="text-xs text-neutral-600 truncate">
-                                                                        {f.name}
-                                                                        {String(f._id) === String(panelInfo.mentorId) && <span className="ml-1.5 text-[10px] font-bold text-indigo-600">(mentor)</span>}
-                                                                    </li>
-                                                                ))}
-                                                            </ul>
-                                                            {panelInfo.panelGroups?.length > 0 && (
-                                                                <>
-                                                                    <p className="text-[10px] font-black text-neutral-400 uppercase tracking-widest mt-4 mb-2">
-                                                                        Groups ({panelInfo.panelGroups.length})
-                                                                    </p>
-                                                                    <ul className="space-y-1 max-h-64 overflow-y-auto pr-1">
-                                                                        {panelInfo.panelGroups.map((g: any) => (
-                                                                            <li
-                                                                                key={g._id}
-                                                                                className={`flex items-start gap-2 text-xs rounded-md px-2 py-1.5 ${g.isMine ? 'bg-indigo-50 ring-1 ring-indigo-100' : ''}`}
-                                                                            >
-                                                                                <span className={`shrink-0 w-8 font-black tabular-nums ${g.isMine ? 'text-indigo-700' : 'text-neutral-400'}`}>G{g.name}</span>
-                                                                                <span className="min-w-0">
-                                                                                    <span className="block text-neutral-700 truncate" title={g.projectTitle}>{g.projectTitle}</span>
-                                                                                    {g.mentorName && <span className="block text-[10px] text-neutral-400 truncate">{g.mentorName}</span>}
-                                                                                </span>
-                                                                            </li>
-                                                                        ))}
-                                                                    </ul>
-                                                                </>
-                                                            )}
-                                                        </div>
+                                                        <ul className="space-y-1 mb-5">
+                                                            {(panelInfo.panel.faculty || []).map((f: any) => (
+                                                                <li key={f._id} className="text-xs text-neutral-600 truncate">
+                                                                    {f.name}
+                                                                    {String(f._id) === String(panelInfo.mentorId) && <span className="ml-1.5 text-[10px] font-bold text-indigo-600">(mentor)</span>}
+                                                                </li>
+                                                            ))}
+                                                        </ul>
                                                     ) : (
-                                                        <p className="text-xs text-neutral-400 italic mb-5">Not assigned yet.</p>
+                                                        <p className="text-xs text-neutral-400 italic mb-5">Panel not assigned yet.</p>
                                                     )}
 
                                                     <div className="flex items-center justify-between gap-2 mb-2">
@@ -2057,6 +2030,30 @@ const Dashboard: React.FC = () => {
                                             </div>
                                         )}
                                     </div>
+
+                                    {/* Groups this panel evaluates, in group-number order */}
+                                    {panelInfo?.panel && panelInfo.panelGroups?.length > 0 && (
+                                        <div className="bg-white rounded-3xl border border-neutral-200 shadow-sm overflow-hidden">
+                                            <div className="px-5 sm:px-7 py-5 border-b border-neutral-100 flex items-center justify-between gap-3">
+                                                <h3 className="font-black text-neutral-900 text-base">Groups in this panel</h3>
+                                                <span className="text-xs font-bold text-neutral-500 tabular-nums">{panelInfo.panelGroups.length} groups</span>
+                                            </div>
+                                            <ul className="divide-y divide-neutral-100">
+                                                {panelInfo.panelGroups.map((g: any) => (
+                                                    <li key={g._id} className={`flex items-center gap-4 px-5 sm:px-7 py-3 ${g.isMine ? 'bg-indigo-50/60' : ''}`}>
+                                                        <span className={`shrink-0 w-12 text-sm font-black tabular-nums ${g.isMine ? 'text-indigo-700' : 'text-neutral-400'}`}>G{g.name}</span>
+                                                        <div className="min-w-0 flex-1">
+                                                            <p className="text-sm font-semibold text-neutral-900 truncate" title={g.projectTitle}>{g.projectTitle}</p>
+                                                            {g.mentorName && <p className="text-xs text-neutral-500 truncate">Mentor: {g.mentorName}</p>}
+                                                        </div>
+                                                        {g.isMine && (
+                                                            <span className="text-[10px] font-black uppercase tracking-widest text-indigo-700 bg-indigo-100 px-2 py-1 rounded-full shrink-0">Your Group</span>
+                                                        )}
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    )}
 
                                     {/* Rubric cards: shown once an evaluation event of that type exists for the batch */}
                                     {([['mid-term', 'Mid-Term Evaluation Rubric'], ['end-term', 'End-Term Evaluation Rubric']] as const).map(([type, title]) => {
