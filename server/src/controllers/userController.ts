@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import crypto from 'crypto';
 import User, { UserRole } from '../models/User';
+import { isStaff } from '../utils/permissions';
 import Group from '../models/Group';
 import Project from '../models/Project';
 import * as XLSX from 'xlsx';
@@ -222,8 +223,8 @@ export const getAllStudents = async (req: Request, res: Response) => {
             query._id = { $nin: groupedIds };
         }
 
-        // Pagination (admin only — students always get their full cohort)
-        const isAdmin = currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.FACULTY;
+        // Pagination (staff and faculty — students always get their full cohort)
+        const isAdmin = isStaff(currentUser?.role) || currentUser?.role === UserRole.FACULTY;
         const page = isAdmin && pageParam ? Math.max(1, parseInt(pageParam as string)) : 0;
         const limit = isAdmin && limitParam ? Math.max(1, Math.min(200, parseInt(limitParam as string))) : 0;
         const usePagination = page > 0 && limit > 0;
@@ -319,6 +320,7 @@ const SELF_EDITABLE_FIELDS: Record<string, string[]> = {
     [UserRole.FACULTY]: ['name', 'department', 'expertise'],
     [UserRole.STUDENT]: ['name'],
     [UserRole.ADMIN]: ['name'],
+    [UserRole.COORDINATOR]: ['name'],
 };
 
 export const updateMyProfile = async (req: Request, res: Response) => {

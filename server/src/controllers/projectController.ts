@@ -10,6 +10,7 @@ import Event, { EventType } from '../models/Event';
 import { nextActiveGroupNumber } from '../utils/groupNumbering';
 import { midTermEvaluationOpened, projectDetailsFrozen, DETAILS_FROZEN_MESSAGE } from '../utils/evaluationLock';
 import { supervisorCapacity, mentorFullMessage } from '../utils/supervisorCapacity';
+import { hasPermission } from '../utils/permissions';
 import { resolveSession } from '../utils/session';
 
 // ... (imports)
@@ -152,7 +153,7 @@ export const getFacultyProjects = async (req: Request, res: Response) => {
 // member list populated so the admin can review and decide exactly like the faculty does.
 export const getAdminProposals = async (req: Request, res: Response) => {
     try {
-        if ((req as any).user.role !== UserRole.ADMIN) {
+        if (!hasPermission((req as any).user.role, 'proposals')) {
             return res.status(403).json({ message: 'Not authorized' });
         }
 
@@ -205,7 +206,7 @@ export const updateProjectStatus = async (req: Request, res: Response) => {
 
         // Verify faculty (security check)
         const userId = (req as any).user.id;
-        if (project.faculty?.toString() !== userId && (req as any).user.role !== 'Admin') {
+        if (project.faculty?.toString() !== userId && !hasPermission((req as any).user.role, 'proposals')) {
             return res.status(403).json({ message: 'Not authorized to update this project' });
         }
 
@@ -365,7 +366,7 @@ export const adminSetProjectStatus = async (req: Request, res: Response) => {
         const { id } = req.params;
         const { status, feedback, confirm } = req.body;
 
-        if ((req as any).user.role !== UserRole.ADMIN) {
+        if (!hasPermission((req as any).user.role, 'proposals')) {
             return res.status(403).json({ message: 'Access denied. Admin only.' });
         }
         if (!['Draft', 'Pending', 'Approved', 'Rejected'].includes(status)) {
@@ -426,8 +427,8 @@ export const getProjects = async (req: Request, res: Response) => {
 
         let query: any = { isArchived: { $ne: true } };
 
-        if (role === UserRole.ADMIN) {
-            // Admin sees all non-archived projects — support pagination
+        if (hasPermission(role, 'groups')) {
+            // Staff see all non-archived projects — support pagination
         } else if (role === UserRole.FACULTY) {
             query.faculty = userId;
         } else {
@@ -440,7 +441,7 @@ export const getProjects = async (req: Request, res: Response) => {
         const { page: pageParam, limit: limitParam } = req.query;
         const page = pageParam ? Math.max(1, parseInt(pageParam as string)) : 0;
         const limit = limitParam ? Math.max(1, Math.min(200, parseInt(limitParam as string))) : 0;
-        const usePagination = page > 0 && limit > 0 && role === UserRole.ADMIN;
+        const usePagination = page > 0 && limit > 0 && hasPermission(role, 'groups');
 
         let projectQuery = Project.find(query)
             .populate('group', 'name members targetBatch')
@@ -852,7 +853,7 @@ export const updateProjectDetails = async (req: Request, res: Response) => {
 
         // The assigned mentor or an admin. Any other faculty is a stranger to this project.
         const isAssignedMentor = !!project.faculty && project.faculty.toString() === userId;
-        if (!isAssignedMentor && role !== UserRole.ADMIN) {
+        if (!isAssignedMentor && !hasPermission(role, 'groups')) {
             return res.status(403).json({
                 message: 'Only this project\'s mentor or the admin can edit its details.'
             });
@@ -1015,7 +1016,7 @@ export const submitEvaluation = async (req: Request, res: Response) => {
         const project = await Project.findById(id);
         if (!project) return res.status(404).json({ message: 'Project not found' });
 
-        let isAuthorized = String(project.faculty) === userId || (req as any).user.role === 'Admin';
+        let isAuthorized = String(project.faculty) === userId || hasPermission((req as any).user.role, 'evaluations');
         if (!isAuthorized && project.faculty) {
             const panelDoc = await Panel.findOne({ faculty: { $all: [project.faculty, userId] } });
             if (panelDoc) isAuthorized = true;
@@ -1107,13 +1108,13 @@ export const uploadSubmissions = async (req: Request, res: Response) => {
         if (!group) return res.status(404).json({ message: 'Group not found' });
         
         const isMember = group.members.some(member => String(member) === userId);
-        if (!isMember && (req as any).user.role !== 'Admin') {
+        if (!isMember && !hasPermission((req as any).user.role, 'groups')) {
             return res.status(403).json({ message: 'Not authorized to submit for this project' });
         }
 
-        // Gate uploads to the matching evaluation window (admins may submit anytime).
+        // Gate uploads to the matching evaluation window (staff may submit anytime).
         // evalType ('mid_term_evaluation' | 'end_term_evaluation') maps directly to EventType.
-        if ((req as any).user.role !== 'Admin') {
+        if (!hasPermission((req as any).user.role, 'groups')) {
             if (evalType !== EventType.MID_TERM_EVALUATION && evalType !== EventType.END_TERM_EVALUATION) {
                 return res.status(400).json({ message: 'Invalid evaluation type for submission' });
             }
@@ -1182,7 +1183,7 @@ export const setStudentFeedback = async (req: Request, res: Response) => {
         const project = await Project.findById(id);
         if (!project) return res.status(404).json({ message: 'Project not found' });
 
-        const isAuthorized = String(project.faculty) === userId || (req as any).user.role === 'Admin';
+        const isAuthorized = String(project.faculty) === userId || hasPermission((req as any).user.role, 'evaluations');
         if (!isAuthorized) {
             return res.status(403).json({ message: 'Not authorized to leave feedback on this project' });
         }
@@ -1230,7 +1231,7 @@ export const saveStudentEvaluations = async (req: Request, res: Response) => {
         const project = await Project.findById(id);
         if (!project) return res.status(404).json({ message: 'Project not found' });
 
-        let isAuthorized = String(project.faculty) === userId || (req as any).user.role === 'Admin';
+        let isAuthorized = String(project.faculty) === userId || hasPermission((req as any).user.role, 'evaluations');
         if (!isAuthorized && project.faculty) {
             const panelDoc = await Panel.findOne({ faculty: { $all: [project.faculty, userId] } });
             if (panelDoc) isAuthorized = true;
@@ -1277,7 +1278,7 @@ export const addFeedback = async (req: Request, res: Response) => {
         if (!project) return res.status(404).json({ message: 'Project not found' });
 
         // Authorization: Only assigned faculty
-        let isAuthorized = String(project.faculty) === userId || (req as any).user.role === 'Admin';
+        let isAuthorized = String(project.faculty) === userId || hasPermission((req as any).user.role, 'evaluations');
         
         if (!isAuthorized) {
             return res.status(403).json({ message: 'Not authorized to add feedback to this project' });

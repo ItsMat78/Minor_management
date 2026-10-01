@@ -1,28 +1,20 @@
 import express from 'express';
 import { getEvents, getActiveEvents, createEvent, updateEvent, toggleEvent, deleteEvent, getParticipatingBatchesHandler } from '../controllers/eventController';
 import { auth } from '../middleware/authMiddleware';
-import { UserRole } from '../models/User';
+import { requirePermission } from '../utils/permissions';
 
 const router = express.Router();
-
-const adminAuth = (req: any, res: any, next: any) => {
-    if (req.user && req.user.role === UserRole.ADMIN) {
-        next();
-    } else {
-        res.status(403).json({ message: 'Access denied. Admin only.' });
-    }
-};
 
 // Public (authenticated) routes
 router.get('/active', auth, getActiveEvents);
 router.get('/participating-batches', auth, getParticipatingBatchesHandler);
 
-// Admin-only routes
+// Staff routes (admin + coordinator; deleting stays with the admin)
 router.use(auth);
-router.get('/', adminAuth, getEvents);
-router.post('/', adminAuth, createEvent);
-router.put('/:id', adminAuth, updateEvent);
-router.put('/:id/toggle', adminAuth, toggleEvent);
-router.delete('/:id', adminAuth, deleteEvent);
+router.get('/', requirePermission('events'), getEvents);
+router.post('/', requirePermission('events'), createEvent);
+router.put('/:id', requirePermission('events'), updateEvent);
+router.put('/:id/toggle', requirePermission('events'), toggleEvent);
+router.delete('/:id', requirePermission('events.delete'), deleteEvent);
 
 export default router;

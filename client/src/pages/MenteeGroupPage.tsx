@@ -15,6 +15,7 @@ import FilePreview from '../components/FilePreview';
 import ProfilePhotoUpload from '../components/ProfilePhotoUpload';
 import ProjectDetailsHeader from '../components/ProjectDetailsHeader';
 import { GlobalEventBanner } from '../components/GlobalEventBanner';
+import { isStaff } from '../utils/permissions';
 
 const MenteeGroupPage: React.FC = () => {
     const { groupId } = useParams<{ groupId: string }>();
@@ -139,7 +140,7 @@ const MenteeGroupPage: React.FC = () => {
         }
     };
 
-    if (user && user.role !== 'Faculty' && user.role !== 'Admin') {
+    if (user && user.role !== 'Faculty' && !isStaff(user.role)) {
         return <Navigate to="/dashboard" replace />;
     }
 
@@ -147,7 +148,7 @@ const MenteeGroupPage: React.FC = () => {
     // check is a formality — but keep it explicit rather than assuming the route did it.
     const projectFaculty = group?.project?.faculty;
     const canEditDetails = !!group?.project && (
-        user?.role === 'Admin' || String(projectFaculty?._id || projectFaculty || '') === String(user?._id || '')
+        isStaff(user?.role) || String(projectFaculty?._id || projectFaculty || '') === String(user?._id || '')
     );
 
     if (loading) return (
@@ -351,7 +352,7 @@ const MenteeGroupPage: React.FC = () => {
                                             <h5 className="text-sm font-bold text-orange-800 flex items-center gap-2">
                                                 <MessageSquare className="w-4 h-4" /> Faculty Feedback
                                             </h5>
-                                            {(user?.role === 'Admin' || user?._id === group.project.faculty) && (
+                                            {(isStaff(user?.role) || user?._id === group.project.faculty) && (
                                                 <button
                                                     onClick={() => {
                                                         setFeedbackContent(group.project.feedback);
@@ -370,7 +371,7 @@ const MenteeGroupPage: React.FC = () => {
                                 ) : (
                                     <div className="mt-8 p-6 bg-orange-50/50 rounded-2xl border border-dashed border-orange-200 flex flex-col items-center justify-center text-center">
                                         <p className="text-sm text-orange-600/70 mb-3 font-medium">No feedback provided yet.</p>
-                                        {(user?.role === 'Admin' || user?._id === group.project.faculty) && (
+                                        {(isStaff(user?.role) || user?._id === group.project.faculty) && (
                                             <button
                                                 onClick={() => {
                                                     setFeedbackContent('');
@@ -435,7 +436,7 @@ const MenteeGroupPage: React.FC = () => {
                                     <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
                                         <Clock className="w-5 h-5 text-indigo-600" /> Project Timeline
                                     </h3>
-                                    {user?.role !== 'Admin' && (
+                                    {!isStaff(user?.role) && (
                                         <button
                                             onClick={() => setIsUpdateModalOpen(true)}
                                             className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition-colors shadow-sm"
@@ -586,7 +587,7 @@ const MenteeGroupPage: React.FC = () => {
                                                             />
                                                             <span className="text-sm font-bold text-gray-900">{member.name}</span>
                                                         </div>
-                                                        {(user?.role === 'Admin' || String(user?._id) === String(group.project?.faculty?._id) || String(user?._id) === String(group.project?.faculty)) && (
+                                                        {(isStaff(user?.role) || String(user?._id) === String(group.project?.faculty?._id) || String(user?._id) === String(group.project?.faculty)) && (
                                                             <button
                                                                 onClick={() => {
                                                                     setStudentFeedbackTarget(member);

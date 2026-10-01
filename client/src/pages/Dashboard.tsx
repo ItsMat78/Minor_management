@@ -17,6 +17,7 @@ import { GlobalEventBanner } from '../components/GlobalEventBanner';
 import { DEFAULT_RUBRIC_CONFIG } from '../utils/rubrics';
 import ArchivedProjectCard, { type ArchivedProject } from '../components/ArchivedProjectCard';
 import WorkbookTray from '../components/WorkbookTray';
+import { isStaff } from '../utils/permissions';
 
 interface Group {
     _id: string;
@@ -504,7 +505,7 @@ const Dashboard: React.FC = () => {
         );
     }
 
-    if (user?.role === 'Admin') return <AdminDashboard />;
+    if (isStaff(user?.role)) return <AdminDashboard />;
     if (user?.role === 'Faculty') return <FacultyDashboard />;
 
     // Final Deadline Check for students without groups

@@ -3,7 +3,10 @@ import mongoose, { Document, Schema } from 'mongoose';
 export enum UserRole {
     STUDENT = 'Student',
     FACULTY = 'Faculty',
-    ADMIN = 'Admin'
+    ADMIN = 'Admin',
+    // Yearly minor-project coordinator: a separate account with a subset of admin powers
+    // (see utils/permissions.ts), created and later deactivated by an admin.
+    COORDINATOR = 'Coordinator'
 }
 
 export interface IUser extends Document {
@@ -38,6 +41,10 @@ export interface IUser extends Document {
         maxGroups: number;
     }[];
     photoUrl?: string;
+    // Coordinator lifecycle: a deactivated or expired coordinator can no longer sign in or use
+    // an existing token. The account is kept so the audit trail still names who did what.
+    isDeactivated?: boolean;
+    validUntil?: Date;
     createdAt: Date;
 }
 
@@ -66,11 +73,17 @@ const UserSchema: Schema = new Schema({
         maxStudents: Number,
         maxGroups: Number
     }],
-    photoUrl: { type: String }
+    photoUrl: { type: String },
+    isDeactivated: { type: Boolean, default: false },
+    validUntil: { type: Date }
 }, {
     timestamps: true
 });
 
 UserSchema.index({ role: 1, isParticipating: 1 });
+
+// Whether a coordinator account is currently usable (deactivated or past its validUntil → no).
+export const coordinatorIsActive = (u: { isDeactivated?: boolean; validUntil?: Date | null }): boolean =>
+    !u.isDeactivated && (!u.validUntil || new Date(u.validUntil).getTime() > Date.now());
 
 export default mongoose.model<IUser>('User', UserSchema);

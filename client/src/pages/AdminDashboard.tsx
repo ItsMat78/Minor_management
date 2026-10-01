@@ -4,6 +4,8 @@ import { useSearchParams } from 'react-router-dom';
 import api from '../utils/api';
 import { errorMessage } from '../utils/apiError';
 import { useAuth } from '../context/AuthContext';
+import { hasPermission, type Permission } from '../utils/permissions';
+import CoordinatorsModal from '../components/CoordinatorsModal';
 import { Search, Users, Clock, CheckCircle, XCircle, FileText, X, LogOut, ChevronDown, ChevronUp, ChevronRight, Settings, Menu, Calendar, Download, AlertCircle, AlertTriangle, Save, Pencil, LayoutGrid, MoreVertical, Plus, Edit3, Power, Info, Trash2, Upload, Mail, Copy, Check, UserCheck, UserX, ShieldCheck, ShieldOff, Archive as ArchiveIcon } from 'lucide-react';
 import { motion } from 'framer-motion';
 import MenteeGroupDetails from '../components/MenteeGroupDetails';
@@ -254,6 +256,9 @@ const GROUP_STAGE_LABELS: Record<Exclude<GroupStage, 'All'>, string> = {
 
 const AdminDashboard: React.FC = () => {
     const { user, logout } = useAuth();
+    // Coordinators share this dashboard; admin-only controls are hidden (the server refuses them too).
+    const can = (permission: Permission) => hasPermission(user?.role, permission);
+    const [showCoordinators, setShowCoordinators] = useState(false);
     const [searchParams, setSearchParams] = useSearchParams();
     const initialAdminTab = searchParams.get('tab') as AdminTab | null;
     const [activeTab, setActiveTab] = useState<AdminTab>(initialAdminTab || 'overview');
@@ -2105,7 +2110,7 @@ const AdminDashboard: React.FC = () => {
                         <div className="h-8 w-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white">
                             <Settings className="w-5 h-5" />
                         </div>
-                        Admin Portal
+                        {user?.role === 'Coordinator' ? 'Coordinator Portal' : 'Admin Portal'}
                     </h2>
                     <button onClick={() => setIsSidebarOpen(false)} className="lg:hidden">
                         <X className="w-5 h-5" />
@@ -2491,6 +2496,7 @@ const AdminDashboard: React.FC = () => {
 
                                         </div>
 
+                                        {can('accounts') && (<>
                                         {/* Quick Actions */}
                                         <div className="md:col-span-2 lg:col-span-4 mt-6">
                                             <div className="bg-white p-6 rounded-3xl border border-neutral-200 shadow-sm">
@@ -2523,9 +2529,22 @@ const AdminDashboard: React.FC = () => {
                                                             <p className="text-xs text-neutral-500">Add a student or faculty account</p>
                                                         </div>
                                                     </button>
+                                                    <button
+                                                        onClick={() => setShowCoordinators(true)}
+                                                        className="flex items-center gap-3 p-4 rounded-2xl border border-neutral-200 hover:border-amber-300 hover:bg-amber-50 hover:text-amber-700 transition-all text-left group"
+                                                    >
+                                                        <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center text-amber-600 group-hover:scale-110 transition-transform">
+                                                            <Users className="w-5 h-5" />
+                                                        </div>
+                                                        <div>
+                                                            <p className="font-bold text-neutral-900 group-hover:text-amber-700">Coordinators</p>
+                                                            <p className="text-xs text-neutral-500">Create or deactivate the yearly coordinator</p>
+                                                        </div>
+                                                    </button>
                                                 </div>
                                             </div>
                                         </div>
+                                        </>)}
 
                                         {/* Group Status Breakdown */}
                                         {stats && (
@@ -2672,7 +2691,7 @@ const AdminDashboard: React.FC = () => {
                                                                         <Mail className="w-4 h-4" />
                                                                     </a>
                                                                     <div className="relative">
-                                                                        <button
+                                                                        {can('users') && <button
                                                                             onClick={(e) => {
                                                                                 e.stopPropagation();
                                                                                 setStudentBatchMenuOpen(studentBatchMenuOpen === student._id ? null : student._id);
@@ -2681,7 +2700,7 @@ const AdminDashboard: React.FC = () => {
                                                                             title="More actions"
                                                                         >
                                                                             <Settings className="w-4 h-4" />
-                                                                        </button>
+                                                                        </button>}
                                                                         {studentBatchMenuOpen === student._id && (
                                                                             <div
                                                                                 className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-lg border border-neutral-200 py-1 z-50 animate-in fade-in zoom-in duration-200"
@@ -2727,6 +2746,7 @@ const AdminDashboard: React.FC = () => {
 
                                 {activeTab === 'faculty' && (
                                     <div className="space-y-4">
+                                        {can('settings') && (<>
                                         <button
                                             onClick={openDefaultLimitsModal}
                                             className="w-full flex items-center justify-between px-6 py-4 bg-white rounded-xl border border-indigo-200 shadow-sm hover:border-indigo-400 hover:shadow-md transition-all group"
@@ -2742,6 +2762,7 @@ const AdminDashboard: React.FC = () => {
                                             </div>
                                             <ChevronRight className="w-5 h-5 text-neutral-400 group-hover:text-indigo-600 transition-colors" />
                                         </button>
+                                        </>)}
                                         <div className="bg-white rounded-xl border border-neutral-200 shadow-sm overflow-visible">
                                             <table className="w-full text-left text-sm">
                                                 <thead className="bg-neutral-50 border-b border-neutral-200">
@@ -2814,6 +2835,7 @@ const AdminDashboard: React.FC = () => {
                                                                         >
                                                                             <Mail className="w-4 h-4" /> Mail
                                                                         </a>
+                                                                        {can('users') && (<>
                                                                         <button
                                                                             onClick={() => handleToggleFacultyVerification(f)}
                                                                             className={`p-1.5 rounded-lg transition-colors ${f.isVerified ? 'hover:bg-rose-50 text-neutral-400 hover:text-rose-600' : 'hover:bg-emerald-50 text-neutral-400 hover:text-emerald-600'}`}
@@ -2828,6 +2850,7 @@ const AdminDashboard: React.FC = () => {
                                                                         >
                                                                             <Settings className="w-3.5 h-3.5" /> Manage
                                                                         </button>
+                                                                        </>)}
                                                                     </div>
                                                                 </td>
                                                             </tr>
@@ -3559,7 +3582,7 @@ const AdminDashboard: React.FC = () => {
                                                                             <Edit3 className="w-4 h-4" />
                                                                         </button>
                                                                     )}
-                                                                    {isExpired ? (
+                                                                    {isExpired ? (can('events.delete') && (
                                                                         <button
                                                                             onClick={() => setConfirmDeleteEvent(ev)}
                                                                             className="p-2 rounded-lg bg-neutral-100 text-neutral-400 hover:bg-red-50 hover:text-red-600 transition-colors"
@@ -3567,7 +3590,7 @@ const AdminDashboard: React.FC = () => {
                                                                         >
                                                                             <Trash2 className="w-4 h-4" />
                                                                         </button>
-                                                                    ) : (
+                                                                    )) : (
                                                                         <button
                                                                             onClick={() => setConfirmEndEvent(ev)}
                                                                             className="p-2 rounded-lg bg-neutral-100 text-neutral-400 hover:bg-amber-50 hover:text-amber-600 transition-colors"
@@ -3633,6 +3656,7 @@ const AdminDashboard: React.FC = () => {
                                             </div>
                                         )}
 
+                                        {can('rollover') && (<>
                                         {/* ── Semester Rollover ────────────────────────────────── */}
                                         <div className="flex items-center gap-4 py-2">
                                             <div className="flex-1 h-px bg-red-200" />
@@ -3656,6 +3680,7 @@ const AdminDashboard: React.FC = () => {
                                             </div>
                                             <SemesterRolloverButton />
                                         </div>
+                                        </>)}
                                     </div>
                                 )}
 
@@ -3726,6 +3751,7 @@ const AdminDashboard: React.FC = () => {
                                         </div>
 
 
+                                        {can('users') && (<>
                                         {/* ── Divider ──────────────────────────────────────────── */}
                                         <div className="flex items-center gap-4 py-2">
                                             <div className="flex-1 h-px bg-neutral-200" />
@@ -3801,6 +3827,7 @@ const AdminDashboard: React.FC = () => {
                                                 </button>
                                             </div>
                                         </div>
+                                        </>)}
 
                                         {/* ── Snapshot Import ───────────────────────────────────── */}
                                         <div className="bg-white rounded-2xl border border-neutral-200 shadow-sm overflow-hidden">
@@ -7092,6 +7119,8 @@ const AdminDashboard: React.FC = () => {
                         </motion.div>
                     </motion.div>
                 )}
+
+                {showCoordinators && <CoordinatorsModal onClose={() => setShowCoordinators(false)} />}
 
                 {/* ── Snapshot Import Modal ─────────────────────────────── */}
                 {showSnapshotImportModal && (

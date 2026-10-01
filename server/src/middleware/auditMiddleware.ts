@@ -60,6 +60,8 @@ const RULES: Array<{ m: string; re: RegExp; action: string; targetUser?: boolean
 
     // Admin
     { m: 'POST',   re: /^\/api\/admin\/create-user/,               action: 'user.create' },
+    { m: 'POST',   re: /^\/api\/admin\/coordinators$/,             action: 'coordinator.create' },
+    { m: 'PUT',    re: /^\/api\/admin\/coordinators\/([^/?]+)/,      action: 'coordinator.update', targetUser: true },
     { m: 'POST',   re: /^\/api\/admin\/create/,                    action: 'admin.create' },
     { m: 'POST',   re: /^\/api\/admin\/semester-rollover/,         action: 'admin.semesterRollover' },
     { m: 'PUT',    re: /^\/api\/admin\/default-faculty-limits/,    action: 'admin.facultyLimits.set' },

@@ -4,6 +4,7 @@ import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import { motion } from 'framer-motion';
 import { Loader2, Lock, ArrowRight, ShieldCheck } from 'lucide-react';
+import { isStaff } from '../utils/permissions';
 
 const ChangePassword: React.FC = () => {
     const [currentPassword, setCurrentPassword] = useState('');
@@ -25,7 +26,7 @@ const ChangePassword: React.FC = () => {
         try {
             await api.post('/auth/change-password', { currentPassword, newPassword });
             if (refreshUser) await refreshUser();
-            if (user?.role === 'Admin') navigate('/admin', { replace: true });
+            if (isStaff(user?.role)) navigate('/admin', { replace: true });
             else navigate('/dashboard', { replace: true });
         } catch (err: any) {
             setError(err.response?.data?.message || 'Could not change password.');

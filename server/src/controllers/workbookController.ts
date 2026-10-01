@@ -2,7 +2,8 @@ import { Request, Response } from 'express';
 import ExcelJS from 'exceljs';
 import Project from '../models/Project';
 import Group from '../models/Group';
-import User, { UserRole } from '../models/User';
+import User from '../models/User';
+import { hasPermission } from '../utils/permissions';
 
 // The weekly workbook: WORKBOOK_WEEKS fixed slots per project, independent of events and dates.
 //   • any group member may write/rewrite a week's content, until the week is approved;
@@ -134,14 +135,14 @@ export const setWorkbookApproval = async (req: Request, res: Response) => {
     }
 };
 
-// GET /projects/:id/workbook/export — the mentor (or an admin) downloads the workbook as xlsx:
+// GET /projects/:id/workbook/export — the mentor (or staff) downloads the workbook as xlsx:
 // one row per week with the work done, each member's attendance, and the approval.
 export const exportWorkbook = async (req: Request, res: Response) => {
     try {
         const ctx = await loadContext(req, res);
         if (!ctx) return;
         const { project, isMentor } = ctx;
-        if (!isMentor && (req as any).user.role !== UserRole.ADMIN) {
+        if (!isMentor && !hasPermission((req as any).user.role, 'groups')) {
             return res.status(403).json({ message: 'Only the mentor can export the workbook' });
         }
 

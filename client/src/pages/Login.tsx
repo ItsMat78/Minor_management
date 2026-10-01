@@ -4,6 +4,7 @@ import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Loader2, ArrowRight, User, Lock, KeyRound } from 'lucide-react';
+import { isStaff } from '../utils/permissions';
 
 const Login: React.FC = () => {
     const [email, setEmail] = useState('');
@@ -27,7 +28,7 @@ const Login: React.FC = () => {
         if (isAuthenticated && user) {
             if (user.mustChangePassword) {
                 navigate('/change-password', { replace: true });
-            } else if (user.role === 'Admin') {
+            } else if (isStaff(user.role)) {
                 navigate('/admin', { replace: true });
             } else {
                 navigate('/dashboard', { replace: true });
@@ -63,7 +64,7 @@ const Login: React.FC = () => {
 
                 if (res.data.user.mustChangePassword) {
                     navigate('/change-password');
-                } else if (res.data.user.role === 'Admin') {
+                } else if (isStaff(res.data.user.role)) {
                     navigate('/admin');
                 } else {
                     navigate('/dashboard');
@@ -82,7 +83,7 @@ const Login: React.FC = () => {
 
                 if (res.data.user.mustChangePassword) {
                     navigate('/change-password');
-                } else if (res.data.user.role === 'Admin') {
+                } else if (isStaff(res.data.user.role)) {
                     navigate('/admin');
                 } else {
                     navigate('/dashboard');
@@ -139,7 +140,7 @@ const Login: React.FC = () => {
             login(res.data.token, res.data.user, rememberMe);
             if (res.data.user.mustChangePassword) {
                 navigate('/change-password');
-            } else if (res.data.user.role === 'Admin') {
+            } else if (isStaff(res.data.user.role)) {
                 navigate('/admin');
             } else {
                 navigate('/dashboard');

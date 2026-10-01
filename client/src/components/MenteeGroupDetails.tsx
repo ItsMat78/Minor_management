@@ -7,6 +7,7 @@ import WorkbookTray from './WorkbookTray';
 import ProjectDetailsHeader from './ProjectDetailsHeader';
 import { resolveUploadUrl } from '../utils/uploadUrl';
 import api from '../utils/api';
+import { isStaff } from '../utils/permissions';
 
 interface MenteeGroupDetailsProps {
     group: any;
@@ -21,7 +22,8 @@ const MenteeGroupDetails: React.FC<MenteeGroupDetailsProps> = ({ group: groupPro
     const [group, setGroup] = useState<any>(groupProp);
     useEffect(() => { setGroup(groupProp); }, [groupProp]);
 
-    const isAdmin = user?.role === 'Admin';
+    // Staff (admin or coordinator) manage rosters and see the read-only views.
+    const isAdmin = isStaff(user?.role);
     const [isAddMemberOpen, setIsAddMemberOpen] = useState(false);
     const [memberSearch, setMemberSearch] = useState('');
     const [candidates, setCandidates] = useState<any[]>([]);
@@ -204,7 +206,7 @@ const MenteeGroupDetails: React.FC<MenteeGroupDetailsProps> = ({ group: groupPro
                                 <Users className="w-3.5 h-3.5" /> Group {group.name}
                             </span>
 
-                            {user?.role === 'Admin' && (
+                            {isStaff(user?.role) && (
                                 <div className="flex items-center gap-2 ml-4">
                                     <span className="text-xs font-bold text-gray-500">Override Batch:</span>
                                     <select
@@ -297,7 +299,7 @@ const MenteeGroupDetails: React.FC<MenteeGroupDetailsProps> = ({ group: groupPro
                             <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
                                 <Clock className="w-5 h-5 text-indigo-600" /> Project Timeline
                             </h3>
-                            {user?.role !== 'Admin' && (
+                            {!isStaff(user?.role) && (
                                 <button
                                     onClick={() => setIsUpdateModalOpen(true)}
                                     className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition-colors shadow-sm"

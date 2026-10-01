@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
-import User, { IUser, UserRole } from '../models/User';
+import User, { IUser, UserRole, coordinatorIsActive } from '../models/User';
 import { sendEmail, emailOutageMessage, getEmailOutage, EmailFailure } from '../utils/emailService';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'secret';
@@ -87,6 +87,10 @@ export const login = async (req: Request, res: Response) => {
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) {
             return res.status(400).json({ message: 'Invalid credentials' });
+        }
+
+        if (user.role === UserRole.COORDINATOR && !coordinatorIsActive(user)) {
+            return res.status(403).json({ message: 'This coordinator account has been deactivated. Contact the admin.' });
         }
 
         if (user.isVerified === false) {

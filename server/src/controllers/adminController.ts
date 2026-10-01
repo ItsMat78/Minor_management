@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
-import User, { UserRole } from '../models/User';
+import User, { UserRole, coordinatorIsActive } from '../models/User';
 import Group from '../models/Group';
 import Project from '../models/Project';
 import Panel from '../models/Panel';
@@ -642,3 +642,80 @@ export const verifyAuditChain = async (_req: Request, res: Response) => {
     }
 };
 
+
+// ── Coordinator accounts (admin only) ───────────────────────────────────────
+// Coordinators are separate, per-person accounts the admin creates each year. At handover the
+// old account is deactivated (never deleted) so the audit trail keeps naming who did what.
+
+const coordinatorView = (u: any) => ({
+    _id: u._id,
+    name: u.name,
+    email: u.email,
+    isDeactivated: !!u.isDeactivated,
+    validUntil: u.validUntil || null,
+    isActive: coordinatorIsActive(u),
+    createdAt: u.createdAt,
+});
+
+// GET /api/admin/coordinators
+export const listCoordinators = async (req: Request, res: Response) => {
+    try {
+        const coordinators = await User.find({ role: UserRole.COORDINATOR })
+            .select('name email isDeactivated validUntil createdAt')
+            .sort({ createdAt: -1 })
+            .lean();
+        res.json(coordinators.map(coordinatorView));
+    } catch (error: any) {
+        res.status(500).json({ message: 'Server error', error: error.message });
+    }
+};
+
+// POST /api/admin/coordinators  { name, email, password, validUntil? }
+export const createCoordinator = async (req: Request, res: Response) => {
+    try {
+        const { name, email, password, validUntil } = req.body;
+        if (!name || !email || !password) return res.status(400).json({ message: 'Name, email and password are required' });
+        if (String(password).length < 8) return res.status(400).json({ message: 'Password must be at least 8 characters' });
+        const normalizedEmail = String(email).trim().toLowerCase();
+        if (await User.findOne({ email: normalizedEmail })) {
+            return res.status(400).json({ message: 'An account with this email already exists. Coordinator accounts need their own email.' });
+        }
+        const until = validUntil ? new Date(validUntil) : undefined;
+        if (until && isNaN(until.getTime())) return res.status(400).json({ message: 'Invalid validUntil date' });
+
+        const coordinator = await User.create({
+            name: String(name).trim(),
+            email: normalizedEmail,
+            password: await bcrypt.hash(String(password), 10),
+            role: UserRole.COORDINATOR,
+            isVerified: true,
+            mustChangePassword: true, // the admin chose this password; the coordinator sets their own
+            validUntil: until,
+        });
+        res.status(201).json(coordinatorView(coordinator.toObject()));
+    } catch (error: any) {
+        res.status(500).json({ message: 'Server error', error: error.message });
+    }
+};
+
+// PUT /api/admin/coordinators/:id  { isDeactivated?, validUntil? (null clears), name? }
+export const updateCoordinator = async (req: Request, res: Response) => {
+    try {
+        const coordinator = await User.findOne({ _id: req.params.id, role: UserRole.COORDINATOR });
+        if (!coordinator) return res.status(404).json({ message: 'Coordinator not found' });
+
+        const { isDeactivated, validUntil, name } = req.body;
+        if (typeof isDeactivated === 'boolean') coordinator.isDeactivated = isDeactivated;
+        if (validUntil === null || validUntil === '') coordinator.validUntil = undefined;
+        else if (validUntil !== undefined) {
+            const until = new Date(validUntil);
+            if (isNaN(until.getTime())) return res.status(400).json({ message: 'Invalid validUntil date' });
+            coordinator.validUntil = until;
+        }
+        if (typeof name === 'string' && name.trim()) coordinator.name = name.trim();
+        await coordinator.save();
+        res.json(coordinatorView(coordinator.toObject()));
+    } catch (error: any) {
+        res.status(500).json({ message: 'Server error', error: error.message });
+    }
+};

@@ -9,6 +9,7 @@ import ProjectProposal from './pages/ProjectProposal';
 import MenteeGroupPage from './pages/MenteeGroupPage';
 
 import AdminDashboard from './pages/AdminDashboard';
+import { isStaff } from './utils/permissions';
 
 const App: React.FC = () => {
   return (
@@ -18,7 +19,7 @@ const App: React.FC = () => {
           <Route path="/login" element={<Login />} />
           <Route path="/change-password" element={<ProtectedRoute allowForcedChange><ChangePassword /></ProtectedRoute>} />
           <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-          <Route path="/admin" element={<ProtectedRoute adminOnly><AdminDashboard /></ProtectedRoute>} />
+          <Route path="/admin" element={<ProtectedRoute staffOnly><AdminDashboard /></ProtectedRoute>} />
           <Route path="/group/create" element={<ProtectedRoute><GroupFormation /></ProtectedRoute>} />
           <Route path="/project/propose" element={<ProtectedRoute><ProjectProposal /></ProtectedRoute>} />
           <Route path="/faculty/group/:groupId" element={<ProtectedRoute><MenteeGroupPage /></ProtectedRoute>} />
@@ -29,7 +30,7 @@ const App: React.FC = () => {
   );
 };
 
-const ProtectedRoute: React.FC<{ children: React.ReactNode, adminOnly?: boolean, allowForcedChange?: boolean }> = ({ children, adminOnly, allowForcedChange }) => {
+const ProtectedRoute: React.FC<{ children: React.ReactNode, staffOnly?: boolean, allowForcedChange?: boolean }> = ({ children, staffOnly, allowForcedChange }) => {
   const { user, loading } = useAuth() as any;
   const location = useLocation();
 
@@ -38,7 +39,7 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode, adminOnly?: boolean,
   if (user.mustChangePassword && !allowForcedChange && location.pathname !== '/change-password') {
     return <Navigate to="/change-password" replace />;
   }
-  if (adminOnly && user.role !== 'Admin') return <Navigate to="/dashboard" replace />;
+  if (staffOnly && !isStaff(user.role)) return <Navigate to="/dashboard" replace />;
 
   return (
     <div className="h-screen w-full flex flex-col overflow-hidden bg-neutral-50 m-0 p-0">
