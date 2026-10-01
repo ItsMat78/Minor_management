@@ -43,6 +43,17 @@ export interface IProject extends Document {
         createdBy?: mongoose.Types.ObjectId;
     }[];
     hasNewUpdate: boolean;
+    // Weekly workbook (WORKBOOK_WEEKS fixed slots). An entry exists once a member writes that
+    // week; the mentor marks attendance and approves (signs) it, which locks the entry.
+    workbook: {
+        week: number;
+        content: string;
+        lastEditedBy?: mongoose.Types.ObjectId;
+        lastEditedAt?: Date;
+        attendance: { student: mongoose.Types.ObjectId; status: 'present' | 'absent' }[];
+        approvedBy?: mongoose.Types.ObjectId;
+        approvedAt?: Date;
+    }[];
     submissions?: {
         midTermReport?: string;
         midTermPPT?: string;
@@ -139,7 +150,21 @@ const ProjectSchema: Schema = new Schema({
         links: [{ type: String }],
         createdBy: { type: Schema.Types.ObjectId, ref: 'User' }
     }],
-    hasNewUpdate: { type: Boolean, default: false }, // Flag for faculty notification
+    hasNewUpdate: { type: Boolean, default: false },
+    workbook: [{
+        week: { type: Number, required: true, min: 1 },
+        content: { type: String, required: true },
+        lastEditedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+        lastEditedAt: { type: Date },
+        attendance: [{
+            student: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+            status: { type: String, enum: ['present', 'absent'], required: true },
+            _id: false
+        }],
+        approvedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+        approvedAt: { type: Date },
+        _id: false
+    }], // Flag for faculty notification
     submissions: {
         midTermReport: { type: String },
         midTermPPT: { type: String },

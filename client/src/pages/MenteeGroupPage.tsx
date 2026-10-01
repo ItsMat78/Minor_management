@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import Workbook from '../components/Workbook';
 import Avatar from '../components/Avatar';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../utils/api';
@@ -428,6 +429,8 @@ const MenteeGroupPage: React.FC = () => {
                                 </div>
                             </div>
 
+                            {/* Updates timeline and weekly workbook side by side; stacked below 2xl */}
+                            <div className="grid grid-cols-1 2xl:grid-cols-2 gap-8 items-start">
                             {/* Project Timeline */}
                             <div>
                                 <div className="flex items-center justify-between mb-6">
@@ -504,6 +507,18 @@ const MenteeGroupPage: React.FC = () => {
                                         <p className="text-gray-400 text-sm mt-1">Students can post updates from their dashboard.</p>
                                     </div>
                                 )}
+                            </div>
+                            {group.project && (
+                                <Workbook
+                                    projectId={group.project._id}
+                                    entries={group.project.workbook}
+                                    members={group.members || []}
+                                    role={String(group.project.faculty?._id ?? group.project.faculty) === String(user?._id) ? 'mentor' : 'viewer'}
+                                    canExport
+                                    archived={group.project.isArchived || group.isArchived}
+                                    groupName={group.name}
+                                />
+                            )}
                             </div>
                         </div>
 

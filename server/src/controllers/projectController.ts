@@ -464,7 +464,7 @@ export const getProjects = async (req: Request, res: Response) => {
 // ── Archive ──────────────────────────────────────────────────────────────────
 // Every signed-in user can browse every archived (approved) project. Each entry is built from a
 // whitelist: anyone sees the title, description, tags, members, supervisor, session and semester.
-// Marks and the group name are added only for the viewer's own projects — a student sees their
+// Marks, the group name and the weekly workbook are added only for the viewer's own projects — a student sees their
 // own marks, the mentor sees every member's.
 
 // Semester the work belonged to, from the batch and the session it was archived in,
@@ -477,10 +477,11 @@ const archiveSemester = (batch?: string, session?: string): number | null => {
 };
 
 const loadArchivedProjects = () => Project.find({ isArchived: true, status: 'Approved' })
-    .select('title description tags semester faculty group archivedMentorName archivedGroupName archivedBatch archivedSession archivedMembers studentEvaluations updatedAt createdAt')
+    .select('title description tags semester faculty group archivedMentorName archivedGroupName archivedBatch archivedSession archivedMembers studentEvaluations workbook updatedAt createdAt')
     .populate('faculty', 'name')
     .populate({ path: 'group', select: 'name targetBatch members archivedSession', populate: { path: 'members', select: 'name email rollNumber' } })
     .populate('studentEvaluations.student', 'email')
+    .populate('workbook.attendance.student', 'name')
     .sort({ updatedAt: -1 })
     .lean();
 
@@ -519,7 +520,16 @@ const shapeArchiveEntry = (p: any, viewer: { id: string; email?: string; name?: 
         session,
         semester: p.semester || archiveSemester(batch, session),
         isMine,
-        ...(isMine ? { groupName: g.name || p.archivedGroupName || null } : {}),
+        ...(isMine ? {
+            groupName: g.name || p.archivedGroupName || null,
+            // Read-only weekly workbook, attendance resolved to names (archived rosters lack ids).
+            workbook: (p.workbook || []).map((e: any) => ({
+                week: e.week,
+                content: e.content,
+                approvedAt: e.approvedAt || null,
+                attendance: (e.attendance || []).map((a: any) => ({ name: a.student?.name || 'Former member', status: a.status })),
+            })),
+        } : {}),
         members: members.map((m: any) => {
             const base: any = { name: m.name };
             if (!isMine) return base;

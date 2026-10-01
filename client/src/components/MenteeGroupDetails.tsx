@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { Clock, Users, MessageSquare, Plus, Link as LinkIcon, ArrowLeft, X, FileText, Download, Search, UserMinus, Loader2 } from 'lucide-react';
 import FilePreview from './FilePreview';
 import Avatar from './Avatar';
+import Workbook from './Workbook';
 import ProjectDetailsHeader from './ProjectDetailsHeader';
 import { resolveUploadUrl } from '../utils/uploadUrl';
 import api from '../utils/api';
@@ -290,6 +291,8 @@ const MenteeGroupDetails: React.FC<MenteeGroupDetailsProps> = ({ group: groupPro
                         </div>
                     )}
 
+                    {/* Updates timeline and weekly workbook side by side; stacked below 2xl */}
+                    <div className="grid grid-cols-1 2xl:grid-cols-2 gap-8 items-start">
                     {/* Project Timeline */}
                     <div>
                         <div className="flex items-center justify-between mb-6">
@@ -365,6 +368,18 @@ const MenteeGroupDetails: React.FC<MenteeGroupDetailsProps> = ({ group: groupPro
                                 <p className="text-gray-400 text-sm mt-1">Students can post updates from their dashboard.</p>
                             </div>
                         )}
+                    </div>
+                    {project && (
+                        <Workbook
+                            projectId={project._id}
+                            entries={project.workbook}
+                            members={group.members || []}
+                            role={String(project.faculty?._id ?? project.faculty) === String(user?._id) ? 'mentor' : 'viewer'}
+                            canExport
+                            archived={project.isArchived || group.isArchived}
+                            groupName={group.name}
+                        />
+                    )}
                     </div>
                 </div>
 

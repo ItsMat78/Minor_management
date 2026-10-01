@@ -1,5 +1,6 @@
 import express from 'express';
 import { createProject, getProjects, getArchivedProjects, getFacultyArchivedProjects, getFacultyProjects, getAdminProposals, updateProjectStatus, adminSetProjectStatus, addUpdate, markUpdatesRead, deleteProject, updateProject, updateProjectDetails, submitEvaluation, uploadSubmissions, addFeedback, setStudentFeedback, saveStudentEvaluations } from '../controllers/projectController';
+import { saveWorkbookWeek, setWorkbookAttendance, setWorkbookApproval, exportWorkbook } from '../controllers/workbookController';
 import { auth } from '../middleware/authMiddleware';
 import { upload } from '../middleware/uploadMiddleware';
 
@@ -22,6 +23,11 @@ router.put('/:id/admin-status', adminSetProjectStatus);
 router.put('/:id/details', upload.array('files', 5), updateProjectDetails);
 router.post('/:id/updates', upload.array('files', 5), addUpdate);
 router.put('/:id/updates/read', markUpdatesRead);
+// Weekly workbook: members write a week, the mentor marks attendance and approves (locks) it.
+router.get('/:id/workbook/export', exportWorkbook);
+router.put('/:id/workbook/:week', saveWorkbookWeek);
+router.put('/:id/workbook/:week/attendance', setWorkbookAttendance);
+router.put('/:id/workbook/:week/approve', setWorkbookApproval);
 router.delete('/:id', deleteProject);
 router.put('/:id', upload.array('files', 5), updateProject);
 router.put('/:id/evaluation', submitEvaluation); // Add evaluation route

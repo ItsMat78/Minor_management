@@ -1,9 +1,11 @@
 import React from 'react';
 import { Users } from 'lucide-react';
+import Workbook, { type WorkbookEntry } from './Workbook';
 
 // One entry from /projects/archived or /projects/archived/faculty. Everyone gets the title,
-// description, tags, members, supervisor, session and semester; groupName, roll numbers and
-// marks are only present on the viewer's own projects (the server leaves them out otherwise).
+// description, tags, members, supervisor, session and semester; groupName, roll numbers, marks
+// and the weekly workbook are only present on the viewer's own projects (the server leaves
+// them out otherwise).
 export interface ArchivedProject {
     _id: string;
     title: string;
@@ -16,6 +18,7 @@ export interface ArchivedProject {
     isMine: boolean;
     groupName?: string | null;
     members: { name: string; rollNumber?: string; marks?: { midTerm: number | null; endTerm: number | null } }[];
+    workbook?: WorkbookEntry[];
 }
 
 const ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'];
@@ -61,6 +64,16 @@ const ArchivedProjectCard: React.FC<{ project: ArchivedProject }> = ({ project: 
                         </div>
                     ))}
                 </div>
+            )}
+            {p.workbook && p.workbook.length > 0 && (
+                <details className="mt-3 pt-3 border-t border-neutral-100">
+                    <summary className="text-xs font-bold text-indigo-700 cursor-pointer select-none">
+                        Weekly workbook ({p.workbook.length} {p.workbook.length === 1 ? 'week' : 'weeks'} recorded)
+                    </summary>
+                    <div className="mt-3">
+                        <Workbook projectId={p._id} entries={p.workbook} members={[]} role="viewer" archived />
+                    </div>
+                </details>
             )}
         </div>
     );
