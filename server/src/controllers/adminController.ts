@@ -461,6 +461,11 @@ export const semesterRollover = async (req: Request, res: Response) => {
         // Reset all students to not participating (next GF event will re-select batches)
         await User.updateMany({ role: 'Student' }, { $set: { isParticipating: false } });
 
+        // A new semester's groups start free to write their proposals
+        const settings = await getGlobalSettings();
+        settings.projectDetailsLocked = false;
+        await settings.save();
+
         // ── 2. Move uploaded files out of the live tree (avatars are kept) ──
 
         // Archived, not deleted. Project rows survive rollover carrying their marks and

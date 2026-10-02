@@ -1246,9 +1246,9 @@ const Dashboard: React.FC = () => {
                                                                         approvedProject.detailsLocked ? (
                                                                             <span
                                                                                 className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-neutral-500 bg-neutral-100 border border-neutral-200 rounded-lg cursor-not-allowed"
-                                                                                title="Project details are locked because mid-semester evaluation has begun"
+                                                                                title="Project details have been locked by the admin"
                                                                             >
-                                                                                <Pencil className="w-3.5 h-3.5 shrink-0" /> Locked after mid-term
+                                                                                <Pencil className="w-3.5 h-3.5 shrink-0" /> Details locked
                                                                             </span>
                                                                         ) : (
                                                                             <button
@@ -1544,7 +1544,7 @@ const Dashboard: React.FC = () => {
                                                                             )}
                                                                             <p className="text-xs text-neutral-500 line-clamp-1 mb-3">{project.feedback}</p>
                                                                             {project.detailsLocked ? (
-                                                                                <span className="text-[10px] font-black text-neutral-400 uppercase tracking-widest" title="Locked because mid-semester evaluation has begun">Locked after mid-term</span>
+                                                                                <span className="text-[10px] font-black text-neutral-400 uppercase tracking-widest" title="Project details have been locked by the admin">Details locked</span>
                                                                             ) : (
                                                                                 <button onClick={() => navigate(`/project/propose?edit=${project._id}`)} className="text-[10px] font-black text-indigo-600 uppercase tracking-widest hover:underline">Revise Proposal</button>
                                                                             )}

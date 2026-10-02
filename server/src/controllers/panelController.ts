@@ -8,6 +8,7 @@ import ExcelJS from 'exceljs';
 import fs from 'fs';
 import { sendPanelAssignmentEmail } from '../utils/emailService';
 import { academicYearFor } from '../utils/session';
+import { sectionTotal, sectionEntered, panelScore } from '../utils/evaluationMarks';
 
 const RUBRIC_FIELDS: Record<string, { guide: { key: string; label: string; max: number }[]; panel: { key: string; label: string; max: number }[] }> = {
     'mid-term': {
@@ -290,8 +291,9 @@ export const exportEvaluations = async (req: any, res: Response) => {
                     const midP2 = Object.values(midSE.panel2 || {}).reduce((s: number, v: any) => s + Number(v || 0), 0);
                     midGuide = fmtMark(midGNum);
                     midE1 = fmtMark(midP1);
-                    midE2 = midP2 > 0 ? fmtMark(midP2) : ''; // empty only when no second examiner
-                    const pAvg = midP2 > 0 ? (midP1 + midP2) / 2 : midP1;
+                    const midHasE2 = sectionEntered(midSE.panel2);
+                    midE2 = midHasE2 ? fmtMark(midP2) : ''; // empty only when no second examiner
+                    const pAvg = panelScore(midP1, midP2, midHasE2);
                     const finalMarks = midSE.marks ?? (midGNum + pAvg);
                     midAvg = fmtMark(finalMarks);
                 }
@@ -303,8 +305,9 @@ export const exportEvaluations = async (req: any, res: Response) => {
                     const endP2 = Object.values(endSE.panel2 || {}).reduce((s: number, v: any) => s + Number(v || 0), 0);
                     endGuide = fmtMark(endGNum);
                     endE1 = fmtMark(endP1);
-                    endE2 = endP2 > 0 ? fmtMark(endP2) : '';
-                    const pAvg = endP2 > 0 ? (endP1 + endP2) / 2 : endP1;
+                    const endHasE2 = sectionEntered(endSE.panel2);
+                    endE2 = endHasE2 ? fmtMark(endP2) : '';
+                    const pAvg = panelScore(endP1, endP2, endHasE2);
                     const finalMarks = endSE.marks ?? (endGNum + pAvg);
                     endAvg = fmtMark(finalMarks);
                 }
@@ -1301,7 +1304,7 @@ export const importEvaluationTemplate = async (req: any, res: Response) => {
                 const val = getCell(FIXED + 1 + ci);
                 if (!scores[rc.evalT]) scores[rc.evalT] = {};
                 if (!scores[rc.evalT][rc.section]) scores[rc.evalT][rc.section] = {};
-                if (val === '') { scores[rc.evalT][rc.section][rc.key] = 0; return; }
+                if (val === '') return; // left out (not 0) so a blank E2 column reads as "no second examiner"
                 if (val === '__FORMULA_ERROR__') {
                     errors.push({ row: r, message: `Group ${groupName}: ${rc.headerLabel} — cell contains a formula error (e.g. RANDBETWEEN result was not cached). Please replace the formula with a plain number and re-upload.` });
                     scores[rc.evalT][rc.section][rc.key] = 0; return;
@@ -1350,14 +1353,10 @@ export const importEvaluationTemplate = async (req: any, res: Response) => {
                 };
                 guide = redistribute(Number(guide.guide_total || 0), fields.guide);
                 panel1 = redistribute(Number(panel1.panel1_total || 0), fields.panel);
-                panel2 = redistribute(Number(panel2.panel2_total || 0), fields.panel);
+                panel2 = sectionEntered(panel2) ? redistribute(Number(panel2.panel2_total || 0), fields.panel) : {};
             }
 
-            const guideTotal = Object.values(guide).reduce((s: number, v: any) => s + Number(v || 0), 0);
-            const p1Total = Object.values(panel1).reduce((s: number, v: any) => s + Number(v || 0), 0);
-            const p2Total = Object.values(panel2).reduce((s: number, v: any) => s + Number(v || 0), 0);
-            const panelAvg = p2Total > 0 ? (p1Total + p2Total) / 2 : p1Total;
-            const marks = guideTotal + panelAvg;
+            const marks = sectionTotal(guide) + panelScore(sectionTotal(panel1), sectionTotal(panel2), sectionEntered(panel2));
 
             const existing = (project.studentEvaluations as any[]).find(
                 (e: any) => String(e.student) === sv.studentId && e.evalType === et
@@ -1536,7 +1535,7 @@ export const exportPanelFinalSheet = async (req: any, res: Response) => {
                         rowData.push('', '', '');
                     }
 
-                    midTotal = gSum + (p2Sum > 0 ? (p1Sum + p2Sum) / 2 : p1Sum);
+                    midTotal = gSum + panelScore(p1Sum, p2Sum, sectionEntered(midSE?.panel2));
                     if (midSE) midTotal = Number(midSE.marks ?? midTotal) || midTotal;
                     midTotal = Math.round(midTotal * 100) / 100;
                 }
@@ -1555,7 +1554,7 @@ export const exportPanelFinalSheet = async (req: any, res: Response) => {
                         rowData.push('', '', '');
                     }
 
-                    endTotal = gSum + (p2Sum > 0 ? (p1Sum + p2Sum) / 2 : p1Sum);
+                    endTotal = gSum + panelScore(p1Sum, p2Sum, sectionEntered(endSE?.panel2));
                     if (endSE) endTotal = Number(endSE.marks ?? endTotal) || endTotal;
                     endTotal = Math.round(endTotal * 100) / 100;
                 }
@@ -1835,7 +1834,7 @@ export const importBatchEvaluationTemplate = async (req: any, res: Response) => 
                 const val = getCell(FIXED + 1 + ci);
                 if (!scores[rc.evalT]) scores[rc.evalT] = {};
                 if (!scores[rc.evalT][rc.section]) scores[rc.evalT][rc.section] = {};
-                if (val === '') { scores[rc.evalT][rc.section][rc.key] = 0; return; }
+                if (val === '') return; // left out (not 0) so a blank E2 column reads as "no second examiner"
                 if (val === '__FORMULA_ERROR__') {
                     errors.push({ row: r, message: `Group ${groupName}: ${rc.headerLabel} — formula error. Replace with a plain number.` });
                     scores[rc.evalT][rc.section][rc.key] = 0; return;
@@ -1875,14 +1874,10 @@ export const importBatchEvaluationTemplate = async (req: any, res: Response) => 
                 };
                 guide = redistribute(Number(guide.guide_total || 0), fields.guide);
                 panel1 = redistribute(Number(panel1.panel1_total || 0), fields.panel);
-                panel2 = redistribute(Number(panel2.panel2_total || 0), fields.panel);
+                panel2 = sectionEntered(panel2) ? redistribute(Number(panel2.panel2_total || 0), fields.panel) : {};
             }
 
-            const guideTotal = Object.values(guide).reduce((s: number, v: any) => s + Number(v || 0), 0);
-            const p1Total = Object.values(panel1).reduce((s: number, v: any) => s + Number(v || 0), 0);
-            const p2Total = Object.values(panel2).reduce((s: number, v: any) => s + Number(v || 0), 0);
-            const panelAvg = p2Total > 0 ? (p1Total + p2Total) / 2 : p1Total;
-            const marks = guideTotal + panelAvg;
+            const marks = sectionTotal(guide) + panelScore(sectionTotal(panel1), sectionTotal(panel2), sectionEntered(panel2));
 
             const existing = (project.studentEvaluations as any[]).find(
                 (e: any) => String(e.student) === sv.studentId && e.evalType === et
@@ -2099,7 +2094,7 @@ export const exportBatchFinalSheet = async (req: any, res: Response) => {
                         let p2Sum = 0; midRubric.panel.forEach(f => p2Sum += getP(midSE, 'panel2', f.key));
                         if (midSE) { rowData.push(Number(gSum.toFixed(2))); rowData.push(Number(p1Sum.toFixed(2))); rowData.push(Number(p2Sum.toFixed(2))); }
                         else rowData.push('', '', '');
-                        midTotal = gSum + (p2Sum > 0 ? (p1Sum + p2Sum) / 2 : p1Sum);
+                        midTotal = gSum + panelScore(p1Sum, p2Sum, sectionEntered(midSE?.panel2));
                         if (midSE) midTotal = Number(midSE.marks ?? midTotal) || midTotal;
                         midTotal = Math.round(midTotal * 100) / 100;
                     }
@@ -2111,7 +2106,7 @@ export const exportBatchFinalSheet = async (req: any, res: Response) => {
                         let p2Sum = 0; endRubric.panel.forEach(f => p2Sum += getP(endSE, 'panel2', f.key));
                         if (endSE) { rowData.push(Number(gSum.toFixed(2))); rowData.push(Number(p1Sum.toFixed(2))); rowData.push(Number(p2Sum.toFixed(2))); }
                         else rowData.push('', '', '');
-                        endTotal = gSum + (p2Sum > 0 ? (p1Sum + p2Sum) / 2 : p1Sum);
+                        endTotal = gSum + panelScore(p1Sum, p2Sum, sectionEntered(endSE?.panel2));
                         if (endSE) endTotal = Number(endSE.marks ?? endTotal) || endTotal;
                         endTotal = Math.round(endTotal * 100) / 100;
                     }

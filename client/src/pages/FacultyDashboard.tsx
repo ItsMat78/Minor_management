@@ -287,7 +287,7 @@ const renderEvalCard = (item: any, activeTab: string, handleOpenEvaluation: any,
     const studentEvals = (projectData?.studentEvaluations || []).filter((e: any) => e.evalType === activeTab);
     const isEvaluated = studentEvals.some((e: any) => (e.marks ?? 0) > 0);
     const avgMarks = isEvaluated
-        ? Math.round(studentEvals.reduce((sum: number, e: any) => sum + (e.marks || 0), 0) / studentEvals.length)
+        ? Math.round(studentEvals.reduce((sum: number, e: any) => sum + (e.marks || 0), 0) / studentEvals.length * 100) / 100
         : null;
     const RUBRIC_CONFIG_LOCAL = getRubricConfig(activeEvents, activeTab);
 
@@ -737,7 +737,8 @@ const FacultyDashboard: React.FC = () => {
 
             const sanitize = (obj: Record<string, number | ''>) => {
                 const clean: Record<string, number> = {};
-                Object.keys(obj || {}).forEach(k => { clean[k] = obj[k] === '' ? 0 : Number(obj[k]); });
+                // Blank boxes are left out rather than saved as 0, so the server can tell an E2 of 0 from no E2
+                Object.keys(obj || {}).forEach(k => { if (obj[k] !== '') clean[k] = Number(obj[k]); });
                 return clean;
             };
 
@@ -2221,8 +2222,7 @@ const FacultyDashboard: React.FC = () => {
                                                             const gTotal = guideFields.reduce((s: number, f: any) => s + Number(sd.guide?.[f.key] || 0), 0);
                                                             const p1Total = panelFields.reduce((s: number, f: any) => s + Number(sd.panel1?.[f.key] || 0), 0);
                                                             const p2Total = panelFields.reduce((s: number, f: any) => s + Number(sd.panel2?.[f.key] || 0), 0);
-                                                            const rowTotal = gTotal + (p2Total > 0 ? (p1Total + p2Total) / 2 : p1Total);
-                                                            const upd = (patch: Partial<EvalStudentEntry>) =>
+                                                                                                                        const upd = (patch: Partial<EvalStudentEntry>) =>
                                                                 setDataMap(prev => ({ ...prev, [m._id]: { ...prev[m._id], ...patch } }));
 
                                                             const gMaxSum = guideFields.reduce((s: number, f: any) => s + f.max, 0);
@@ -2231,6 +2231,8 @@ const FacultyDashboard: React.FC = () => {
                                                             const hasGuideData = guideFields.some((f: any) => typeof sd.guide?.[f.key] === 'number');
                                                             const hasPanel1Data = panelFields.some((f: any) => typeof sd.panel1?.[f.key] === 'number');
                                                             const hasPanel2Data = panelFields.some((f: any) => typeof sd.panel2?.[f.key] === 'number');
+                                                            // E2 is optional: average it in whenever it was entered — a 0 is still a score
+                                                            const rowTotal = gTotal + (hasPanel2Data ? (p1Total + p2Total) / 2 : p1Total);
                                                             const hasAnyData = hasGuideData || hasPanel1Data;
 
                                                             const handleDirectDistribute = (val: number, fields: any[], targetKey: 'guide' | 'panel1' | 'panel2', maxSum: number) => {
@@ -2323,7 +2325,7 @@ const FacultyDashboard: React.FC = () => {
                                                                         </>
                                                                     )}
                                                                     <td className="px-2 py-2 text-center border-l border-neutral-200">
-                                                                        <span className={`text-sm font-black ${hasAnyData ? 'text-indigo-700' : 'text-neutral-300'}`}>{hasAnyData ? Math.round(rowTotal * 10) / 10 : '—'}</span>
+                                                                        <span className={`text-sm font-black ${hasAnyData ? 'text-indigo-700' : 'text-neutral-300'}`}>{hasAnyData ? Math.round(rowTotal * 100) / 100 : '—'}</span>
                                                                     </td>
                                                                 </tr>
                                                             );

@@ -8,10 +8,11 @@ import { publicUrlFor, deleteFileByUrl } from '../middleware/uploadMiddleware';
 import Panel from '../models/Panel';
 import Event, { EventType } from '../models/Event';
 import { nextActiveGroupNumber } from '../utils/groupNumbering';
-import { midTermEvaluationOpened, projectDetailsFrozen, DETAILS_FROZEN_MESSAGE } from '../utils/evaluationLock';
+import { projectDetailsLocked, DETAILS_FROZEN_MESSAGE } from '../utils/evaluationLock';
 import { supervisorCapacity, mentorFullMessage } from '../utils/supervisorCapacity';
 import { hasPermission } from '../utils/permissions';
 import { resolveSession } from '../utils/session';
+import { sectionTotal, sectionEntered, panelScore } from '../utils/evaluationMarks';
 
 // ... (imports)
 
@@ -700,9 +701,9 @@ export const updateProject = async (req: Request, res: Response) => {
             return res.status(403).json({ message: 'Not authorized to update this project' });
         }
 
-        // Details are the group's to refine only until mid-semester evaluation opens — after that
-        // the project is what it is for the rest of the semester. See utils/evaluationLock.
-        if (projectDetailsFrozen(project, await midTermEvaluationOpened())) {
+        // Details are the group's to refine until the admin locks them from Setup Events.
+        // See utils/evaluationLock.
+        if (await projectDetailsLocked()) {
             return res.status(403).json({ message: DETAILS_FROZEN_MESSAGE, detailsLocked: true });
         }
 
@@ -859,8 +860,8 @@ export const updateProjectDetails = async (req: Request, res: Response) => {
             });
         }
 
-        // No projectDetailsFrozen check, deliberately. The mid-term freeze exists to stop the GROUP
-        // moving the goalposts under a grader (see utils/evaluationLock.ts), and the message it
+        // No projectDetailsLocked check, deliberately. The lock exists to stop the GROUP moving
+        // the goalposts under a grader (see utils/evaluationLock.ts), and the message it
         // shows them — "Ask your mentor or the admin if something still needs to change" — is only
         // true if the mentor can still act. Removing the freeze here is what makes that promise good.
 
@@ -1038,12 +1039,9 @@ export const submitEvaluation = async (req: Request, res: Response) => {
             const guideScores = sv.guide || {};
             const panel1Scores = sv.panel1 || sv.panel || {}; // panel = legacy fallback
             const panel2Scores = sv.panel2 || {};
-            const guideTotal = Object.values(guideScores).reduce((s: number, v: any) => s + Number(v || 0), 0);
-            const p1Total = Object.values(panel1Scores).reduce((s: number, v: any) => s + Number(v || 0), 0);
-            const p2Total = Object.values(panel2Scores).reduce((s: number, v: any) => s + Number(v || 0), 0);
-            // marks = guide + average of E1 and E2 (if E2 absent, just E1)
-            const panelAvg = p2Total > 0 ? (p1Total + p2Total) / 2 : p1Total;
-            const studentMarks = guideTotal + panelAvg;
+            // marks = guide + average of E1 and E2 (if E2 was not entered, just E1; an E2 of 0 still counts)
+            const studentMarks = sectionTotal(guideScores)
+                + panelScore(sectionTotal(panel1Scores), sectionTotal(panel2Scores), sectionEntered(panel2Scores));
 
             const existing = (project.studentEvaluations as any[]).find(
                 (e: any) => String(e.student) === sv.studentId && e.evalType === evalType

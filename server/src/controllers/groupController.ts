@@ -8,7 +8,7 @@ import { sendGroupCompleteEmail, sendGroupInviteEmail, sendGroupInviteResponseEm
 import { publicUrlFor } from '../middleware/uploadMiddleware';
 import { applyProjectStatus } from './projectController';
 import { nextActiveGroupNumber } from '../utils/groupNumbering';
-import { midTermEvaluationOpened, projectDetailsFrozen } from '../utils/evaluationLock';
+import { projectDetailsLocked } from '../utils/evaluationLock';
 import { supervisorCapacity } from '../utils/supervisorCapacity';
 
 // Batch years that require single-branch groups for the given GF event. Prefers the explicit
@@ -216,10 +216,10 @@ export const getMyGroup = async (req: Request, res: Response) => {
             .sort({ createdAt: -1 });
 
         // detailsLocked tells the dashboard and the proposal editor whether the group may still
-        // change this project — it goes read-only once mid-semester evaluation opens, which the
-        // update endpoint enforces server-side too.
-        const midTermOpened = await midTermEvaluationOpened();
-        const withLock = (p: any) => ({ ...p, detailsLocked: projectDetailsFrozen(p, midTermOpened) });
+        // change this project — it goes read-only while the admin has the project-details lock
+        // on, which the update endpoint enforces server-side too.
+        const locked = await projectDetailsLocked();
+        const withLock = (p: any) => ({ ...p, detailsLocked: locked });
 
         const groupData: any = group.toObject();
         groupData.projects = allProjects.map(p => withLock(p.toObject()));

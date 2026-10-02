@@ -334,3 +334,30 @@ export const deleteEvent = async (req: Request, res: Response) => {
         res.status(500).json({ message: 'Server error', error });
     }
 };
+
+// The project-details lock: when on, groups can no longer edit their project's title and
+// description. Lives in Setup Events but is independent of any event window.
+// GET/PUT /api/events/project-details-lock
+export const getProjectDetailsLock = async (req: Request, res: Response) => {
+    try {
+        const settings = await getGlobalSettings();
+        res.json({ locked: !!settings.projectDetailsLocked });
+    } catch (error) {
+        res.status(500).json({ message: 'Server error', error });
+    }
+};
+
+export const setProjectDetailsLock = async (req: Request, res: Response) => {
+    try {
+        const { locked } = req.body;
+        if (typeof locked !== 'boolean') {
+            return res.status(400).json({ message: 'Send { locked: true | false }.' });
+        }
+        const settings = await getGlobalSettings();
+        settings.projectDetailsLocked = locked;
+        await settings.save();
+        res.json({ locked: settings.projectDetailsLocked });
+    } catch (error) {
+        res.status(500).json({ message: 'Server error', error });
+    }
+};

@@ -53,8 +53,8 @@ const ProjectProposal: React.FC = () => {
     // Editing an already-approved project: edits are saved in place and it stays Approved (no
     // re-review), and the mentor is locked. Drives the submit status and the button labels below.
     const [isApprovedEdit, setIsApprovedEdit] = useState(false);
-    // Set by the server once mid-semester evaluation has opened: the project is frozen for the
-    // rest of the semester, so the whole editor goes read-only. The update endpoint refuses the
+    // Set by the server while the admin's project-details lock (Setup Events) is on, so the
+    // whole editor goes read-only. The update endpoint refuses the
     // save regardless — this just stops the student filling in a form that can't be submitted.
     const [detailsLocked, setDetailsLocked] = useState(false);
     // Faculty are scoped to the student's branch ONLY when the student's batch is branch-restricted
@@ -247,7 +247,7 @@ const ProjectProposal: React.FC = () => {
         e.preventDefault();
 
         if (detailsLocked) {
-            setError('Project details are locked because mid-semester evaluation has begun. Ask your mentor or the admin if something still needs to change.');
+            setError('Project title and description are locked by the admin. Ask your mentor or the admin if something still needs to change.');
             return;
         }
 
@@ -375,9 +375,8 @@ const ProjectProposal: React.FC = () => {
                         <div className="mb-6 p-4 bg-amber-50 text-amber-800 border border-amber-200 rounded-lg text-sm flex items-start gap-2">
                             <Info className="w-4 h-4 shrink-0 mt-0.5" />
                             <span>
-                                <strong>Locked for editing.</strong> Mid-semester evaluation has begun, so this project's
-                                details are frozen for the rest of the semester. Ask your mentor or the admin if something
-                                still needs to change.
+                                <strong>Locked for editing.</strong> The admin has locked project titles and descriptions.
+                                Ask your mentor or the admin if something still needs to change.
                             </span>
                         </div>
                     )}
@@ -717,7 +716,7 @@ const ProjectProposal: React.FC = () => {
                                         onClick={(e) => handleSubmit(e, false)}
                                         disabled={loading || detailsLocked || (!isApprovedEdit && !formData.facultyId)}
                                         title={detailsLocked
-                                            ? 'Locked — mid-semester evaluation has begun'
+                                            ? 'Locked by the admin'
                                             : (!isApprovedEdit && !formData.facultyId ? 'Select a faculty mentor to submit, or use Save as Draft' : undefined)}
                                         className="px-8 py-3 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 shadow-lg shadow-green-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                                     >

@@ -406,6 +406,20 @@ const AdminDashboard: React.FC = () => {
 
     // Events State
     const [events, setEvents] = useState<any[]>([]);
+    // Admin switch that stops groups editing their project title / description (Setup Events)
+    const [detailsLocked, setDetailsLocked] = useState(false);
+    const [detailsLockSaving, setDetailsLockSaving] = useState(false);
+    const toggleDetailsLock = async () => {
+        setDetailsLockSaving(true);
+        try {
+            const res = await api.put('/events/project-details-lock', { locked: !detailsLocked });
+            setDetailsLocked(!!res.data.locked);
+        } catch (error) {
+            alert(errorMessage(error, 'Failed to update the project details lock.'));
+        } finally {
+            setDetailsLockSaving(false);
+        }
+    };
     const [showCreateEvent, setShowCreateEvent] = useState(false);
     const [editingEvent, setEditingEvent] = useState<any>(null);
     const [eventForm, setEventForm] = useState({
@@ -872,7 +886,8 @@ const AdminDashboard: React.FC = () => {
 
             const sanitize = (obj: Record<string, number | ''>) => {
                 const clean: Record<string, number> = {};
-                Object.keys(obj || {}).forEach(k => { clean[k] = obj[k] === '' ? 0 : Number(obj[k]); });
+                // Blank boxes are left out rather than saved as 0, so the server can tell an E2 of 0 from no E2
+                Object.keys(obj || {}).forEach(k => { if (obj[k] !== '') clean[k] = Number(obj[k]); });
                 return clean;
             };
 
@@ -958,8 +973,9 @@ const AdminDashboard: React.FC = () => {
                     const res = await api.get('/admin/stats');
                     setStats(res.data);
                 } else if (activeTab === 'events') {
-                    const res = await api.get('/events');
+                    const [res, lockRes] = await Promise.all([api.get('/events'), api.get('/events/project-details-lock')]);
                     setEvents(Array.isArray(res.data) ? res.data : []);
+                    setDetailsLocked(!!lockRes.data?.locked);
                 } else if (activeTab === 'archive') {
                     setArchiveLoading(true);
                     try {
@@ -3476,6 +3492,29 @@ const AdminDashboard: React.FC = () => {
 
                                 {activeTab === 'events' && (
                                     <div className="space-y-8">
+                                        {/* Project details lock — independent of any event window */}
+                                        <div className="flex items-center justify-between gap-4 p-4 bg-white rounded-2xl border border-neutral-200">
+                                            <div>
+                                                <p className="text-sm font-bold text-neutral-800">Lock project title &amp; description</p>
+                                                <p className="text-xs text-neutral-500">
+                                                    {detailsLocked
+                                                        ? 'Groups can no longer edit their project details. Mentors and admins still can.'
+                                                        : 'Groups can still edit their project title and description.'}
+                                                </p>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                role="switch"
+                                                aria-checked={detailsLocked}
+                                                aria-label="Lock project title and description"
+                                                disabled={detailsLockSaving}
+                                                onClick={toggleDetailsLock}
+                                                className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-50 ${detailsLocked ? 'bg-indigo-600' : 'bg-neutral-300'}`}
+                                            >
+                                                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${detailsLocked ? 'translate-x-6' : 'translate-x-1'}`} />
+                                            </button>
+                                        </div>
+
                                         {/* Create Event Button */}
                                         <div className="flex justify-end">
                                             <button
@@ -7739,14 +7778,15 @@ const AdminDashboard: React.FC = () => {
                                                             const gTotal = guideFields.reduce((s: number, f: any) => s + Number(sd.guide?.[f.key] || 0), 0);
                                                             const p1Total = panelFields.reduce((s: number, f: any) => s + Number(sd.panel1?.[f.key] || 0), 0);
                                                             const p2Total = panelFields.reduce((s: number, f: any) => s + Number(sd.panel2?.[f.key] || 0), 0);
-                                                            const rowTotal = gTotal + (p2Total > 0 ? (p1Total + p2Total) / 2 : p1Total);
-                                                            const upd = (patch: Partial<EvalStudentEntry>) =>
+                                                                                                                        const upd = (patch: Partial<EvalStudentEntry>) =>
                                                                 setDataMap(prev => ({ ...prev, [m._id]: { ...prev[m._id], ...patch } }));
                                                             const gMaxSum = guideFields.reduce((s: number, f: any) => s + f.max, 0);
                                                             const pMaxSum = panelFields.reduce((s: number, f: any) => s + f.max, 0);
                                                             const hasGuideData = guideFields.some((f: any) => typeof sd.guide?.[f.key] === 'number');
                                                             const hasPanel1Data = panelFields.some((f: any) => typeof sd.panel1?.[f.key] === 'number');
                                                             const hasPanel2Data = panelFields.some((f: any) => typeof sd.panel2?.[f.key] === 'number');
+                                                            // E2 is optional: average it in whenever it was entered — a 0 is still a score
+                                                            const rowTotal = gTotal + (hasPanel2Data ? (p1Total + p2Total) / 2 : p1Total);
                                                             const hasAnyData = hasGuideData || hasPanel1Data;
 
                                                             const handleDirectDistribute = (val: number, fields: any[], targetKey: 'guide' | 'panel1' | 'panel2', maxSum: number) => {
@@ -7839,7 +7879,7 @@ const AdminDashboard: React.FC = () => {
                                                                         </>
                                                                     )}
                                                                     <td className="px-2 py-2 text-center border-l border-neutral-200">
-                                                                        <span className={`text-sm font-black ${hasAnyData ? 'text-indigo-700' : 'text-neutral-300'}`}>{hasAnyData ? Math.round(rowTotal * 10) / 10 : '—'}</span>
+                                                                        <span className={`text-sm font-black ${hasAnyData ? 'text-indigo-700' : 'text-neutral-300'}`}>{hasAnyData ? Math.round(rowTotal * 100) / 100 : '—'}</span>
                                                                     </td>
                                                                 </tr>
                                                             );
