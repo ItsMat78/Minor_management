@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Clock, Users, MessageSquare, Plus, Link as LinkIcon, ArrowLeft, X, FileText, Download, Search, UserMinus, Loader2 } from 'lucide-react';
+import { Clock, Users, MessageSquare, Plus, ClipboardList, Link as LinkIcon, ArrowLeft, X, Search, UserMinus, Loader2 } from 'lucide-react';
 import FilePreview from './FilePreview';
 import Avatar from './Avatar';
 import WorkbookTray from './WorkbookTray';
 import ProjectDetailsHeader from './ProjectDetailsHeader';
-import { resolveUploadUrl } from '../utils/uploadUrl';
+import { DeliverableCards } from './EvalDeliverables';
 import api from '../utils/api';
 import { isStaff } from '../utils/permissions';
 
@@ -139,32 +139,11 @@ const MenteeGroupDetails: React.FC<MenteeGroupDetailsProps> = ({ group: groupPro
     if (!group) return <div>Group data not available via props.</div>;
 
     const project = group.project;
-    const submissions = project?.submissions || {};
     const faculty = project?.faculty;
 
     // The mentor of record and the admin may correct the project's text. The server re-checks
     // this, so a stale `user` here only ever hides the control — it can never grant the write.
     const canEditDetails = !!project && (isAdmin || String(faculty?._id || faculty || '') === String(user?._id || ''));
-
-    const hasMidTerm = !!(submissions.midTermReport || submissions.midTermPPT || submissions.midTermPlagiarism);
-    const hasEndTerm = !!(submissions.endTermReport || submissions.endTermPPT || submissions.endTermPlagiarism);
-
-    const deliverableLink = (rawUrl: string | undefined, label: string) => {
-        if (!rawUrl) return null;
-        const url = resolveUploadUrl(rawUrl);
-        return (
-            <a
-                href={url}
-                target="_blank"
-                rel="noreferrer"
-                className="flex items-center gap-2 px-3 py-2 bg-neutral-50 hover:bg-indigo-50 rounded-lg border border-neutral-200 hover:border-indigo-200 text-xs font-medium text-neutral-700 hover:text-indigo-700 transition-colors group"
-            >
-                <FileText className="w-3.5 h-3.5 text-neutral-400 group-hover:text-indigo-500" />
-                <span className="flex-1">{label}</span>
-                <Download className="w-3 h-3 opacity-0 group-hover:opacity-100 text-indigo-500 transition-opacity" />
-            </a>
-        );
-    };
 
     return (
         <div className="flex flex-col h-full">
@@ -261,37 +240,6 @@ const MenteeGroupDetails: React.FC<MenteeGroupDetailsProps> = ({ group: groupPro
                             </div>
                         )}
                     </div>
-
-                    {/* Final Deliverables (read-only) */}
-                    {(hasMidTerm || hasEndTerm) && (
-                        <div className="bg-white rounded-2xl border border-neutral-100 shadow-sm p-6">
-                            <h3 className="text-lg font-bold text-gray-900 mb-5 flex items-center gap-2">
-                                <FileText className="w-5 h-5 text-indigo-600" /> Final Deliverables
-                            </h3>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                {hasMidTerm && (
-                                    <div>
-                                        <p className="text-xs font-bold uppercase tracking-widest text-neutral-400 mb-3">Mid-Term Submissions</p>
-                                        <div className="space-y-2">
-                                            {deliverableLink(submissions.midTermReport, 'Mid-Term Report')}
-                                            {deliverableLink(submissions.midTermPPT, 'Mid-Term Presentation')}
-                                            {deliverableLink(submissions.midTermPlagiarism, 'Plagiarism Report')}
-                                        </div>
-                                    </div>
-                                )}
-                                {hasEndTerm && (
-                                    <div>
-                                        <p className="text-xs font-bold uppercase tracking-widest text-neutral-400 mb-3">End-Term Submissions</p>
-                                        <div className="space-y-2">
-                                            {deliverableLink(submissions.endTermReport, 'End-Term Report')}
-                                            {deliverableLink(submissions.endTermPPT, 'End-Term Presentation')}
-                                            {deliverableLink(submissions.endTermPlagiarism, 'Plagiarism Report')}
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    )}
 
                     {/* Project Timeline */}
                     <div>
@@ -487,6 +435,16 @@ const MenteeGroupDetails: React.FC<MenteeGroupDetailsProps> = ({ group: groupPro
                                 </div>
                             </div>
                         </div>
+
+                        {/* Evaluation deliverables — the same cards the student sees, read-only */}
+                        {project && (
+                            <div className="bg-white rounded-2xl border border-neutral-200 shadow-sm p-6">
+                                <h3 className="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2">
+                                    <ClipboardList className="w-4 h-4 text-emerald-600" /> Deliverables
+                                </h3>
+                                <DeliverableCards submissions={project.submissions} />
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>

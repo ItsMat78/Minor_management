@@ -16,7 +16,7 @@ import ProfilePhotoUpload from '../components/ProfilePhotoUpload';
 import ProjectDetailsHeader from '../components/ProjectDetailsHeader';
 import { GlobalEventBanner } from '../components/GlobalEventBanner';
 import { isStaff } from '../utils/permissions';
-import { resolveUploadUrl } from '../utils/uploadUrl';
+import { DeliverableCards } from '../components/EvalDeliverables';
 
 const MenteeGroupPage: React.FC = () => {
     const { groupId } = useParams<{ groupId: string }>();
@@ -392,43 +392,7 @@ const MenteeGroupPage: React.FC = () => {
                                 <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2 mb-4">
                                     <Archive className="w-5 h-5 text-emerald-600" /> Final Deliverables
                                 </h3>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    {[
-                                        { label: 'Mid-Term', keys: { report: 'midTermReport', ppt: 'midTermPPT', plag: 'midTermPlagiarism' }, accent: 'indigo' },
-                                        { label: 'End-Term', keys: { report: 'endTermReport', ppt: 'endTermPPT', plag: 'endTermPlagiarism' }, accent: 'emerald' },
-                                    ].map(({ label, keys, accent }) => {
-                                        const subs = group.project?.submissions || {};
-                                        const slots = [
-                                            { name: 'Report', url: subs[keys.report] },
-                                            { name: 'Presentation', url: subs[keys.ppt] },
-                                            { name: 'Plagiarism Report', url: subs[keys.plag] },
-                                        ];
-                                        return (
-                                            <div key={label} className="bg-white p-4 rounded-2xl border border-neutral-200">
-                                                <div className="flex items-center justify-between mb-3">
-                                                    <h4 className="text-sm font-bold text-gray-800">{label} Evaluation</h4>
-                                                    <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-${accent}-50 text-${accent}-700 border border-${accent}-100`}>
-                                                        {slots.filter(s => s.url).length} / 3
-                                                    </span>
-                                                </div>
-                                                <div className="space-y-2">
-                                                    {slots.map((slot) => (
-                                                        <div key={slot.name} className="flex items-center justify-between text-xs">
-                                                            <span className="text-gray-600 font-medium">{slot.name}</span>
-                                                            {slot.url ? (
-                                                                <a href={resolveUploadUrl(slot.url)} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline font-semibold inline-flex items-center gap-1">
-                                                                    <FileText className="w-3 h-3" /> View
-                                                                </a>
-                                                            ) : (
-                                                                <span className="text-gray-400 italic">Not submitted</span>
-                                                            )}
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
+                                <DeliverableCards submissions={group.project?.submissions} className="grid grid-cols-1 md:grid-cols-2 gap-4" />
                             </div>
 
                             {/* Project Timeline */}

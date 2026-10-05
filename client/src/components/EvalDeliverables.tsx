@@ -92,3 +92,56 @@ const EvalDeliverables: React.FC<EvalDeliverablesProps> = ({ submissions, evalTy
 };
 
 export default EvalDeliverables;
+
+interface DeliverableCardsProps {
+    submissions?: Record<string, string | undefined> | null;
+    // Marks an evaluation whose submission window is currently open.
+    open?: Partial<Record<EvalType, boolean>>;
+    className?: string;
+}
+
+// Static so Tailwind's scanner sees every class (an interpolated `bg-${accent}-50` is never generated).
+const COUNT_BADGE: Record<EvalType, string> = {
+    'mid-term': 'bg-indigo-50 text-indigo-700 border-indigo-100',
+    'end-term': 'bg-emerald-50 text-emerald-700 border-emerald-100',
+};
+
+// One card per evaluation listing every slot, submitted or not — the project-workspace view the
+// student, mentor and admin all share.
+export const DeliverableCards: React.FC<DeliverableCardsProps> = ({ submissions, open = {}, className = 'space-y-3' }) => {
+    const subs = submissions || {};
+    return (
+        <div className={className}>
+            {(['mid-term', 'end-term'] as EvalType[]).map(t => {
+                const { label, slots } = KEYS[t];
+                return (
+                    <div key={t} className="p-3 bg-white rounded-xl border border-neutral-200">
+                        <div className="flex items-center justify-between mb-2">
+                            <h5 className="text-xs font-bold text-neutral-800 flex items-center gap-1.5">
+                                {label}
+                                {open[t] && <span className="text-[9px] text-amber-600 font-bold uppercase">Open</span>}
+                            </h5>
+                            <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${COUNT_BADGE[t]}`}>
+                                {slots.filter(s => subs[s.key]).length} / {slots.length}
+                            </span>
+                        </div>
+                        <div className="space-y-1.5">
+                            {slots.map(s => (
+                                <div key={s.key} className="flex items-center justify-between gap-2 text-xs">
+                                    <span className="text-neutral-600 font-medium truncate">{s.name === 'Plagiarism' ? 'Plagiarism Report' : s.name}</span>
+                                    {subs[s.key] ? (
+                                        <a href={resolveUploadUrl(subs[s.key])} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline font-semibold inline-flex items-center gap-1 shrink-0">
+                                            <FileText className="w-3 h-3" /> View
+                                        </a>
+                                    ) : (
+                                        <span className="text-neutral-400 italic shrink-0">Not submitted</span>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                );
+            })}
+        </div>
+    );
+};

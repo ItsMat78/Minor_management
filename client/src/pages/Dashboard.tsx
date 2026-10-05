@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import Avatar from '../components/Avatar';
+import { DeliverableCards } from '../components/EvalDeliverables';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../utils/api';
@@ -1671,46 +1672,10 @@ const Dashboard: React.FC = () => {
                                                             </button>
                                                         )}
                                                     </div>
-                                                    <div className="space-y-3">
-                                                        {[
-                                                            { label: 'Mid-Term', keys: { report: 'midTermReport', ppt: 'midTermPPT', plag: 'midTermPlagiarism' }, accent: 'indigo', open: midTermActive },
-                                                            { label: 'End-Term', keys: { report: 'endTermReport', ppt: 'endTermPPT', plag: 'endTermPlagiarism' }, accent: 'emerald', open: endTermActive },
-                                                        ].map(({ label, keys, accent, open }) => {
-                                                            const subs = approvedProject.submissions || {};
-                                                            const slots = [
-                                                                { name: 'Report', url: subs[keys.report] },
-                                                                { name: 'Presentation', url: subs[keys.ppt] },
-                                                                { name: 'Plagiarism Report', url: subs[keys.plag] },
-                                                            ];
-                                                            return (
-                                                                <div key={label} className="p-3 rounded-xl border border-neutral-200">
-                                                                    <div className="flex items-center justify-between mb-2">
-                                                                        <h5 className="text-xs font-bold text-neutral-800 flex items-center gap-1.5">
-                                                                            {label}
-                                                                            {open && <span className="text-[9px] text-amber-600 font-bold uppercase">Open</span>}
-                                                                        </h5>
-                                                                        <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-${accent}-50 text-${accent}-700 border border-${accent}-100`}>
-                                                                            {slots.filter(s => s.url).length} / 3
-                                                                        </span>
-                                                                    </div>
-                                                                    <div className="space-y-1.5">
-                                                                        {slots.map((slot) => (
-                                                                            <div key={slot.name} className="flex items-center justify-between gap-2 text-xs">
-                                                                                <span className="text-neutral-600 font-medium truncate">{slot.name}</span>
-                                                                                {slot.url ? (
-                                                                                    <a href={slot.url} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline font-semibold inline-flex items-center gap-1 shrink-0">
-                                                                                        <FileText className="w-3 h-3" /> View
-                                                                                    </a>
-                                                                                ) : (
-                                                                                    <span className="text-neutral-400 italic shrink-0">Not submitted</span>
-                                                                                )}
-                                                                            </div>
-                                                                        ))}
-                                                                    </div>
-                                                                </div>
-                                                            );
-                                                        })}
-                                                    </div>
+                                                    <DeliverableCards
+                                                        submissions={approvedProject.submissions}
+                                                        open={{ 'mid-term': midTermActive, 'end-term': endTermActive }}
+                                                    />
                                                 </div>
                                             </div>
                                         </div>
