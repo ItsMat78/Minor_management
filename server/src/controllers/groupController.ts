@@ -609,7 +609,7 @@ export const getAllGroups = async (req: Request, res: Response) => {
                     { path: 'faculty', select: 'name email department photoUrl' },
                     { path: 'updates.createdBy', select: 'name role photoUrl' }
                 ],
-                select: 'title description status isArchived tags semester attachments feedback hasNewUpdate updates workbook faculty midTermEvaluation endTermEvaluation finalReportEvaluation studentFeedback studentEvaluations'
+                select: 'title description status isArchived tags semester attachments feedback hasNewUpdate updates workbook faculty midTermEvaluation endTermEvaluation finalReportEvaluation studentFeedback studentEvaluations submissions'
             })
             .sort({ createdAt: -1 });
 
@@ -660,7 +660,7 @@ const populatedGroup = (id: any) =>
                 { path: 'faculty', select: 'name email department photoUrl' },
                 { path: 'updates.createdBy', select: 'name role photoUrl' }
             ],
-            select: 'title description status isArchived tags semester attachments feedback hasNewUpdate updates workbook faculty midTermEvaluation endTermEvaluation finalReportEvaluation studentFeedback studentEvaluations'
+            select: 'title description status isArchived tags semester attachments feedback hasNewUpdate updates workbook faculty midTermEvaluation endTermEvaluation finalReportEvaluation studentFeedback studentEvaluations submissions'
         });
 
 /**

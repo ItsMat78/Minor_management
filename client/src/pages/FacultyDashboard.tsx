@@ -8,6 +8,7 @@ import { Search, ChevronDown, ChevronUp, Users, Clock, CheckCircle, XCircle, Fil
 import { motion } from 'framer-motion';
 import * as Dialog from '@radix-ui/react-dialog';
 import MenteeGroupDetails from '../components/MenteeGroupDetails';
+import EvalDeliverables from '../components/EvalDeliverables';
 import ProfilePhotoUpload from '../components/ProfilePhotoUpload';
 import AttachmentGallery from '../components/AttachmentGallery';
 import CustomBatchDropdown from '../components/CustomBatchDropdown';
@@ -290,6 +291,7 @@ const renderEvalCard = (item: any, activeTab: string, handleOpenEvaluation: any,
         ? Math.round(studentEvals.reduce((sum: number, e: any) => sum + (e.marks || 0), 0) / studentEvals.length * 100) / 100
         : null;
     const RUBRIC_CONFIG_LOCAL = getRubricConfig(activeEvents, activeTab);
+    const evalFileType = activeTab === 'mid-term' || activeTab === 'end-term' ? activeTab : null;
 
     if (viewMode === 'list') {
         const members = item.members || item.group?.members || [];
@@ -312,6 +314,11 @@ const renderEvalCard = (item: any, activeTab: string, handleOpenEvaluation: any,
                             </span>
                         ))}
                     </div>
+                    {evalFileType && (
+                        <div className="mt-1">
+                            <EvalDeliverables submissions={projectData?.submissions} evalType={evalFileType} compact />
+                        </div>
+                    )}
                 </div>
 
                 {/* Status + action */}
@@ -357,6 +364,11 @@ const renderEvalCard = (item: any, activeTab: string, handleOpenEvaluation: any,
                             File {idx + 1}
                         </a>
                     ))}
+                </div>
+            )}
+            {evalFileType && (
+                <div className="mb-4">
+                    <EvalDeliverables submissions={projectData?.submissions} evalType={evalFileType} compact />
                 </div>
             )}
             <div className={`mt-auto rounded-xl p-4 border flex flex-col gap-3 transition-colors ${isDropper ? 'bg-red-100/30 border-red-200 group-hover:border-red-300' : 'bg-neutral-50 border-neutral-100 group-hover:border-indigo-100'}`}>
@@ -2160,6 +2172,12 @@ const FacultyDashboard: React.FC = () => {
 
                         {/* Table area */}
                         <div className="flex-1 overflow-auto p-4 space-y-5">
+                            {evaluatingProject && (
+                                <EvalDeliverables
+                                    submissions={(evaluatingProject.project || evaluatingProject).submissions}
+                                    evalType={evaluationType === 'mid-term' || evaluationType === 'end-term' ? evaluationType : null}
+                                />
+                            )}
                             {(() => {
                                 const members = evaluatingProject?.members || evaluatingProject?.group?.members || [];
                                 if (members.length === 0) return <div className="p-8 text-center text-neutral-500">No members found.</div>;

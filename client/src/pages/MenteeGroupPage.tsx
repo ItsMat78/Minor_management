@@ -16,6 +16,7 @@ import ProfilePhotoUpload from '../components/ProfilePhotoUpload';
 import ProjectDetailsHeader from '../components/ProjectDetailsHeader';
 import { GlobalEventBanner } from '../components/GlobalEventBanner';
 import { isStaff } from '../utils/permissions';
+import { resolveUploadUrl } from '../utils/uploadUrl';
 
 const MenteeGroupPage: React.FC = () => {
     const { groupId } = useParams<{ groupId: string }>();
@@ -415,7 +416,7 @@ const MenteeGroupPage: React.FC = () => {
                                                         <div key={slot.name} className="flex items-center justify-between text-xs">
                                                             <span className="text-gray-600 font-medium">{slot.name}</span>
                                                             {slot.url ? (
-                                                                <a href={slot.url} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline font-semibold inline-flex items-center gap-1">
+                                                                <a href={resolveUploadUrl(slot.url)} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline font-semibold inline-flex items-center gap-1">
                                                                     <FileText className="w-3 h-3" /> View
                                                                 </a>
                                                             ) : (

@@ -9,6 +9,7 @@ import CoordinatorsModal from '../components/CoordinatorsModal';
 import { Search, Users, Clock, CheckCircle, XCircle, FileText, X, LogOut, ChevronDown, ChevronUp, ChevronRight, Settings, Menu, Calendar, Download, AlertCircle, AlertTriangle, Save, Pencil, LayoutGrid, MoreVertical, Plus, Edit3, Power, Info, Trash2, Upload, Mail, Copy, Check, UserCheck, UserX, ShieldCheck, ShieldOff, Archive as ArchiveIcon } from 'lucide-react';
 import { motion } from 'framer-motion';
 import MenteeGroupDetails from '../components/MenteeGroupDetails';
+import EvalDeliverables from '../components/EvalDeliverables';
 import AttachmentGallery from '../components/AttachmentGallery';
 import AutoCreatePanelsModal from '../components/AutoCreatePanelsModal';
 import { GlobalEventBanner } from '../components/GlobalEventBanner';
@@ -4195,6 +4196,9 @@ const AdminDashboard: React.FC = () => {
                                                                                                             <span key={mIdx} className="text-[10px] text-neutral-500 bg-neutral-100 px-1.5 py-0 rounded">{m.name}</span>
                                                                                                         ))}
                                                                                                     </div>
+                                                                                                    <div className="mt-1">
+                                                                                                        <EvalDeliverables submissions={projectData?.submissions} evalType={adminEvalSubTab} compact />
+                                                                                                    </div>
                                                                                                 </div>
                                                                                                 <div className="flex items-center gap-2 shrink-0">
                                                                                                     {isEvaluated && <CheckCircle className="w-4 h-4 text-green-500 shrink-0" />}
@@ -7717,6 +7721,12 @@ const AdminDashboard: React.FC = () => {
 
                         {/* Table area */}
                         <div className="flex-1 overflow-auto p-4 space-y-5">
+                            {evaluatingProject && (
+                                <EvalDeliverables
+                                    submissions={(evaluatingProject.project || evaluatingProject).submissions}
+                                    evalType={adminEvalModalType}
+                                />
+                            )}
                             {(() => {
                                 const members = evaluatingProject?.members || evaluatingProject?.group?.members || [];
                                 if (members.length === 0) return <div className="p-8 text-center text-neutral-500">No members found.</div>;
