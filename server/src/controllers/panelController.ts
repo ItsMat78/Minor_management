@@ -610,7 +610,7 @@ export const getMyStudentPanel = async (req: any, res: Response) => {
                 const panelFacultyIds = panel.faculty.map((f: any) => String(f._id));
                 const facultyNames = new Map(panel.faculty.map((f: any) => [String(f._id), f.name]));
                 const candidates: any[] = await Group.find({ status: { $in: ['Approved', 'Forming', 'Pending'] }, isArchived: { $ne: true } })
-                    .populate('members', 'rollNumber')
+                    .populate('members', 'name rollNumber')
                     .populate('project', 'title faculty')
                     .select('name targetBatch members project')
                     .lean();
@@ -626,6 +626,7 @@ export const getMyStudentPanel = async (req: any, res: Response) => {
                         name: g.name,
                         projectTitle: g.project.title,
                         mentorName: facultyNames.get(String(g.project.faculty)) || null,
+                        members: (g.members || []).map((m: any) => ({ _id: m._id, name: m.name, rollNumber: m.rollNumber })),
                         isMine: String(g._id) === String(group._id),
                     }))
                     .sort((a, b) => (parseInt(a.name, 10) || Infinity) - (parseInt(b.name, 10) || Infinity) || String(a.name).localeCompare(String(b.name)));

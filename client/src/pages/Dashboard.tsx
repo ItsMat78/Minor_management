@@ -2006,11 +2006,21 @@ const Dashboard: React.FC = () => {
                                             </div>
                                             <ul className="divide-y divide-neutral-100">
                                                 {panelInfo.panelGroups.map((g: any) => (
-                                                    <li key={g._id} className={`flex items-center gap-4 px-5 sm:px-7 py-3 ${g.isMine ? 'bg-indigo-50/60' : ''}`}>
+                                                    <li key={g._id} className={`flex items-start gap-4 px-5 sm:px-7 py-3 ${g.isMine ? 'bg-indigo-50/60' : ''}`}>
                                                         <span className={`shrink-0 w-12 text-sm font-black tabular-nums ${g.isMine ? 'text-indigo-700' : 'text-neutral-400'}`}>G{g.name}</span>
                                                         <div className="min-w-0 flex-1">
                                                             <p className="text-sm font-semibold text-neutral-900 truncate" title={g.projectTitle}>{g.projectTitle}</p>
                                                             {g.mentorName && <p className="text-xs text-neutral-500 truncate">Mentor: {g.mentorName}</p>}
+                                                            {g.members?.length > 0 && (
+                                                                <div className="flex flex-wrap gap-1.5 mt-2">
+                                                                    {g.members.map((m: any) => (
+                                                                        <span key={m._id} className="inline-flex items-center gap-1.5 text-[11px] text-neutral-700 bg-white border border-neutral-200 rounded-full px-2 py-0.5">
+                                                                            <span className="font-medium">{m.name}</span>
+                                                                            {m.rollNumber && <span className="font-mono text-[10px] text-neutral-400">{m.rollNumber}</span>}
+                                                                        </span>
+                                                                    ))}
+                                                                </div>
+                                                            )}
                                                         </div>
                                                         {g.isMine && (
                                                             <span className="text-[10px] font-black uppercase tracking-widest text-indigo-700 bg-indigo-100 px-2 py-1 rounded-full shrink-0">Your Group</span>
