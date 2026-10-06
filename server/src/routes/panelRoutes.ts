@@ -1,5 +1,5 @@
 import express from 'express';
-import { createPanel, getPanels, getMyStudentPanel, deletePanel, getMyPanelEvaluationGroups, getAllPanelEvaluationGroups, exportPanels, updatePanel, exportEvaluations, downloadEvaluationTemplate, importEvaluationTemplate, exportPanelFinalSheet, downloadPanelTemplate, previewPanelImport, exportOfficialFormat, exportPanelsAsTemplate, downloadBatchEvaluationTemplate, importBatchEvaluationTemplate, exportBatchFinalSheet } from '../controllers/panelController';
+import { createPanel, getPanels, getMyStudentPanel, deletePanel, getMyPanelEvaluationGroups, getAllPanelEvaluationGroups, exportPanels, updatePanel, setPanelChair, exportEvaluations, downloadEvaluationTemplate, importEvaluationTemplate, exportPanelFinalSheet, downloadPanelTemplate, previewPanelImport, exportOfficialFormat, exportPanelsAsTemplate, downloadBatchEvaluationTemplate, importBatchEvaluationTemplate, exportBatchFinalSheet } from '../controllers/panelController';
 import { auth } from '../middleware/authMiddleware';
 import { UserRole } from '../models/User';
 import { requirePermission, hasPermission } from '../utils/permissions';
@@ -32,6 +32,7 @@ router.post('/admin-eval-batch-import', auth, requirePermission('evaluations'), 
 router.get('/admin-eval-batch-final', auth, requirePermission('evaluations'), exportBatchFinalSheet);
 router.delete('/:id', auth, requirePermission('panels'), deletePanel);
 router.put('/:id', auth, requirePermission('panels'), updatePanel);
+router.put('/:id/chair', auth, requirePermission('panels'), setPanelChair);
 router.get('/:panelId/evaluation-template', auth, facultyAuth, downloadEvaluationTemplate);
 router.post('/:panelId/evaluation-import', auth, facultyAuth, upload.single('file'), importEvaluationTemplate);
 router.get('/:panelId/export-final', auth, facultyAuth, exportPanelFinalSheet);

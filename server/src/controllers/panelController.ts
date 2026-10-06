@@ -409,11 +409,20 @@ export const updatePanel = async (req: any, res: Response) => {
             return res.status(400).json({ message: 'Missing required fields' });
         }
 
-        const updatedPanel = await Panel.findByIdAndUpdate(
-            panelId,
-            { faculty, batchYear, room: room || undefined, seed: seed || undefined },
-            { new: true }
-        ).populate('faculty', 'name email photoUrl department maxGroups currentGroups');
+        const existing = await Panel.findById(panelId).select('chair').lean();
+        if (!existing) {
+            return res.status(404).json({ message: 'Panel not found' });
+        }
+
+        const update: any = { faculty, batchYear, room: room || undefined, seed: seed || undefined };
+        // A manually picked chair who has been moved off the panel no longer applies;
+        // drop it so the panel falls back to the derived chair.
+        if (existing.chair && !(faculty as any[]).some((f: any) => String(f?._id ?? f) === String(existing.chair))) {
+            update.$unset = { chair: 1 };
+        }
+
+        const updatedPanel = await Panel.findByIdAndUpdate(panelId, update, { new: true })
+            .populate('faculty', 'name email photoUrl department maxGroups currentGroups');
 
         if (!updatedPanel) {
             return res.status(404).json({ message: 'Panel not found' });
@@ -422,6 +431,31 @@ export const updatePanel = async (req: any, res: Response) => {
         res.status(200).json(updatedPanel);
     } catch (error: any) {
         res.status(500).json({ message: 'Error updating panel', error: error.message });
+    }
+};
+
+// Pin a panel member as chair, or pass `chair: null` to go back to the derived chair.
+export const setPanelChair = async (req: any, res: Response) => {
+    try {
+        const { chair } = req.body;
+        const panel = await Panel.findById(req.params.id);
+        if (!panel) {
+            return res.status(404).json({ message: 'Panel not found' });
+        }
+
+        if (chair) {
+            if (!panel.faculty.some(f => String(f) === String(chair))) {
+                return res.status(400).json({ message: 'The chair must be a member of this panel' });
+            }
+            panel.chair = chair;
+        } else {
+            panel.chair = undefined;
+        }
+        await panel.save();
+
+        res.status(200).json({ _id: panel._id, chair: panel.chair ?? null });
+    } catch (error: any) {
+        res.status(500).json({ message: 'Error updating panel chair', error: error.message });
     }
 };
 
@@ -739,6 +773,8 @@ export const exportPanels = async (req: any, res: Response) => {
         });
 
         const panelChairs: string[] = (panels as any[]).map((panel: any, pi: number) => {
+            const pinned = panel.chair?.toString();
+            if (pinned && panel.faculty.some((f: any) => f._id.toString() === pinned)) return pinned;
             const pg = panelGroups[pi]; let bestId = '', bestCount = 0;
             panel.faculty.forEach((f: any) => {
                 const fid = f._id.toString();

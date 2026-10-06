@@ -6,7 +6,7 @@ import { errorMessage } from '../utils/apiError';
 import { useAuth } from '../context/AuthContext';
 import { hasPermission, type Permission } from '../utils/permissions';
 import CoordinatorsModal from '../components/CoordinatorsModal';
-import { Search, Users, Clock, CheckCircle, XCircle, FileText, X, LogOut, ChevronDown, ChevronUp, ChevronRight, Settings, Menu, Calendar, Download, AlertCircle, AlertTriangle, Save, Pencil, LayoutGrid, MoreVertical, Plus, Edit3, Power, Info, Trash2, Upload, Mail, Copy, Check, UserCheck, UserX, ShieldCheck, ShieldOff, Archive as ArchiveIcon } from 'lucide-react';
+import { Search, Users, Clock, CheckCircle, XCircle, FileText, X, LogOut, ChevronDown, ChevronUp, ChevronRight, Settings, Menu, Calendar, Download, AlertCircle, AlertTriangle, Save, Pencil, LayoutGrid, MoreVertical, Plus, Edit3, Power, Info, Trash2, Upload, Mail, Copy, Check, UserCheck, UserX, ShieldCheck, ShieldOff, Crown, RotateCcw, Archive as ArchiveIcon } from 'lucide-react';
 import { motion } from 'framer-motion';
 import MenteeGroupDetails from '../components/MenteeGroupDetails';
 import EvalDeliverables from '../components/EvalDeliverables';
@@ -1323,6 +1323,16 @@ const AdminDashboard: React.FC = () => {
         });
 
         return { pairs, claimed };
+    };
+
+    // Pin a member as the panel's chair, or pass null to fall back to the derived chair.
+    const updatePanelChair = async (panelId: string, chair: string | null) => {
+        try {
+            const res = await api.put(`/panels/${panelId}/chair`, { chair });
+            setPanels(prev => prev.map(p => p._id === panelId ? { ...p, chair: res.data.chair } : p));
+        } catch (e: any) {
+            alert(e.response?.data?.message || 'Error updating panel chair');
+        }
     };
 
     const confirmAutoCreatePanels = async (newPanels: any[]) => {
@@ -3374,8 +3384,12 @@ const AdminDashboard: React.FC = () => {
                                                                     return { ...f, groupCount: count };
                                                                 });
 
-                                                                let chairId = null;
-                                                                if (panelFacultyWithLoad.length > 0) {
+                                                                // An admin-picked chair wins as long as they are still on the panel;
+                                                                // otherwise the member guiding the most groups chairs it.
+                                                                const pinnedChair = panel.chair && panelFacultyWithLoad.some((f: any) => String(f._id) === String(panel.chair))
+                                                                    ? String(panel.chair) : null;
+                                                                let chairId = pinnedChair;
+                                                                if (!chairId && panelFacultyWithLoad.length > 0) {
                                                                     const maxLoad = Math.max(...panelFacultyWithLoad.map((f: any) => f.groupCount));
                                                                     chairId = panelFacultyWithLoad.find((f: any) => f.groupCount === maxLoad)?._id;
                                                                 }
@@ -3409,9 +3423,20 @@ const AdminDashboard: React.FC = () => {
                                                                             )}
                                                                         </div>
                                                                         <div className="space-y-2 min-h-[60px] mb-4">
-                                                                            <h5 className="text-xs font-bold text-neutral-400 uppercase mb-2">Faculty Members</h5>
+                                                                            <div className="flex items-center justify-between mb-2">
+                                                                                <h5 className="text-xs font-bold text-neutral-400 uppercase">Faculty Members</h5>
+                                                                                {pinnedChair && (
+                                                                                    <button
+                                                                                        onClick={() => updatePanelChair(panel._id, null)}
+                                                                                        title="Go back to the member guiding the most groups"
+                                                                                        className="flex items-center gap-1 text-[11px] font-semibold text-neutral-500 hover:text-indigo-600 transition"
+                                                                                    >
+                                                                                        <RotateCcw className="w-3 h-3" /> Auto chair
+                                                                                    </button>
+                                                                                )}
+                                                                            </div>
                                                                             {panelFacultyWithLoad.map((f: any) => (
-                                                                                <div key={f._id} className={`flex items-center gap-3 bg-white p-3 rounded-xl border ${f.isChair ? 'border-amber-300 ring-1 ring-amber-100' : 'border-neutral-200'} shadow-sm`}>
+                                                                                <div key={f._id} className={`group/fac flex items-center gap-3 bg-white p-3 rounded-xl border ${f.isChair ? 'border-amber-300 ring-1 ring-amber-100' : 'border-neutral-200'} shadow-sm`}>
                                                                                     <Avatar
                                                                                         name={f.name || 'F'}
                                                                                         photoUrl={f.photoUrl}
@@ -3421,10 +3446,27 @@ const AdminDashboard: React.FC = () => {
                                                                                     <div className="flex-1 min-w-0">
                                                                                         <h5 className="text-sm font-bold text-neutral-900 truncate flex items-center gap-1.5">
                                                                                             {f.name}
-                                                                                            {f.isChair && <span className="bg-amber-100 text-amber-800 text-[10px] px-1.5 py-0.5 rounded font-black uppercase tracking-wider">Chair</span>}
+                                                                                            {f.isChair && (
+                                                                                                <span
+                                                                                                    title={pinnedChair ? 'Chair set manually' : 'Chair picked automatically (most groups guided)'}
+                                                                                                    className="bg-amber-100 text-amber-800 text-[10px] px-1.5 py-0.5 rounded font-black uppercase tracking-wider"
+                                                                                                >
+                                                                                                    {pinnedChair ? 'Chair · Manual' : 'Chair'}
+                                                                                                </span>
+                                                                                            )}
                                                                                         </h5>
                                                                                         <p className="text-xs text-neutral-500 truncate">{f.email}</p>
                                                                                     </div>
+                                                                                    {!f.isChair && (
+                                                                                        <button
+                                                                                            onClick={() => updatePanelChair(panel._id, String(f._id))}
+                                                                                            title={`Make ${f.name} the chair`}
+                                                                                            aria-label={`Make ${f.name} the chair`}
+                                                                                            className="p-1.5 rounded-lg text-neutral-300 opacity-0 group-hover/fac:opacity-100 focus:opacity-100 hover:text-amber-600 hover:bg-amber-50 transition"
+                                                                                        >
+                                                                                            <Crown className="w-4 h-4" />
+                                                                                        </button>
+                                                                                    )}
                                                                                     <div className="bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-lg text-xs font-bold whitespace-nowrap">
                                                                                         {f.groupCount} Grps
                                                                                     </div>
